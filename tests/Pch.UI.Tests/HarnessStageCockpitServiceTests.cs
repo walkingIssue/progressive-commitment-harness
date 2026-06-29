@@ -1,4 +1,5 @@
 using Pch.UI.Features.StageCockpit;
+using System.Text.Json;
 using Xunit;
 
 namespace Pch.UI.Tests;
@@ -173,5 +174,82 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain(
             fixture.Session.Responses,
             response => response.Summary.Contains("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void MissionVacationIntakeAppliesUserStatedFactsAndDigest()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.vacation");
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.vacation"
+                && outcome.State == "applied"
+                && outcome.PlannerOutcomeCode == "planner_mock_accepted"
+                && outcome.IntakeOutcomeCode == "applied"
+                && outcome.MemoryDigestOutcomeCode == "memory_digest_updated"
+                && outcome.TraceOutcome == "mission_intake.applied");
+        Assert.Contains(
+            fixture.MissionIntake.AppliedFields,
+            field => field.FieldId == "purpose"
+                && field.Value == "vacation"
+                && field.Source == "user-stated"
+                && field.State == "applied");
+        Assert.Contains(
+            fixture.MissionIntake.MemoryDigestFacts,
+            fact => fact.FactId == "memory.destination"
+                && fact.ReferenceId == "destination_country");
+    }
+
+    [Fact]
+    public void MissionNonVacationIntakeSurfacesHighPriorityCommitment()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.non-vacation-commitment");
+
+        Assert.Contains(
+            fixture.MissionIntake.AppliedFields,
+            field => field.FieldId == "purpose"
+                && field.Value == "family_support"
+                && field.Source == "user-stated");
+        Assert.Contains(
+            fixture.MissionIntake.HighPriorityCommitments,
+            commitment => commitment.CommitmentId == "commitment.family-anchor"
+                && commitment.Priority == "high"
+                && commitment.Source == "user-stated");
+        Assert.Contains(
+            fixture.MissionIntake.MemoryDigestFacts,
+            fact => fact.FactId == "memory.commitment.family-anchor");
+    }
+
+    [Fact]
+    public void MissionPendingConfirmationDoesNotExposeRawPromptOrProviderPayload()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.pending-confirmation");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            fixture.MissionIntake,
+            fixture.Session
+        });
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.pending-confirmation"
+                && outcome.State == "proposed"
+                && outcome.IntakeOutcomeCode == "pending_confirmation"
+                && outcome.TraceOutcome == "mission_intake.proposed");
+        Assert.Contains(
+            fixture.MissionIntake.PendingConfirmations,
+            field => field.FieldId == "pace"
+                && field.Source == "model-inferred"
+                && field.State == "pending-confirmation");
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("I know this is a mess", serialized, StringComparison.Ordinal);
     }
 }

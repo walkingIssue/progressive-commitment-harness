@@ -18,6 +18,11 @@ public sealed class HarnessStageCockpitService
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
     private readonly List<ModelSuggestionRunOutcomeFixture> _modelRunOutcomes = [];
+    private readonly List<MissionIntakeOutcomeFixture> _missionOutcomes = [];
+    private readonly List<MissionFieldFixture> _appliedMissionFields = [];
+    private readonly List<MissionFieldFixture> _pendingMissionConfirmations = [];
+    private readonly List<MissionCommitmentFixture> _highPriorityCommitments = [];
+    private readonly List<MemoryDigestFactFixture> _memoryDigestFacts = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -284,6 +289,57 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunMissionIntake(string runId)
+    {
+        var scenario = MissionIntakeScenario.Create(runId);
+        if (scenario is null)
+        {
+            UpsertMissionOutcome(new(
+                runId,
+                "blocked",
+                "planner_unknown_scenario",
+                "not_run",
+                "not_run",
+                "mission_intake.blocked",
+                "PCH_UI_MISSION_UNKNOWN_SCENARIO",
+                "Mission intake scenario is not recognized.",
+                "deterministic-mock",
+                "mock-mission-planner",
+                null));
+            return Current();
+        }
+
+        UpsertMissionOutcome(new(
+            scenario.RunId,
+            scenario.PendingConfirmations.Count > 0 ? "proposed" : "applied",
+            "planner_mock_accepted",
+            scenario.PendingConfirmations.Count > 0 ? "pending_confirmation" : "applied",
+            "memory_digest_updated",
+            scenario.PendingConfirmations.Count > 0 ? "mission_intake.proposed" : "mission_intake.applied",
+            null,
+            null,
+            "deterministic-mock",
+            "mock-mission-planner",
+            $"mock-{scenario.RunId}"));
+
+        UpsertRange(_appliedMissionFields, scenario.AppliedFields, field => field.FieldId);
+        UpsertRange(_pendingMissionConfirmations, scenario.PendingConfirmations, field => field.FieldId);
+        UpsertRange(_highPriorityCommitments, scenario.Commitments, commitment => commitment.CommitmentId);
+        UpsertRange(_memoryDigestFacts, scenario.MemoryDigestFacts, fact => fact.FactId);
+
+        UpsertResponse(new(
+            $"response.{(scenario.PendingConfirmations.Count > 0 ? "proposed" : "applied")}.mission.{scenario.RunId}",
+            scenario.PendingConfirmations.Count > 0 ? SessionResponseState.Pending : SessionResponseState.Applied,
+            scenario.PendingConfirmations.Count > 0 ? "Pending" : "Applied",
+            scenario.PendingConfirmations.Count > 0
+                ? "Mission planner produced confirmation-ready inferred fields."
+                : "Mission planner applied user-stated mission facts.",
+            scenario.RunId,
+            null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -387,7 +443,19 @@ public sealed class HarnessStageCockpitService
                     new("server-model.block.form-mismatch", "Run blocked model suggestion", HarnessAction.EmitFormKind),
                     new("server-model.decode.missing-argument", "Run decode-failure model suggestion", HarnessAction.DeferSlotKind)
                 ],
-                _modelRunOutcomes.ToArray()));
+                _modelRunOutcomes.ToArray()),
+            MissionIntake: new(
+                "UI-local deterministic seam pending provider mission planner, harness intake, and memory digest contracts",
+                [
+                    new("mission.vacation", "Plan vacation intake", "vacation"),
+                    new("mission.non-vacation-commitment", "Plan commitment intake", "family-support"),
+                    new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation")
+                ],
+                _missionOutcomes.ToArray(),
+                _appliedMissionFields.ToArray(),
+                _pendingMissionConfirmations.ToArray(),
+                _highPriorityCommitments.ToArray(),
+                _memoryDigestFacts.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -569,8 +637,96 @@ public sealed class HarnessStageCockpitService
             : $"PCH_UI_RUNTIME_INTAKE_{runtime.IntakeCode.ToUpperInvariant()}";
     }
 
+    private void UpsertMissionOutcome(MissionIntakeOutcomeFixture outcome)
+    {
+        var index = _missionOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _missionOutcomes[index] = outcome;
+        }
+        else
+        {
+            _missionOutcomes.Add(outcome);
+        }
+    }
+
+    private static void UpsertRange<T>(
+        List<T> target,
+        IReadOnlyList<T> source,
+        Func<T, string> keySelector)
+    {
+        foreach (var item in source)
+        {
+            var key = keySelector(item);
+            var index = target.FindIndex(existing => string.Equals(keySelector(existing), key, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                target[index] = item;
+            }
+            else
+            {
+                target.Add(item);
+            }
+        }
+    }
+
     private sealed record ModelRunScenario(
         string RunId,
         ModelActionPacket Packet,
         ModelActionRunResult Result);
+
+    private sealed record MissionIntakeScenario(
+        string RunId,
+        IReadOnlyList<MissionFieldFixture> AppliedFields,
+        IReadOnlyList<MissionFieldFixture> PendingConfirmations,
+        IReadOnlyList<MissionCommitmentFixture> Commitments,
+        IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts)
+    {
+        public static MissionIntakeScenario? Create(string runId)
+        {
+            return runId switch
+            {
+                "mission.vacation" => new(
+                    runId,
+                    [
+                        new("purpose", "Purpose", "vacation", "user-stated", "applied"),
+                        new("destination_country", "Destination country", "Japan", "user-stated", "applied"),
+                        new("date_window", "Date window", "2026-10-05 to 2026-10-19", "user-stated", "applied")
+                    ],
+                    [],
+                    [],
+                    [
+                        new("memory.destination", "Destination country is Japan.", "user-stated", "destination_country"),
+                        new("memory.purpose", "Trip purpose is vacation.", "user-stated", "purpose")
+                    ]),
+                "mission.non-vacation-commitment" => new(
+                    runId,
+                    [
+                        new("purpose", "Purpose", "family_support", "user-stated", "applied"),
+                        new("destination_country", "Destination country", "Poland", "user-stated", "applied")
+                    ],
+                    [],
+                    [
+                        new("commitment.family-anchor", "Attend family support appointment", "FixedAnchor", "high", "user-stated")
+                    ],
+                    [
+                        new("memory.commitment.family-anchor", "High-priority family support appointment must stay fixed.", "user-stated", "commitment.family-anchor")
+                    ]),
+                "mission.pending-confirmation" => new(
+                    runId,
+                    [
+                        new("destination_country", "Destination country", "Japan", "user-stated", "applied")
+                    ],
+                    [
+                        new("pace", "Pace", "balanced", "model-inferred", "pending-confirmation"),
+                        new("traveler_need", "Traveler need", "low cognitive load", "model-inferred", "pending-confirmation")
+                    ],
+                    [],
+                    [
+                        new("memory.pending.pace", "Pace preference requires user confirmation.", "model-inferred", "pace")
+                    ]),
+                _ => null
+            };
+        }
+    }
 }
