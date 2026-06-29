@@ -1,0 +1,19 @@
+# Candidate Expansion Eval Notes
+
+Candidate expansion eval rows are sanitized by default. They are intended to verify that provider candidate pools exist for itinerary slots without persisting raw search/model/provider content.
+
+Persisted eval rows contain only:
+
+- eval case name and packet id
+- fixed outcome and error codes
+- slot ids
+- candidate categories
+- candidate counts
+- total candidate count
+- provider/model/request metadata and response length
+
+Persisted eval rows must not contain raw prompt text, provider payloads, candidate display names, candidate descriptions, candidate tags, context digests, secrets, credentials, approval tokens, or raw exception messages.
+
+Packet/result id mismatches use the fixed `candidate_expansion_packet_id_mismatch` outcome and omit result slot metadata. Exceptions use fixed error codes and do not echo raw exception messages.
+
+Optional guarded-live seams are skipped by default. Future strong-model or web-search expansion must block on provider failure, timeout, malformed output, empty output, or credit exhaustion, and must not fall back to another paid provider.
