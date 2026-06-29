@@ -135,3 +135,45 @@ Verification:
 - Provider-live client exists behind guards and can be skipped/blocked safely without breaking required tests.
 - Overlong, blank, malformed, provider-blocked, unsupported, or adapter-blocked paths use fixed sanitized codes and no session mutation.
 - No raw prompt, provider payload, proposal JSON, approval token, credential, API key, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Status: complete.
+
+Integrated heads:
+
+- Shellby: `720096c8294d1cb16b551839401aaa0066ca7961`
+- Kaneki: `cfb9757de32fb8849905ef38efc893fc9fef31b6`
+- Sarah: `ccc441ca3dc14c0a8f370e4bf8ba37031dec4d5d`
+- Final local integration before docs: `3fa654779b781a735d92976c01a25bb12055b243`
+
+What landed:
+
+- Harness `PromptPacketBuilder` turns raw prompt plus current structured memory into bounded planner packets.
+- Raw prompt is available only as runtime-only `MissionPlannerPromptPacket.TransientRawPrompt`, which is ignored by default JSON serialization.
+- Provider `ModelCompletionMissionPlannerClient` adapts OpenAI/OpenRouter-compatible completions into strict structured mission planner results.
+- OpenRouter timeout/cancellation handling now distinguishes caller cancellation from provider timeout, including response body reads.
+- Stage Cockpit prompt intake uses the canonical prompt packet builder and deterministic provider runtime path through `MissionPlannerRuntimeBridge -> ProviderMissionProposalMirror -> MissionProposalAdapter.Apply`.
+
+Repairs before merge:
+
+- Added the transient raw prompt channel after coordinator review.
+- Rejected null/blank scenario hints with fixed `invalid_context_hint`.
+- Hardened OpenRouter send/body-read timeout and caller-cancellation behavior.
+- Replaced the UI-local prompt packet seam with canonical `PromptPacketBuilder`.
+
+Final verification:
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed after isolated rerun; initial parallel build collided with test compilation file locks.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: passed, 18 tests.
+- `dotnet test`: passed, 152 tests.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5153/`: accepted, pending, provider-blocked, adapter-blocked, blank, and overlong prompt cards passed with raw prompt/provider/packet sentinel absence.
+
+Deferred:
+
+- Live OpenRouter/Qwen prompt planner smoke remains optional and was not run by default.
+- Day/slot itinerary compiler.
+- Candidate expansion for dining, activities, transit, and booking-like choices.
+- Durable audit storage for prompt packet metadata and mission proposal applications.
