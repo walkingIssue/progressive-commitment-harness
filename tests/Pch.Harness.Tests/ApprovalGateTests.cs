@@ -47,6 +47,23 @@ public sealed class ApprovalGateTests
     }
 
     [Fact]
+    public void RefusesWhitespaceApprovalToken()
+    {
+        var action = new RequestApprovalAction(
+            "action-approval",
+            new ApprovalRequest(
+                "approval-1",
+                "mock-booking",
+                "Approve mocked booking.",
+                ["booking"],
+                100,
+                "USD",
+                "   "));
+
+        Assert.False(new ApprovalGate().Evaluate(action).IsAllowed);
+    }
+
+    [Fact]
     public void RefusesSpendStatePatchWithoutApprovalToken()
     {
         var action = new StatePatchAction(

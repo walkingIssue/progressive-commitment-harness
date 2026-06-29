@@ -1,0 +1,12 @@
+{
+  "packetId": "packet-session-7-day-approvalqueue",
+  "sessionId": "session-7-day",
+  "stage": "ApprovalQueue",
+  "currentSubtask": "Request explicit approval for irreversible or spend actions.",
+  "loadBearingFacts": ["purpose: Japan planning fixture for 7 days", "destination_country: Japan", "day_count: 7"],
+  "candidates": [],
+  "constraints": ["constraint-evidence: candidate evidence=required (hard, HarnessDefault)"],
+  "authorityHints": ["State writes must come through StatePatchProposal."],
+  "allowedActions": ["request_approval", "summarize"],
+  "traceRequirements": ["Preserve candidate IDs.", "Do not invent prices, openings, bookings, or unsupported facts."]
+}

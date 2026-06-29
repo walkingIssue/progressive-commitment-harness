@@ -1,0 +1,15 @@
+{
+  "packetId": "packet-session-14-day-logistics",
+  "sessionId": "session-14-day",
+  "stage": "Logistics",
+  "currentSubtask": "Compare travel and lodging candidates.",
+  "loadBearingFacts": ["purpose: Japan planning fixture for 14 days", "destination_country: Japan", "day_count: 14"],
+  "candidates": [
+    { "candidateId": "candidate-01", "kind": "Transit", "title": "Fixture option 1", "summary": "Bounded synthetic option 1 for projection tests.", "evidenceIds": ["evidence-fixture-candidates"] },
+    { "candidateId": "candidate-02", "kind": "Transit", "title": "Fixture option 2", "summary": "Bounded synthetic option 2 for projection tests.", "evidenceIds": ["evidence-fixture-candidates"] }
+  ],
+  "constraints": ["constraint-budget: budget posture=moderate (soft, User)"],
+  "authorityHints": ["State writes must come through StatePatchProposal."],
+  "allowedActions": ["emit_choice_set", "propose_search", "state_patch", "defer_slot"],
+  "traceRequirements": ["Preserve candidate IDs."]
+}

@@ -73,6 +73,8 @@ public sealed class ProjectionService
             $"date_window: {session.Mission.StartDate:yyyy-MM-dd}/{session.Mission.EndDate:yyyy-MM-dd}",
             $"day_count: {session.Mission.DayCount}",
             $"traveler_count: {session.Mission.Travelers.Count}",
+            $"selected_candidate_count: {session.SelectedCandidateIds.Count}",
+            $"deferred_slot_count: {session.DeferredSlots.Count}",
             .. session.Mission.Commitments
                 .OrderBy(commitment => commitment.StartsAt)
                 .Select(commitment => $"commitment: {commitment.Title}")

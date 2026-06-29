@@ -76,6 +76,51 @@ public static class SyntheticTripFactory
         return session;
     }
 
+    public static TripSession CreateBusinessTripSession()
+    {
+        var session = CreateSession(3);
+        session.AddCandidatePool(new CandidatePool(
+            "pool-business",
+            "Logistics",
+            [
+                new(
+                    "candidate-business-hotel",
+                    CandidateKind.Hotel,
+                    "Conference district hotel",
+                    "Fixture hotel close to the meeting anchor.",
+                    null,
+                    null,
+                    ["evidence-fixture-candidates"],
+                    120)
+            ],
+            ["constraint-pace"],
+            ObservedAt));
+        return session;
+    }
+
+    public static TripSession CreateFuneralDowntimeSession()
+    {
+        var session = CreateSession(7);
+        session.DeferSlot("meal-plan-day-2", "Family schedule is not stable yet.");
+        session.AddCandidatePool(new CandidatePool(
+            "pool-downtime",
+            "ActivitiesDowntime",
+            [
+                new(
+                    "candidate-quiet-garden",
+                    CandidateKind.Activity,
+                    "Quiet garden downtime",
+                    "Low-friction downtime block near the fixed family anchor.",
+                    null,
+                    null,
+                    ["evidence-fixture-candidates"],
+                    130)
+            ],
+            ["constraint-pace"],
+            ObservedAt));
+        return session;
+    }
+
     private static IReadOnlyList<Candidate> BuildCandidates(int dayCount)
     {
         var count = Math.Min(Math.Max(dayCount, 3), 12);

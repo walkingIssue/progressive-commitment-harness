@@ -49,6 +49,11 @@ public sealed class StageMachine
         return session.Stage;
     }
 
+    public HarnessStage Next(HarnessStage stage)
+    {
+        return NextStages.TryGetValue(stage, out var next) ? next : stage;
+    }
+
     public HarnessAction NextSkeletonAction(TripSession session)
     {
         return session.Stage switch
