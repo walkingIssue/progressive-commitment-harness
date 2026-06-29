@@ -2,6 +2,8 @@
 
 Sprint 006 adds provider-local mission planner packet/result DTOs for prompt-to-structured-mission proposals. Required tests use deterministic mocks only and do not require network, API keys, or provider credits.
 
+Sprint 007 adds `MissionPlannerRuntimeClient`, `MissionPlannerRuntimeBridge`, and `SanitizedMissionPlannerRuntimeEvalRunner` for provider-local runtime handoff evaluation. The runtime bridge keeps the rich `MissionPlannerResult` available only on an in-memory `ProviderRuntimeMissionIntakeProposal` that is ignored by JSON serialization.
+
 The planner bridge uses provider-local mirrors and does not reference harness assemblies. The mirror is intentionally shape-compatible with Shellby's harness-owned mission-intake contract so a later adapter can map without inventing semantic data.
 
 Mapping alignment:
@@ -21,5 +23,7 @@ Sanitized eval rows persist only:
 - provider/model/request metadata and response length
 
 Sanitized eval rows must not persist raw prompt text, raw provider payloads, raw exception messages, field values, commitment titles, constraint values, memory digests, credentials, or secret-like sentinels.
+
+Runtime eval rows additionally include fixed decode/intake outcome codes for the adapter handoff step. Packet/result id mismatches, malformed planner results, and unsupported mission kinds return fixed codes and no persisted proposal metadata. Accepted runtime rows still persist only counts and provider metadata; field paths and proposal metadata stay on the bridge result, while raw values remain in the ignored runtime proposal for immediate in-memory adapter use.
 
 Optional live planner smoke can use OpenAI or OpenRouter only when the key is present and provider/credit checks pass. Empty content, malformed output, provider failure, or credit exhaustion must block the smoke and must not silently fall back to another paid provider.
