@@ -128,3 +128,41 @@ Verification:
 - Blocked cases are explicit, fixed-code, replayable, and no-mutation where relevant.
 - Required tests remain offline and deterministic.
 - No raw prompt, provider payload, proposal JSON, credential, approval token, hold reference, payment data, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Status: done.
+
+Worker heads:
+
+- Shellby: `2a80f76a8fb9463f20d8691e3a9da26f3a166a13`
+- Kaneki: `f475bd223c7d2b6854b587f431b42d3c966ec949`
+- Sarah: `e40b92e1466962b05d51b1f358e96f784f0e816f`
+
+Coordinator merges:
+
+- `cb32cbf` - provider evidence export bridge
+- `598d36e` - harness trip-run snapshot
+- `3704af6` - UI end-to-end trip run
+
+Completed:
+
+- Harness-owned `TripRunSnapshotBuilder` for final deterministic trip-run snapshots.
+- Provider-local evidence export DTOs, deterministic mock provider, evaluator, and sanitized evidence-export docs/evals.
+- Stage Cockpit end-to-end run panel through prompt packet, mission intake, itinerary compiler, candidate application, mock hold preparation, trip-run snapshot, and evidence export.
+- Happy, pending-confirmation, provider candidate mismatch, wrong-slot candidate, missing-approval, and raw-sentinel absence paths.
+
+Repairs before merge:
+
+- Snapshot ids and top-level session ids are sanitized before serialization.
+- Evidence export rows derive persisted final evidence metadata from the trusted packet after consistency validation.
+- UI final run consumes canonical snapshot/export boundaries instead of a local final-export seam.
+
+Verification:
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: 36 tests passed.
+- `dotnet test`: 232 tests passed.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5163/`: all six end-to-end cards clicked and passed expected markers: happy path, pending confirmation, provider candidate mismatch, wrong-slot candidate, missing approval, raw-sentinel export, evidence marker presence, and raw sentinel absence.
