@@ -556,18 +556,83 @@
             </div>
         </article>
 
-        <article class="panel end-to-end-trip-panel">
+        <article class="panel end-to-end-trip-panel"
+                 data-release-smoke-surface="stage-cockpit-e2e"
+                 data-release-summary-state="@Fixture.EndToEndTripRuns.ReleaseSummary.State"
+                 aria-labelledby="release-smoke-title">
             <div class="panel-head">
-                <span>End-to-End Trip Run</span>
+                <span id="release-smoke-title">End-to-End Trip Run</span>
                 <small>@Fixture.EndToEndTripRuns.EndpointHint</small>
             </div>
+            <section class="release-summary"
+                     role="status"
+                     aria-live="polite"
+                     data-release-summary-id="@Fixture.EndToEndTripRuns.ReleaseSummary.SummaryId"
+                     data-release-summary-state="@Fixture.EndToEndTripRuns.ReleaseSummary.State"
+                     data-release-primary-run-id="@Fixture.EndToEndTripRuns.ReleaseSummary.PrimaryRunId"
+                     data-prompt-packet-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.PromptPacketOutcomeCode"
+                     data-mission-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.MissionOutcomeCode"
+                     data-itinerary-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.ItineraryOutcomeCode"
+                     data-snapshot-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.SnapshotOutcomeCode"
+                     data-evidence-export-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.EvidenceExportOutcomeCode"
+                     data-hold-outcome="@Fixture.EndToEndTripRuns.ReleaseSummary.HoldOutcomeCode"
+                     data-approval-id="@Fixture.EndToEndTripRuns.ReleaseSummary.ApprovalId"
+                     data-evidence-packet-id="@Fixture.EndToEndTripRuns.ReleaseSummary.EvidencePacketId"
+                     data-export-packet-id="@Fixture.EndToEndTripRuns.ReleaseSummary.ExportPacketId"
+                     data-accepted-path-count="@Fixture.EndToEndTripRuns.ReleaseSummary.AcceptedPathCount"
+                     data-blocked-path-count="@Fixture.EndToEndTripRuns.ReleaseSummary.BlockedPathCount"
+                     data-pending-path-count="@Fixture.EndToEndTripRuns.ReleaseSummary.PendingPathCount"
+                     data-raw-absence-marker="@Fixture.EndToEndTripRuns.ReleaseSummary.RawAbsenceMarker">
+                <div>
+                    <strong>Release Summary</strong>
+                    <span>@Fixture.EndToEndTripRuns.ReleaseSummary.State</span>
+                </div>
+                <dl>
+                    <div>
+                        <dt>Snapshot</dt>
+                        <dd>@Fixture.EndToEndTripRuns.ReleaseSummary.SnapshotOutcomeCode</dd>
+                    </div>
+                    <div>
+                        <dt>Export</dt>
+                        <dd>@Fixture.EndToEndTripRuns.ReleaseSummary.EvidenceExportOutcomeCode</dd>
+                    </div>
+                    <div>
+                        <dt>Paths</dt>
+                        <dd>@Fixture.EndToEndTripRuns.ReleaseSummary.AcceptedPathCount / @Fixture.EndToEndTripRuns.ReleaseSummary.BlockedPathCount / @Fixture.EndToEndTripRuns.ReleaseSummary.PendingPathCount</dd>
+                    </div>
+                </dl>
+                <div class="release-path-list">
+                    @foreach (var path in Fixture.EndToEndTripRuns.ReleaseSummary.Paths)
+                    {
+                        <div class="release-path"
+                             data-release-path-run-id="@path.RunId"
+                             data-release-path-scenario="@path.Scenario"
+                             data-release-expected-state="@path.ExpectedState"
+                             data-release-observed-state="@path.ObservedState"
+                             data-release-marker="@path.MarkerId"
+                             data-release-control-id="@path.ControlId"
+                             data-error-code="@path.ErrorCode"
+                             data-blocked-reason="@path.BlockedReason">
+                            <span>@path.RunId</span>
+                            <code>@path.ObservedState</code>
+                        </div>
+                    }
+                </div>
+            </section>
             <div class="mission-run-list">
                 @foreach (var run in Fixture.EndToEndTripRuns.Runs)
                 {
                     var outcome = Fixture.EndToEndTripRuns.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    var path = Fixture.EndToEndTripRuns.ReleaseSummary.Paths.FirstOrDefault(candidate => candidate.RunId == run.Id);
                     <section class="mission-run-card"
+                             id="@run.ReleaseMarker"
                              data-run-id="@run.Id"
                              data-e2e-run-id="@run.Id"
+                             data-release-smoke-run-id="@run.Id"
+                             data-release-smoke-marker="@run.ReleaseMarker"
+                             data-release-control-id="@run.ControlId"
+                             data-release-expected-state="@path?.ExpectedState"
+                             data-release-observed-state="@path?.ObservedState"
                              data-scenario="@run.Scenario"
                              data-e2e-state="@outcome?.State"
                              data-prompt-packet-outcome="@outcome?.PromptPacketOutcomeCode"
@@ -597,7 +662,13 @@
                             }
                         </div>
                         <code>@(outcome?.ErrorCode ?? run.Scenario)</code>
-                        <button class="ghost" type="button" @onclick="() => RunEndToEndTrip(run.Id)">
+                        <button id="@run.ControlId"
+                                class="ghost"
+                                type="button"
+                                aria-label="@run.ControlAriaLabel"
+                                aria-controls="@run.ReleaseMarker"
+                                data-release-control-id="@run.ControlId"
+                                @onclick="() => RunEndToEndTrip(run.Id)">
                             Run trip
                         </button>
                     </section>

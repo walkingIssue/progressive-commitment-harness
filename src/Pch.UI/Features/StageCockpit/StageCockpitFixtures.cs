@@ -152,14 +152,32 @@ internal sealed class StageCockpitFixtureProvider
             EndpointHint: "Deterministic prompt-to-hold trip run seam through existing harness/provider boundaries",
             Runs:
             [
-                new("e2e.happy-path", "Run happy path", "happy-path"),
-                new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation"),
-                new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch"),
-                new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot"),
-                new("e2e.missing-approval", "Run missing approval", "missing-approval"),
-                new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel")
+                new("e2e.happy-path", "Run happy path", "happy-path", "release-smoke-e2e-happy-path", "control-e2e-happy-path", "Run happy path end-to-end trip smoke"),
+                new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation", "release-smoke-e2e-pending-confirmation", "control-e2e-pending-confirmation", "Run pending confirmation end-to-end trip smoke"),
+                new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch", "release-smoke-e2e-provider-mismatch", "control-e2e-provider-mismatch", "Run provider mismatch end-to-end trip smoke"),
+                new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot", "release-smoke-e2e-wrong-slot", "control-e2e-wrong-slot", "Run wrong-slot candidate end-to-end trip smoke"),
+                new("e2e.missing-approval", "Run missing approval", "missing-approval", "release-smoke-e2e-missing-approval", "control-e2e-missing-approval", "Run missing approval end-to-end trip smoke"),
+                new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel", "release-smoke-e2e-raw-sentinel", "control-e2e-raw-sentinel", "Run raw absence end-to-end trip smoke")
             ],
             Outcomes: [],
+            ReleaseSummary: new(
+                "release-smoke.e2e.summary",
+                "not-run",
+                "e2e.happy-path",
+                "not_run",
+                "not_run",
+                "not_run",
+                "not_run",
+                "not_run",
+                "not_run",
+                null,
+                "evidence-packet-pending",
+                "export-packet-pending",
+                0,
+                0,
+                0,
+                "raw_absence_pending",
+                []),
             Evidence: []));
 }
 
@@ -423,12 +441,16 @@ public sealed record EndToEndTripRunPanelFixture(
     string EndpointHint,
     IReadOnlyList<EndToEndTripRunFixture> Runs,
     IReadOnlyList<EndToEndTripRunOutcomeFixture> Outcomes,
+    EndToEndReleaseSmokeSummaryFixture ReleaseSummary,
     IReadOnlyList<EndToEndTripEvidenceFixture> Evidence);
 
 public sealed record EndToEndTripRunFixture(
     string Id,
     string Label,
-    string Scenario);
+    string Scenario,
+    string ReleaseMarker,
+    string ControlId,
+    string ControlAriaLabel);
 
 public sealed record EndToEndTripRunOutcomeFixture(
     string RunId,
@@ -458,6 +480,36 @@ public sealed record EndToEndTripEvidenceFixture(
     string RunId,
     string Outcome,
     string ReferenceId);
+
+public sealed record EndToEndReleaseSmokeSummaryFixture(
+    string SummaryId,
+    string State,
+    string PrimaryRunId,
+    string PromptPacketOutcomeCode,
+    string MissionOutcomeCode,
+    string ItineraryOutcomeCode,
+    string SnapshotOutcomeCode,
+    string EvidenceExportOutcomeCode,
+    string HoldOutcomeCode,
+    string? ApprovalId,
+    string EvidencePacketId,
+    string ExportPacketId,
+    int AcceptedPathCount,
+    int BlockedPathCount,
+    int PendingPathCount,
+    string RawAbsenceMarker,
+    IReadOnlyList<EndToEndReleaseSmokePathFixture> Paths);
+
+public sealed record EndToEndReleaseSmokePathFixture(
+    string RunId,
+    string Scenario,
+    string ExpectedState,
+    string ObservedState,
+    string MarkerId,
+    string ControlId,
+    string ControlAriaLabel,
+    string? ErrorCode,
+    string? BlockedReason);
 
 public enum SessionResponseState
 {

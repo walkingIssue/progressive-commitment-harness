@@ -967,6 +967,72 @@ public sealed class HarnessStageCockpitServiceTests
         AssertEndToEndRawTextAbsent(serialized);
     }
 
+    [Fact]
+    public void EndToEndReleaseSummaryStaysStableAcrossSmokePaths()
+    {
+        var service = new HarnessStageCockpitService();
+
+        service.RunEndToEndTrip("e2e.happy-path");
+        service.RunEndToEndTrip("e2e.pending-confirmation");
+        service.RunEndToEndTrip("e2e.provider-mismatch");
+        service.RunEndToEndTrip("e2e.wrong-slot");
+        service.RunEndToEndTrip("e2e.missing-approval");
+        var fixture = service.RunEndToEndTrip("e2e.raw-sentinel");
+        var summary = fixture.EndToEndTripRuns.ReleaseSummary;
+        var serialized = SerializeEndToEndFixture(fixture);
+
+        Assert.Equal("release-smoke.e2e.summary", summary.SummaryId);
+        Assert.Equal("ready", summary.State);
+        Assert.Equal("e2e.happy-path", summary.PrimaryRunId);
+        Assert.Equal("prompt_packet_built", summary.PromptPacketOutcomeCode);
+        Assert.Equal("mission_intake_applied", summary.MissionOutcomeCode);
+        Assert.Equal("itinerary_day_compiled", summary.ItineraryOutcomeCode);
+        Assert.Equal("complete", summary.SnapshotOutcomeCode);
+        Assert.Equal("evidence_export_ready", summary.EvidenceExportOutcomeCode);
+        Assert.Equal("hold_preparation_hold_prepared", summary.HoldOutcomeCode);
+        Assert.Equal("approval-itinerary-hold-activity", summary.ApprovalId);
+        Assert.Equal("evidence-packet-e2e-happy-path", summary.EvidencePacketId);
+        Assert.Equal("export-packet-e2e-happy-path", summary.ExportPacketId);
+        Assert.Equal(2, summary.AcceptedPathCount);
+        Assert.Equal(3, summary.BlockedPathCount);
+        Assert.Equal(1, summary.PendingPathCount);
+        Assert.Equal("raw_absence_verified", summary.RawAbsenceMarker);
+        Assert.Contains(
+            summary.Paths,
+            path => path.RunId == "e2e.missing-approval"
+                && path.ExpectedState == "blocked"
+                && path.ObservedState == "blocked"
+                && path.MarkerId == "release-smoke-e2e-missing-approval"
+                && path.ControlId == "control-e2e-missing-approval"
+                && path.ErrorCode == "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED");
+        AssertEndToEndRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void EndToEndRunCardsExposeKeyboardAccessibleControls()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.Current();
+        var runs = fixture.EndToEndTripRuns.Runs;
+
+        Assert.Equal(6, runs.Count);
+        Assert.Equal(runs.Count, runs.Select(run => run.ControlId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(runs.Count, runs.Select(run => run.ReleaseMarker).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(runs, run =>
+        {
+            Assert.StartsWith("control-e2e-", run.ControlId, StringComparison.Ordinal);
+            Assert.StartsWith("release-smoke-e2e-", run.ReleaseMarker, StringComparison.Ordinal);
+            Assert.Contains("end-to-end trip smoke", run.ControlAriaLabel, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                fixture.EndToEndTripRuns.ReleaseSummary.Paths,
+                path => path.RunId == run.Id
+                    && path.ControlId == run.ControlId
+                    && path.ControlAriaLabel == run.ControlAriaLabel
+                    && path.MarkerId == run.ReleaseMarker);
+        });
+    }
+
     private static string SerializeEndToEndFixture(StageCockpitFixture fixture)
     {
         return JsonSerializer.Serialize(new

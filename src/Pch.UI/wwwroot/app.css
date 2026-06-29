@@ -261,6 +261,10 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.end-to-end-trip-panel {
+    grid-column: 1 / -1;
+}
+
 .suggestion-list,
 .model-run-list,
 .mission-run-list {
@@ -317,6 +321,62 @@ h1:focus {
 .mission-run-card[data-itinerary-outcome="blocked"] {
     border-color: #b86969;
     background: #fff4f4;
+}
+
+.release-summary {
+    display: grid;
+    gap: .75rem;
+    border: 1px solid var(--pch-line);
+    border-radius: 8px;
+    padding: .85rem;
+    margin-bottom: .85rem;
+    background: #f7f9fb;
+}
+
+.release-summary > div:first-child {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+}
+
+.release-summary dl {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .65rem;
+    margin: 0;
+}
+
+.release-summary dt {
+    color: var(--pch-muted);
+    font-size: .78rem;
+}
+
+.release-summary dd {
+    margin: .15rem 0 0;
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: .78rem;
+}
+
+.release-path-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .5rem;
+}
+
+.release-path {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    border: 1px solid var(--pch-line);
+    border-radius: 6px;
+    padding: .5rem .6rem;
+    background: #fff;
+}
+
+.release-path span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .mission-result-grid {
