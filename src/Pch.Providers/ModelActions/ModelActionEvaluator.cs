@@ -36,10 +36,18 @@ public sealed class ModelActionEvaluator : IModelActionEvaluator
                     false,
                     evalCase.ExpectedActionName,
                     null,
-                    ex.Message));
+                    ToErrorCode(ex)));
             }
         }
 
         return results;
     }
+
+    private static string ToErrorCode(Exception exception) =>
+        exception switch
+        {
+            ModelActionRunnerException => "model_action_runner_error",
+            _ when exception.GetType().Name.Contains("Provider", StringComparison.Ordinal) => "provider_error",
+            _ => "unexpected_error"
+        };
 }
