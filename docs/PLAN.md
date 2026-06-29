@@ -254,6 +254,18 @@ Retry/repair loops, schema-divergence CI guard, replayable traces, observability
 - **Data staleness:** re-quote before hold.
 - **Country-pack scope:** Japan v1 is config, not harness logic.
 
+## Production Quality Bar
+
+If the thesis works, this project may be published. Treat implementation as production-bound:
+
+- typed errors and explicit failure states instead of silent success;
+- no raw secrets, raw provider payloads, or prompt data in logs, docs, tests, status snapshots, traces, or exception messages;
+- no live provider calls in required tests;
+- no silent fallback to another paid provider if credits fail or run out;
+- no hold, book, pay, spend, or irreversible action without approval-token gating;
+- deterministic tests for safety-critical behavior;
+- narrow changes scoped to owned surfaces, with public-release risk called out in READY reports.
+
 ## Orchestration
 
 Local multi-agent coordination state lives outside the repo. Stages 0-3 stay serialized until contracts, projection, workflow, UI shell, and authority surfaces are stable. After that, independent workers can own strong-model, small-model, adapters, and UI-specific implementation lanes behind frozen contracts.
