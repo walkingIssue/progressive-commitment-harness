@@ -2,6 +2,8 @@
 
 Sprint 006 adds provider-local mission planner packet/result DTOs for prompt-to-structured-mission proposals. Required tests use deterministic mocks only and do not require network, API keys, or provider credits.
 
+All persisted eval/status artifacts follow the shared provider policy in `docs/evals/sanitized-artifacts.md`.
+
 Sprint 007 adds `MissionPlannerRuntimeClient`, `MissionPlannerRuntimeBridge`, and `SanitizedMissionPlannerRuntimeEvalRunner` for provider-local runtime handoff evaluation. The runtime bridge keeps the rich `MissionPlannerResult` available only on an in-memory `ProviderRuntimeMissionIntakeProposal` that is ignored by JSON serialization.
 
 The planner bridge uses provider-local mirrors and does not reference harness assemblies. The mirror is intentionally shape-compatible with Shellby's harness-owned mission-intake contract so a later adapter can map without inventing semantic data.

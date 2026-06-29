@@ -2,6 +2,8 @@
 
 Candidate expansion eval rows are sanitized by default. They are intended to verify that provider candidate pools exist for itinerary slots without persisting raw search/model/provider content.
 
+All persisted eval/status artifacts follow the shared provider policy in `docs/evals/sanitized-artifacts.md`.
+
 Persisted eval rows contain only:
 
 - eval case name and packet id

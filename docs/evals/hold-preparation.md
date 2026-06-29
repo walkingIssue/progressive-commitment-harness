@@ -2,6 +2,8 @@
 
 Hold preparation eval/status rows are sanitized by default. They verify provider-local preview and hold preparation behavior without persisting raw booking/search/provider content.
 
+All persisted eval/status artifacts follow the shared provider policy in `docs/evals/sanitized-artifacts.md`.
+
 Persisted eval rows contain only:
 
 - eval case name and packet id
