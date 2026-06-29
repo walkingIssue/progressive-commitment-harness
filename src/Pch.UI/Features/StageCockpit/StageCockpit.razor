@@ -1,0 +1,200 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<main class="pch-shell">
+    <section class="stage-hero">
+        <div class="stage-hero__copy">
+            <p class="eyebrow">Stage cockpit fixture</p>
+            <h1>Progressive Commitment Harness</h1>
+            <p class="lead">@Fixture.Packet.Summary</p>
+        </div>
+        <div class="stage-status" aria-label="Current stage summary">
+            <span>Stage</span>
+            <strong>@Fixture.Packet.Id</strong>
+            <small>@Fixture.Packet.CompletedSlotCount of @Fixture.Packet.RequiredSlotCount slots ready</small>
+        </div>
+    </section>
+
+    <section class="stage-workspace" aria-label="Stage cockpit">
+        <article class="panel stage-panel">
+            <div class="panel-head">
+                <span>Stage Packet</span>
+                <code>@Fixture.Packet.State</code>
+            </div>
+            <dl class="packet-list">
+                <div>
+                    <dt>Goal</dt>
+                    <dd>@Fixture.Packet.Summary</dd>
+                </div>
+                <div>
+                    <dt>Allowed outputs</dt>
+                    <dd>@string.Join(", ", Fixture.Packet.AllowedOutputs)</dd>
+                </div>
+                <div>
+                    <dt>Authority</dt>
+                    <dd>@Fixture.Packet.Authority</dd>
+                </div>
+            </dl>
+        </article>
+
+        <article class="panel form-panel" id="stage-form">
+            <div class="panel-head">
+                <span>@Fixture.GeneratedForm.Title</span>
+                <button class="ghost" type="button" @onclick="SaveDraftAsync">Save draft</button>
+            </div>
+            <div class="field-grid">
+                @foreach (var field in Fixture.GeneratedForm.Fields)
+                {
+                    <label data-required="@field.Required.ToString().ToLowerInvariant()">
+                        <span>@field.Label</span>
+                        @if (field.Kind == "select")
+                        {
+                            <select value="@FormValues[field.Id]" @onchange="eventArgs => SetFieldValue(field.Id, eventArgs.Value?.ToString())">
+                                @foreach (var option in field.Options)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <input type="@field.Kind" value="@FormValues[field.Id]" @onchange="eventArgs => SetFieldValue(field.Id, eventArgs.Value?.ToString())" />
+                        }
+                    </label>
+                }
+            </div>
+        </article>
+
+        <article class="panel choice-panel">
+            <div class="panel-head">
+                <span>@Fixture.ChoiceSet.Title</span>
+                <small>@Fixture.ChoiceSet.Id</small>
+            </div>
+            <div class="choice-list">
+                @foreach (var candidate in Fixture.ChoiceSet.Candidates)
+                {
+                    <button class="choice-card @(SelectedCandidateId == candidate.Id ? "selected" : "")"
+                            type="button"
+                            data-candidate-id="@candidate.Id"
+                            @onclick="() => SelectedCandidateId = candidate.Id">
+                        <strong>@candidate.Title</strong>
+                        <span>@candidate.Summary</span>
+                        <small>@candidate.Tradeoff</small>
+                        <code>@candidate.Id</code>
+                    </button>
+                }
+            </div>
+        </article>
+
+        <article class="panel approval-panel">
+            <div class="panel-head">
+                <span>@Fixture.Approval.Title</span>
+                <small>@ApprovalState</small>
+            </div>
+            <p>@Fixture.Approval.Summary</p>
+            <dl class="approval-details">
+                <div>
+                    <dt>Required for</dt>
+                    <dd>@Fixture.Approval.RequiredFor</dd>
+                </div>
+                <div>
+                    <dt>Approval id</dt>
+                    <dd><code>@Fixture.Approval.Id</code></dd>
+                </div>
+            </dl>
+            <button class="approve" type="button" @onclick="ApproveMockHold">
+                Generate mock approval token
+            </button>
+            @if (!string.IsNullOrWhiteSpace(ApprovalToken))
+            {
+                <p class="token">Approval token: <code>@ApprovalToken</code></p>
+            }
+        </article>
+
+        <article class="panel trace-panel">
+            <div class="panel-head">
+                <span>Evidence Trace Preview</span>
+                <small>claim-ledger fixture</small>
+            </div>
+            <ol class="trace-list">
+                @foreach (var claim in TraceClaims)
+                {
+                    <li>
+                        <strong>@claim.Text</strong>
+                        <span>@claim.Source / @claim.Reference</span>
+                        <code>@claim.Id</code>
+                    </li>
+                }
+            </ol>
+        </article>
+    </section>
+</main>
+
+@code {
+    private readonly StageCockpitFixture Fixture = new StageCockpitFixtureProvider().GetFixture();
+    private readonly Dictionary<string, string> FormValues = [];
+    private IJSObjectReference? module;
+    private string SelectedCandidateId = "";
+    private string ApprovalState = "";
+    private string ApprovalToken = "";
+
+    private IEnumerable<EvidenceClaimFixture> TraceClaims =>
+    [
+        ..Fixture.Trace.Claims.Where(claim => claim.Id != "claim.choice" && claim.Id != "claim.approval"),
+        new("claim.choice", $"Selected candidate remains {SelectedCandidateId}", "fixture", SelectedCandidateId),
+        new("claim.approval", ApprovalState == "approved" ? "Mock hold is approved" : "Mock hold is waiting for approval", "ui-state", Fixture.Approval.Id)
+    ];
+
+    protected override void OnInitialized()
+    {
+        foreach (var field in Fixture.GeneratedForm.Fields)
+        {
+            FormValues[field.Id] = field.Value;
+        }
+
+        SelectedCandidateId = Fixture.ChoiceSet.SelectedCandidateId;
+        ApprovalState = Fixture.Approval.State;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "/js/forms.js");
+        await module.InvokeVoidAsync("focusFirstField", "#stage-form");
+        await module.InvokeVoidAsync("markRequiredSummary", "#stage-form", ".stage-status small");
+    }
+
+    private void SetFieldValue(string id, string? value)
+    {
+        FormValues[id] = value ?? "";
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (module is null) return;
+
+        var values = FormValues.ToDictionary(
+            pair => pair.Key,
+            object? (pair) => pair.Value);
+        values["selectedCandidateId"] = SelectedCandidateId;
+        values["approvalState"] = ApprovalState;
+
+        await module.InvokeVoidAsync("saveDraft", Fixture.Packet.Id, values);
+    }
+
+    private void ApproveMockHold()
+    {
+        ApprovalState = "approved";
+        ApprovalToken = $"mock-approval-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            await module.DisposeAsync();
+        }
+    }
+}

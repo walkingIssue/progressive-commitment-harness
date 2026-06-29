@@ -34,4 +34,13 @@ export function requiredFieldCount(rootSelector) {
     const root = document.querySelector(rootSelector);
     return root?.querySelectorAll("[data-required='true']").length ?? 0;
 }
+export function markRequiredSummary(rootSelector, summarySelector) {
+    const requiredCount = requiredFieldCount(rootSelector);
+    const summary = document.querySelector(summarySelector);
+    if (!summary)
+        return;
+    const noun = requiredCount === 1 ? "field" : "fields";
+    summary.dataset.requiredCount = requiredCount.toString();
+    summary.textContent = `${requiredCount} required ${noun}`;
+}
 //# sourceMappingURL=forms.js.map

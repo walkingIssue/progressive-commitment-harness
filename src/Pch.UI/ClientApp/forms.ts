@@ -1,4 +1,4 @@
-export type DraftValue = string | boolean | string[];
+export type DraftValue = string | boolean | string[] | null;
 
 export interface FormDraft {
   stageId: string;
@@ -49,3 +49,12 @@ export function requiredFieldCount(rootSelector: string): number {
   return root?.querySelectorAll("[data-required='true']").length ?? 0;
 }
 
+export function markRequiredSummary(rootSelector: string, summarySelector: string): void {
+  const requiredCount = requiredFieldCount(rootSelector);
+  const summary = document.querySelector<HTMLElement>(summarySelector);
+  if (!summary) return;
+
+  const noun = requiredCount === 1 ? "field" : "fields";
+  summary.dataset.requiredCount = requiredCount.toString();
+  summary.textContent = `${requiredCount} required ${noun}`;
+}
