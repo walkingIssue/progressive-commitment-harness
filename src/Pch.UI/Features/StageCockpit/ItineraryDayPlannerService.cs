@@ -1,24 +1,62 @@
 using Pch.Core;
 using Pch.Harness;
 using Pch.Providers.CandidateExpansion;
+using Pch.Providers.HoldPreparation;
 using Pch.Providers.Mock;
 
 namespace Pch.UI.Features.StageCockpit;
 
 public sealed class ItineraryDayPlannerService
 {
+    private const string LunchSlotId = "slot-20270402-lunch";
+    private const string LunchCandidateId = "slot-20270402-lunch-dining-1";
+    private const string BreakfastSlotId = "slot-20270402-breakfast";
+    private const string ActivitySlotId = "slot-20270402-activity";
+    private const string ActivityCandidateId = "slot-20270402-activity-activity-1";
+    private const string HoldApprovalId = "approval-itinerary-hold-activity";
+    private const string MockHoldProvider = MockHoldPreparationAdapter.ProviderName;
+    private const string ApprovalTokenValue = "ui-hold-approval-token-not-rendered";
     private static readonly DateOnly PlannerDate = new(2027, 4, 2);
     private static readonly DateTimeOffset ConflictAt = new(2027, 4, 2, 10, 0, 0, TimeSpan.Zero);
+    private static readonly string[] KnownRunIds =
+    [
+        "itinerary.accepted",
+        "itinerary.select-candidate",
+        "itinerary.select.wrong-slot",
+        "itinerary.defer-slot",
+        "itinerary.conflict",
+        "itinerary.missing-date",
+        "itinerary.provider-mismatch",
+        "itinerary.hold.approval-required",
+        "itinerary.hold.approved",
+        "itinerary.hold.missing-approval",
+        "itinerary.hold.provider-mismatch"
+    ];
     private readonly ItinerarySlotCompiler _slotCompiler = new();
+    private readonly ItineraryCandidateApplication _candidateApplication = new();
     private readonly ICandidateExpansionSource _candidateExpansionSource;
+    private readonly IHoldPreparationAdapter _holdPreparationAdapter;
 
-    public ItineraryDayPlannerService(ICandidateExpansionSource? candidateExpansionSource = null)
+    public ItineraryDayPlannerService(
+        ICandidateExpansionSource? candidateExpansionSource = null,
+        IHoldPreparationAdapter? holdPreparationAdapter = null)
     {
         _candidateExpansionSource = candidateExpansionSource ?? new MockCandidateExpansionSource();
+        _holdPreparationAdapter = holdPreparationAdapter ?? new MockHoldPreparationAdapter();
     }
 
     public ItineraryDayPlannerResult Run(TripSession session, string runId)
     {
+        if (!KnownRunIds.Contains(runId, StringComparer.Ordinal))
+        {
+            return Blocked(
+                runId,
+                "",
+                "PCH_UI_ITINERARY_UNKNOWN_SCENARIO",
+                "Itinerary day planner scenario is not recognized.",
+                "blocked_unknown");
+        }
+
         var compileSession = runId == "itinerary.conflict"
             ? CreateConflictSession()
             : session;
@@ -47,22 +85,44 @@ public sealed class ItineraryDayPlannerService
                 "blocked_candidate_expansion");
         }
 
+        var interaction = CreateInteraction(runId);
         var candidatePools = BuildCandidatePools(providerResult);
-        var days = BuildDays(compilation, candidatePools);
+        AddCoreCandidatePoolsToSession(session, providerResult);
+        var applicationResult = ApplyCanonicalItineraryDecision(session, interaction);
+        if (applicationResult.IsBlocked)
+        {
+            return BlockedFromApplication(runId, applicationResult);
+        }
+
+        var holdResult = ApplyHold(runId, interaction);
+        var days = holdResult.SuppressItineraryRendering
+            ? []
+            : BuildDays(compilation, candidatePools, interaction);
+        var renderedCandidatePools = holdResult.SuppressItineraryRendering
+            ? []
+            : candidatePools;
+        var state = holdResult.State ?? (runId == "itinerary.hold.approval-required" ? "approval-required" : "applied");
+        var selectedOutcome = interaction.SelectedCandidateId is null ? "none" : "selected";
+        var deferredOutcome = interaction.DeferredSlotId is null ? "none" : "deferred";
+        var blockedOutcome = holdResult.BlockedOutcome ?? "none";
+
         return new(
             new(
                 runId,
-                "applied",
-                days.FirstOrDefault()?.DayId ?? "",
-                "selected",
-                "deferred",
-                "none",
-                null,
-                null),
+                state,
+                compilation.Days.FirstOrDefault()?.DayId ?? "",
+                selectedOutcome,
+                deferredOutcome,
+                blockedOutcome,
+                holdResult.HoldOutcome,
+                holdResult.ApprovalId,
+                holdResult.ErrorCode,
+                holdResult.BlockedReason),
             days,
-            candidatePools,
-            BuildEvidence(candidatePools),
-            BuildDigestFacts(compileSession, compilation));
+            renderedCandidatePools,
+            holdResult.SuppressItineraryRendering ? [] : BuildEvidence(candidatePools),
+            holdResult.SuppressItineraryRendering ? [] : BuildDigestFacts(compileSession, compilation),
+            holdResult.Holds);
     }
 
     private static ItineraryCompilationRequest CreateCompilationRequest(TripSession session, string runId)
@@ -115,6 +175,18 @@ public sealed class ItineraryDayPlannerService
         });
         return session;
     }
+
+    private static ItineraryInteractionPlan CreateInteraction(string runId) => runId switch
+    {
+        "itinerary.defer-slot" => new(null, null, ActivitySlotId, ItinerarySlotKind.Activity),
+        "itinerary.select.wrong-slot" => new(BreakfastSlotId, LunchCandidateId, null, ItinerarySlotKind.Meal),
+        "itinerary.hold.approval-required"
+            or "itinerary.hold.approved"
+            or "itinerary.hold.missing-approval"
+            or "itinerary.hold.provider-mismatch" => new(ActivitySlotId, ActivityCandidateId, null, ItinerarySlotKind.Activity),
+        "itinerary.select-candidate" => new(LunchSlotId, LunchCandidateId, null, ItinerarySlotKind.Meal),
+        _ => new(LunchSlotId, LunchCandidateId, ActivitySlotId, ItinerarySlotKind.Meal, ItinerarySlotKind.Activity)
+    };
 
     private static CandidateExpansionPacket CreateCandidateExpansionPacket(
         TripSession session,
@@ -227,6 +299,294 @@ public sealed class ItineraryDayPlannerService
         return CandidateExpansionValidation.Accepted();
     }
 
+    private static void AddCoreCandidatePoolsToSession(
+        TripSession session,
+        CandidateExpansionResult result)
+    {
+        foreach (var slot in result.Slots)
+        {
+            var pool = new CandidatePool(
+                $"core-pool-{slot.SlotId}",
+                "Itinerary",
+                slot.Candidates
+                    .Select(candidate => new Candidate(
+                        candidate.CandidateId,
+                        ToCandidateKind(candidate.Category),
+                        candidate.DisplayName,
+                        "Deterministic itinerary candidate.",
+                        null,
+                        null,
+                        candidate.Tags
+                            .Select(tag => $"evidence.candidate.{tag}")
+                            .Distinct(StringComparer.Ordinal)
+                            .ToArray(),
+                        RelevanceScore: 100))
+                    .ToArray(),
+                [],
+                new DateTimeOffset(2027, 4, 1, 9, 0, 0, TimeSpan.Zero));
+            session.AddItineraryCandidatePool(slot.SlotId, pool);
+        }
+    }
+
+    private ItinerarySlotApplicationResult ApplyCanonicalItineraryDecision(
+        TripSession session,
+        ItineraryInteractionPlan interaction)
+    {
+        if (interaction.SelectedSlotId is not null && interaction.SelectedCandidateId is not null)
+        {
+            return _candidateApplication.Apply(session, new ItinerarySlotDecisionRequest(
+                session.SessionId,
+                interaction.SelectedSlotId,
+                ItinerarySlotDecisionKind.Selected,
+                interaction.SelectedSlotKind ?? ItinerarySlotKind.Activity,
+                interaction.SelectedCandidateId,
+                ToCandidateKind(interaction.SelectedSlotKind ?? ItinerarySlotKind.Activity),
+                DateTimeOffset.UtcNow));
+        }
+
+        if (interaction.DeferredSlotId is not null)
+        {
+            return _candidateApplication.Apply(session, new ItinerarySlotDecisionRequest(
+                session.SessionId,
+                interaction.DeferredSlotId,
+                ItinerarySlotDecisionKind.Deferred,
+                interaction.DeferredSlotKind ?? ItinerarySlotKind.Activity,
+                null,
+                null,
+                DateTimeOffset.UtcNow));
+        }
+
+        return new(
+            IsAccepted: true,
+            IsBlocked: false,
+            Code: "itinerary_decision_not_required",
+            Summary: "No itinerary slot decision required.",
+            Decision: null,
+            EvidenceIds: [],
+            Trace: [],
+            SelectedCount: session.ItineraryDecisions.Count(decision => decision.Kind == ItinerarySlotDecisionKind.Selected),
+            DeferredCount: session.ItineraryDecisions.Count(decision => decision.Kind == ItinerarySlotDecisionKind.Deferred));
+    }
+
+    private static ItineraryDayPlannerResult BlockedFromApplication(
+        string runId,
+        ItinerarySlotApplicationResult result)
+    {
+        var errorCode = result.Code switch
+        {
+            "candidate_pool_mismatch" => "PCH_UI_ITINERARY_CANDIDATE_POOL_MISMATCH",
+            "candidate_slot_mismatch" => "PCH_UI_ITINERARY_CANDIDATE_SLOT_MISMATCH",
+            "unknown_candidate" => "PCH_UI_ITINERARY_UNKNOWN_CANDIDATE",
+            "unknown_slot" => "PCH_UI_ITINERARY_UNKNOWN_SLOT",
+            _ => "PCH_UI_ITINERARY_APPLICATION_BLOCKED"
+        };
+
+        return Blocked(
+            runId,
+            "day-20270402",
+            errorCode,
+            result.Summary,
+            "blocked_candidate_application");
+    }
+
+    private ItineraryHoldResult ApplyHold(
+        string runId,
+        ItineraryInteractionPlan interaction)
+    {
+        if (!runId.StartsWith("itinerary.hold.", StringComparison.Ordinal))
+        {
+            return ItineraryHoldResult.None();
+        }
+
+        if (interaction.SelectedSlotId is null || interaction.SelectedCandidateId is null)
+        {
+            return ItineraryHoldResult.Blocked(
+                "blocked_provider_mismatch",
+                "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH",
+                "Mock hold candidate did not match the accepted itinerary selection.",
+                "provider_mismatch",
+                HoldApprovalId,
+                [HoldFixture(runId, "blocked_provider_mismatch", "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH")],
+                suppressItineraryRendering: true);
+        }
+
+        return runId switch
+        {
+            "itinerary.hold.approval-required" => ApplyApprovalRequiredHold(runId, interaction),
+            "itinerary.hold.approved" => ApplyPreparedHold(runId, interaction),
+            "itinerary.hold.missing-approval" => ApplyMissingApprovalHold(runId, interaction),
+            "itinerary.hold.provider-mismatch" => ApplyProviderMismatchHold(runId, interaction),
+            _ => ItineraryHoldResult.None()
+        };
+    }
+
+    private ItineraryHoldResult ApplyApprovalRequiredHold(
+        string runId,
+        ItineraryInteractionPlan interaction)
+    {
+        var row = EvaluateHold(
+            "approval-required",
+            HoldPreparationOperation.Preview,
+            interaction,
+            approvalToken: null,
+            _holdPreparationAdapter);
+
+        if (!row.Passed)
+        {
+            return BlockedHoldFromRow(runId, row);
+        }
+
+        return ItineraryHoldResult.ApprovalRequired(
+            HoldApprovalId,
+            row.OutcomeCode,
+            [
+                HoldFixture(
+                    runId,
+                    row.OutcomeCode,
+                    provider: row.Provider ?? MockHoldProvider)
+            ]);
+    }
+
+    private ItineraryHoldResult ApplyPreparedHold(
+        string runId,
+        ItineraryInteractionPlan interaction)
+    {
+        var row = EvaluateHold(
+            "approved-hold",
+            HoldPreparationOperation.Hold,
+            interaction,
+            ApprovalTokenValue,
+            _holdPreparationAdapter);
+
+        if (!row.Passed)
+        {
+            return BlockedHoldFromRow(runId, row);
+        }
+
+        return ItineraryHoldResult.Applied(
+            HoldApprovalId,
+            row.OutcomeCode,
+            [
+                HoldFixture(
+                    runId,
+                    row.OutcomeCode,
+                    provider: row.Provider ?? MockHoldProvider)
+            ]);
+    }
+
+    private ItineraryHoldResult ApplyMissingApprovalHold(
+        string runId,
+        ItineraryInteractionPlan interaction)
+    {
+        var row = EvaluateHold(
+            "missing-approval",
+            HoldPreparationOperation.Hold,
+            interaction,
+            approvalToken: null,
+            _holdPreparationAdapter);
+
+        return BlockedHoldFromRow(runId, row);
+    }
+
+    private ItineraryHoldResult ApplyProviderMismatchHold(
+        string runId,
+        ItineraryInteractionPlan interaction)
+    {
+        var row = EvaluateHold(
+            "provider-mismatch",
+            HoldPreparationOperation.Hold,
+            interaction,
+            ApprovalTokenValue,
+            new MockHoldPreparationAdapter(MockHoldPreparationBehavior.PacketMismatch));
+
+        return BlockedHoldFromRow(runId, row);
+    }
+
+    private static SanitizedHoldPreparationEvalRow EvaluateHold(
+        string name,
+        HoldPreparationOperation operation,
+        ItineraryInteractionPlan interaction,
+        string? approvalToken,
+        IHoldPreparationAdapter adapter)
+    {
+        var packet = new HoldPreparationPacket(
+            $"packet-hold-{name}",
+            operation,
+            [
+                new(
+                    interaction.SelectedSlotId ?? ActivitySlotId,
+                    interaction.SelectedCandidateId ?? ActivityCandidateId,
+                    ToCandidateCategory(interaction.SelectedSlotKind ?? ItinerarySlotKind.Activity))
+            ],
+            "en-US",
+            approvalToken,
+            "structured-itinerary-hold-context");
+        var evaluator = new HoldPreparationEvaluator(adapter);
+
+        return evaluator.EvaluateAsync(
+                [new HoldPreparationEvalCase(name, packet)],
+                new HoldPreparationOptions(RequiredApprovalToken: ApprovalTokenValue))
+            .GetAwaiter()
+            .GetResult()
+            .Single();
+    }
+
+    private static ItineraryHoldResult BlockedHoldFromRow(
+        string runId,
+        SanitizedHoldPreparationEvalRow row)
+    {
+        var (blockedOutcome, errorCode, reason, holdOutcome) = row.OutcomeCode switch
+        {
+            HoldPreparationEvaluator.OutcomeMissingApproval => (
+                "blocked_missing_approval",
+                "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED",
+                "Mock hold requires approval before provider handoff.",
+                row.OutcomeCode),
+            HoldPreparationEvaluator.OutcomeApprovalMismatch => (
+                "blocked_missing_approval",
+                "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED",
+                "Mock hold approval token did not match the expected approval.",
+                row.OutcomeCode),
+            HoldPreparationEvaluator.OutcomePacketIdMismatch
+                or HoldPreparationEvaluator.OutcomeCandidateMismatch => (
+                    "blocked_provider_mismatch",
+                    "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH",
+                    "Mock hold provider response did not match the selected candidate.",
+                    row.OutcomeCode),
+            _ => (
+                "blocked_provider_mismatch",
+                "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH",
+                "Mock hold provider response was not usable.",
+                row.OutcomeCode)
+        };
+
+        return ItineraryHoldResult.Blocked(
+            blockedOutcome,
+            errorCode,
+            reason,
+            holdOutcome,
+            HoldApprovalId,
+            [HoldFixture(runId, blockedOutcome, errorCode)]);
+    }
+
+    private static ItineraryHoldFixture HoldFixture(
+        string runId,
+        string outcome,
+        string? errorCode = null,
+        string? confirmationId = null,
+        string provider = MockHoldProvider)
+    {
+        return new(
+            $"hold-{runId}",
+            ActivitySlotId,
+            ActivityCandidateId,
+            HoldApprovalId,
+            outcome,
+            provider,
+            confirmationId,
+            errorCode);
+    }
+
     private static IReadOnlyList<ItineraryCandidatePoolFixture> BuildCandidatePools(CandidateExpansionResult result)
     {
         return result.Slots
@@ -248,7 +608,8 @@ public sealed class ItineraryDayPlannerService
 
     private static IReadOnlyList<ItineraryDayFixture> BuildDays(
         ItineraryCompilationResult compilation,
-        IReadOnlyList<ItineraryCandidatePoolFixture> candidatePools)
+        IReadOnlyList<ItineraryCandidatePoolFixture> candidatePools,
+        ItineraryInteractionPlan interaction)
     {
         var poolsBySlot = candidatePools.ToDictionary(pool => pool.SlotId, StringComparer.Ordinal);
         return compilation.Days
@@ -257,26 +618,30 @@ public sealed class ItineraryDayPlannerService
                 day.Date.ToString("yyyy-MM-dd"),
                 "accepted",
                 day.Slots
-                    .Select(slot => BuildSlot(slot, poolsBySlot))
+                    .Select(slot => BuildSlot(slot, poolsBySlot, interaction))
                     .ToArray()))
             .ToArray();
     }
 
     private static ItinerarySlotFixture BuildSlot(
         ItinerarySlot slot,
-        IReadOnlyDictionary<string, ItineraryCandidatePoolFixture> poolsBySlot)
+        IReadOnlyDictionary<string, ItineraryCandidatePoolFixture> poolsBySlot,
+        ItineraryInteractionPlan interaction)
     {
         poolsBySlot.TryGetValue(slot.SlotId, out var pool);
+        var isSelected = string.Equals(slot.SlotId, interaction.SelectedSlotId, StringComparison.Ordinal);
+        var isDeferred = string.Equals(slot.SlotId, interaction.DeferredSlotId, StringComparison.Ordinal);
         var state = slot.Kind switch
         {
             ItinerarySlotKind.FixedCommitment => "selected",
-            ItinerarySlotKind.Meal when slot.SlotId.EndsWith("-lunch", StringComparison.Ordinal) => "selected",
-            ItinerarySlotKind.Meal or ItinerarySlotKind.Activity or ItinerarySlotKind.Transit or ItinerarySlotKind.Downtime => "deferred",
+            _ when isSelected => "selected",
+            _ when isDeferred => "deferred",
+            ItinerarySlotKind.Meal or ItinerarySlotKind.Activity or ItinerarySlotKind.Transit or ItinerarySlotKind.Downtime => "candidate",
             ItinerarySlotKind.UnresolvedConfirmation => "blocked",
             _ => "compiled"
         };
         var selectedCandidateId = state == "selected" && pool is not null
-            ? pool.Candidates.FirstOrDefault()?.CandidateId
+            ? interaction.SelectedCandidateId ?? pool.Candidates.FirstOrDefault()?.CandidateId
             : slot.CommitmentId;
 
         return new(
@@ -356,7 +721,10 @@ public sealed class ItineraryDayPlannerService
         string dayId,
         string errorCode,
         string blockedReason,
-        string blockedOutcome)
+        string blockedOutcome,
+        string holdOutcome = "none",
+        string? approvalId = null,
+        IReadOnlyList<ItineraryHoldFixture>? holds = null)
     {
         return new(
             new(
@@ -366,12 +734,15 @@ public sealed class ItineraryDayPlannerService
                 "none",
                 "none",
                 blockedOutcome,
+                holdOutcome,
+                approvalId,
                 errorCode,
                 blockedReason),
             [],
             [],
             [],
-            []);
+            [],
+            holds ?? []);
     }
 
     private static string ToSlotTypeCode(ItinerarySlotKind kind) => kind switch
@@ -395,6 +766,35 @@ public sealed class ItineraryDayPlannerService
         _ => "unknown"
     };
 
+    private static CandidateKind ToCandidateKind(CandidateCategory category) => category switch
+    {
+        CandidateCategory.Dining => CandidateKind.Restaurant,
+        CandidateCategory.Activity => CandidateKind.Activity,
+        CandidateCategory.Transit => CandidateKind.Transit,
+        CandidateCategory.Downtime => CandidateKind.ScheduleBlock,
+        _ => CandidateKind.ScheduleBlock
+    };
+
+    private static CandidateKind ToCandidateKind(ItinerarySlotKind slotKind) => slotKind switch
+    {
+        ItinerarySlotKind.Meal => CandidateKind.Restaurant,
+        ItinerarySlotKind.Activity => CandidateKind.Activity,
+        ItinerarySlotKind.Transit => CandidateKind.Transit,
+        ItinerarySlotKind.Downtime => CandidateKind.ScheduleBlock,
+        ItinerarySlotKind.Sleep => CandidateKind.Hotel,
+        ItinerarySlotKind.FixedCommitment => CandidateKind.ScheduleBlock,
+        _ => CandidateKind.ScheduleBlock
+    };
+
+    private static CandidateCategory ToCandidateCategory(ItinerarySlotKind slotKind) => slotKind switch
+    {
+        ItinerarySlotKind.Meal => CandidateCategory.Dining,
+        ItinerarySlotKind.Activity => CandidateCategory.Activity,
+        ItinerarySlotKind.Transit => CandidateCategory.Transit,
+        ItinerarySlotKind.Downtime => CandidateCategory.Downtime,
+        _ => CandidateCategory.Activity
+    };
+
     private sealed record CandidateExpansionValidation(
         bool IsAccepted,
         string? ErrorCode,
@@ -405,6 +805,48 @@ public sealed class ItineraryDayPlannerService
         public static CandidateExpansionValidation Blocked(string errorCode, string blockedReason) =>
             new(false, errorCode, blockedReason);
     }
+
+    private sealed record ItineraryInteractionPlan(
+        string? SelectedSlotId,
+        string? SelectedCandidateId,
+        string? DeferredSlotId,
+        ItinerarySlotKind? SelectedSlotKind = null,
+        ItinerarySlotKind? DeferredSlotKind = null);
+
+    private sealed record ItineraryHoldResult(
+        string? State,
+        string HoldOutcome,
+        string? BlockedOutcome,
+        string? ErrorCode,
+        string? BlockedReason,
+        string? ApprovalId,
+        IReadOnlyList<ItineraryHoldFixture> Holds,
+        bool SuppressItineraryRendering)
+    {
+        public static ItineraryHoldResult None() => new(null, "none", null, null, null, null, [], false);
+
+        public static ItineraryHoldResult ApprovalRequired(
+            string approvalId,
+            string holdOutcome,
+            IReadOnlyList<ItineraryHoldFixture> holds) =>
+            new("approval-required", holdOutcome, "none", null, null, approvalId, holds, false);
+
+        public static ItineraryHoldResult Applied(
+            string approvalId,
+            string holdOutcome,
+            IReadOnlyList<ItineraryHoldFixture> holds) =>
+            new("applied", holdOutcome, "none", null, null, approvalId, holds, false);
+
+        public static ItineraryHoldResult Blocked(
+            string blockedOutcome,
+            string errorCode,
+            string blockedReason,
+            string holdOutcome,
+            string approvalId,
+            IReadOnlyList<ItineraryHoldFixture> holds,
+            bool suppressItineraryRendering = false) =>
+            new("blocked", holdOutcome, blockedOutcome, errorCode, blockedReason, approvalId, holds, suppressItineraryRendering);
+    }
 }
 
 public sealed record ItineraryDayPlannerResult(
@@ -412,4 +854,5 @@ public sealed record ItineraryDayPlannerResult(
     IReadOnlyList<ItineraryDayFixture> Days,
     IReadOnlyList<ItineraryCandidatePoolFixture> CandidatePools,
     IReadOnlyList<ItineraryEvidenceFixture> Evidence,
-    IReadOnlyList<MemoryDigestFactFixture> DigestFacts);
+    IReadOnlyList<MemoryDigestFactFixture> DigestFacts,
+    IReadOnlyList<ItineraryHoldFixture> Holds);

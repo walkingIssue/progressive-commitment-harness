@@ -570,6 +570,187 @@ public sealed class HarnessStageCockpitServiceTests
     }
 
     [Fact]
+    public void ItinerarySelectionRunMarksSelectedCandidate()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.select-candidate");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.select-candidate"
+                && outcome.State == "applied"
+                && outcome.SelectedOutcome == "selected"
+                && outcome.DeferredOutcome == "none"
+                && outcome.HoldOutcome == "none"
+                && outcome.ApprovalId is null);
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Days,
+            day => day.Slots.Any(slot => slot.SlotId == "slot-20270402-lunch"
+                && slot.State == "selected"
+                && slot.SelectedCandidateId == "slot-20270402-lunch-dining-1"));
+        Assert.Empty(fixture.ItineraryDayPlanner.Holds);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryWrongSlotCandidateBlocksThroughCanonicalApplication()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.select.wrong-slot");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.select.wrong-slot"
+                && outcome.State == "blocked"
+                && outcome.BlockedOutcome == "blocked_candidate_application"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_CANDIDATE_POOL_MISMATCH"
+                && outcome.BlockedReason == "Itinerary candidate is not associated with the compiled slot.");
+        Assert.Empty(fixture.ItineraryDayPlanner.Days);
+        Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
+        Assert.Empty(fixture.ItineraryDayPlanner.Holds);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryDeferRunMarksDeferredSlot()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.defer-slot");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.defer-slot"
+                && outcome.State == "applied"
+                && outcome.SelectedOutcome == "none"
+                && outcome.DeferredOutcome == "deferred"
+                && outcome.HoldOutcome == "none");
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Days,
+            day => day.Slots.Any(slot => slot.SlotId == "slot-20270402-activity"
+                && slot.State == "deferred"
+                && slot.SelectedCandidateId is null));
+        Assert.Empty(fixture.ItineraryDayPlanner.Holds);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryHoldApprovalRequiredKeepsApprovalMarkerWithoutCommit()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.hold.approval-required");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.hold.approval-required"
+                && outcome.State == "approval-required"
+                && outcome.SelectedOutcome == "selected"
+                && outcome.HoldOutcome == "hold_preparation_preview_ready"
+                && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.ErrorCode is null);
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Holds,
+            hold => hold.HoldId == "hold-itinerary.hold.approval-required"
+                && hold.SlotId == "slot-20270402-activity"
+                && hold.CandidateId == "slot-20270402-activity-activity-1"
+                && hold.ApprovalId == "approval-itinerary-hold-activity"
+                && hold.Outcome == "hold_preparation_preview_ready"
+                && hold.Provider == "mock-hold-preparation"
+                && hold.ConfirmationId is null);
+        Assert.Contains(
+            fixture.Session.Responses,
+            response => response.State == SessionResponseState.ApprovalRequired
+                && response.ApprovalId == "approval-itinerary-hold-activity");
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryApprovedMockHoldUsesApprovalBeforeAdapterCommit()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.hold.approved");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.hold.approved"
+                && outcome.State == "applied"
+                && outcome.HoldOutcome == "hold_preparation_hold_prepared"
+                && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.ErrorCode is null);
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Holds,
+            hold => hold.HoldId == "hold-itinerary.hold.approved"
+                && hold.Outcome == "hold_preparation_hold_prepared"
+                && hold.Provider == "mock-hold-preparation"
+                && hold.ConfirmationId is null
+                && hold.ErrorCode is null);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryMissingApprovalBlocksMockHold()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.hold.missing-approval");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.hold.missing-approval"
+                && outcome.State == "blocked"
+                && outcome.BlockedOutcome == "blocked_missing_approval"
+                && outcome.HoldOutcome == "hold_preparation_missing_approval"
+                && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED"
+                && outcome.BlockedReason == "Mock hold requires approval before provider handoff.");
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Holds,
+            hold => hold.HoldId == "hold-itinerary.hold.missing-approval"
+                && hold.Outcome == "blocked_missing_approval"
+                && hold.ErrorCode == "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED"
+                && hold.ConfirmationId is null);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryHoldProviderMismatchBlocksWithSanitizedMarkers()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.hold.provider-mismatch");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.hold.provider-mismatch"
+                && outcome.State == "blocked"
+                && outcome.BlockedOutcome == "blocked_provider_mismatch"
+                && outcome.HoldOutcome == "hold_preparation_packet_id_mismatch"
+                && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH"
+                && outcome.BlockedReason == "Mock hold provider response did not match the selected candidate.");
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Holds,
+            hold => hold.HoldId == "hold-itinerary.hold.provider-mismatch"
+                && hold.SlotId == "slot-20270402-activity"
+                && hold.CandidateId == "slot-20270402-activity-activity-1"
+                && hold.Outcome == "blocked_provider_mismatch"
+                && hold.ErrorCode == "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH");
+        AssertItineraryRawTextAbsent(serialized);
+        Assert.DoesNotContain("provider-hold-mismatch-candidate", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ItineraryFixedCommitmentConflictBlocksWithSanitizedCode()
     {
         var service = new HarnessStageCockpitService();
@@ -650,5 +831,12 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("SECRET_SENTINEL", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("ui-hold-approval-token-not-rendered", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("An approval token is required before hold, book, or pay can be committed.", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("slot-provider-unknown", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("candidate-provider-unknown", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("mock-hold-slot", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("structured-itinerary-hold-context", serialized, StringComparison.Ordinal);
     }
 }
