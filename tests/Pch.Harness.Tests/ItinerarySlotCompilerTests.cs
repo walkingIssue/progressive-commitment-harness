@@ -141,6 +141,125 @@ public sealed class ItinerarySlotCompilerTests
     }
 
     [Fact]
+    public void NullRequestBlocksWithFixedCode()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+
+        var result = new ItinerarySlotCompiler().Compile(session, null!);
+
+        Assert.False(result.IsCompiled);
+        Assert.Equal("invalid_request", result.Code);
+        Assert.Equal("Itinerary slot compilation request failed validation.", result.Summary);
+        Assert.Null(session.LastItineraryCompilation);
+    }
+
+    [Fact]
+    public void MismatchedSessionIdBlocksWithFixedCode()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+
+        var result = new ItinerarySlotCompiler().Compile(session, new ItineraryCompilationRequest(
+            "wrong-session",
+            null,
+            null,
+            null,
+            []));
+
+        Assert.False(result.IsCompiled);
+        Assert.Equal("invalid_session", result.Code);
+        Assert.Equal("Itinerary slot compilation request failed validation.", result.Summary);
+        Assert.Null(session.LastItineraryCompilation);
+    }
+
+    [Fact]
+    public void TooManyDaysBlocksWithFixedCode()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+
+        var result = new ItinerarySlotCompiler().Compile(session, Request(
+            session,
+            startDate: FixedDate,
+            endDate: FixedDate.AddDays(14)));
+
+        Assert.False(result.IsCompiled);
+        Assert.Equal("too_many_days", result.Code);
+        Assert.Equal("Itinerary slot compilation exceeded day limits.", result.Summary);
+        Assert.Null(session.LastItineraryCompilation);
+    }
+
+    [Fact]
+    public void TooManyPendingConfirmationsBlocksWithFixedCode()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+        var memory = new StructuredMemoryDigest(
+            "digest-too-many-pending",
+            session.SessionId,
+            session.Mission.MissionId,
+            ["purpose: Vacation"],
+            Enumerable.Range(1, 9)
+                .Select(index => new MissionPendingConfirmation(
+                    $"/mission/pending-{index}",
+                    $"value {index}",
+                    AuthoritySource.StrongModelInference,
+                    "requires_confirmation",
+                    [$"evidence-{index}"]))
+                .ToArray(),
+            []);
+
+        var result = new ItinerarySlotCompiler().Compile(session, Request(session, memory));
+
+        Assert.False(result.IsCompiled);
+        Assert.Equal("too_many_pending_confirmations", result.Code);
+        Assert.Equal("Itinerary slot compilation exceeded pending confirmation limits.", result.Summary);
+        Assert.Null(session.LastItineraryCompilation);
+    }
+
+    [Fact]
+    public void OutOfRangeCommitmentConflictDoesNotBlockRequestedDateWindow()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+        var outside = FixedAt.AddDays(5);
+        AddCommitments(
+            session,
+            new Commitment("commitment-outside-a", CommitmentKind.FixedAnchor, "Outside A", outside, outside.AddHours(2), null, false, false),
+            new Commitment("commitment-outside-b", CommitmentKind.FixedAnchor, "Outside B", outside.AddHours(1), outside.AddHours(3), null, false, false));
+
+        var result = new ItinerarySlotCompiler().Compile(session, Request(session, startDate: FixedDate, endDate: FixedDate));
+
+        Assert.True(result.IsCompiled);
+        Assert.Empty(result.Conflicts);
+        Assert.DoesNotContain(result.Days[0].Slots, slot => slot.CommitmentId is "commitment-outside-a" or "commitment-outside-b");
+    }
+
+    [Fact]
+    public void InvalidFixedCommitmentTimeWindowBlocksWithoutMutationOrRawLeak()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+        AddCommitments(session, new Commitment(
+            "commitment-invalid-window",
+            CommitmentKind.FixedAnchor,
+            "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK",
+            FixedAt.AddHours(2),
+            FixedAt,
+            null,
+            false,
+            false));
+
+        var result = new ItinerarySlotCompiler().Compile(session, Request(session, startDate: FixedDate, endDate: FixedDate));
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        Assert.False(result.IsCompiled);
+        Assert.Equal("invalid_fixed_commitment_window", result.Code);
+        Assert.Equal("Itinerary slot compilation found an invalid fixed commitment window.", result.Summary);
+        Assert.Empty(result.Conflicts);
+        Assert.Null(session.LastItineraryCompilation);
+        Assert.Empty(session.Actions);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("commitment-invalid-window", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProjectionIncludesBoundedSlotAndConflictCounts()
     {
         var session = SyntheticTripFactory.CreateSession(1);

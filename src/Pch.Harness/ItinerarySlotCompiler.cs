@@ -20,12 +20,23 @@ public sealed class ItinerarySlotCompiler
 
         var startDate = request.StartDate ?? session.Mission.StartDate;
         var endDate = request.EndDate ?? session.Mission.EndDate;
-        var commitments = session.Mission.Commitments
-            .Where(commitment => commitment.StartsAt is not null && commitment.EndsAt is not null)
+        var relevantCommitments = session.Mission.Commitments
+            .Where(commitment => IsRelevantToWindow(commitment, startDate, endDate))
             .OrderBy(commitment => commitment.StartsAt)
             .ThenBy(commitment => commitment.CommitmentId, StringComparer.Ordinal)
             .ToArray();
-        var conflicts = DetectConflicts(commitments).Take(MaxConflicts).ToArray();
+        if (relevantCommitments.Any(commitment => commitment.StartsAt is null
+                || commitment.EndsAt is null
+                || commitment.StartsAt.Value >= commitment.EndsAt.Value))
+        {
+            return Blocked(
+                "invalid_fixed_commitment_window",
+                "Itinerary slot compilation found an invalid fixed commitment window.",
+                [],
+                []);
+        }
+
+        var conflicts = DetectConflicts(relevantCommitments).Take(MaxConflicts).ToArray();
         if (conflicts.Length > 0)
         {
             var result = Blocked(
@@ -41,7 +52,7 @@ public sealed class ItinerarySlotCompiler
             .Select(index => CompileDay(
                 session,
                 startDate.AddDays(index),
-                commitments,
+                relevantCommitments,
                 request.CurrentMemory?.PendingConfirmations ?? []))
             .ToArray();
 
@@ -94,6 +105,23 @@ public sealed class ItinerarySlotCompiler
         }
 
         return new(true, "accepted", "Itinerary slot compilation request accepted.");
+    }
+
+    private static bool IsRelevantToWindow(Commitment commitment, DateOnly startDate, DateOnly endDate)
+    {
+        if (commitment.StartsAt is null && commitment.EndsAt is null)
+        {
+            return false;
+        }
+
+        var commitmentStartDate = commitment.StartsAt is null
+            ? DateOnly.FromDateTime(commitment.EndsAt!.Value.DateTime)
+            : DateOnly.FromDateTime(commitment.StartsAt.Value.DateTime);
+        var commitmentEndDate = commitment.EndsAt is null
+            ? DateOnly.FromDateTime(commitment.StartsAt!.Value.DateTime)
+            : DateOnly.FromDateTime(commitment.EndsAt.Value.DateTime);
+
+        return commitmentStartDate <= endDate && commitmentEndDate >= startDate;
     }
 
     private static ItineraryDayPlan CompileDay(
