@@ -118,7 +118,51 @@ public sealed class OpenRouterClientTests
         await Assert.ThrowsAsync<ProviderCreditExhaustedException>(() => exhausted.GetCreditStatusAsync());
     }
 
+    [Fact]
+    public async Task CallerCancellationDuringCompletionIsNotMappedToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            CheckCreditsBeforeCompletion = false,
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new CancellationObservingHandler()),
+            options,
+            () => "unit-test-key");
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")]),
+            cancellation.Token));
+    }
+
+    [Fact]
+    public async Task CallerCancellationDuringCreditCheckIsNotMappedToProviderUnavailable()
+    {
+        var client = CreateClient(new CancellationObservingHandler());
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")]),
+            cancellation.Token));
+    }
+
     private static OpenRouterModelCompletionClient CreateClient(QueueHandler handler)
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        return new OpenRouterModelCompletionClient(new HttpClient(handler), options, () => "unit-test-key");
+    }
+
+    private static OpenRouterModelCompletionClient CreateClient(HttpMessageHandler handler)
     {
         var options = new OpenRouterOptions
         {
@@ -170,6 +214,17 @@ public sealed class OpenRouterClientTests
             }
 
             return clone;
+        }
+    }
+
+    private sealed class CancellationObservingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Json(HttpStatusCode.OK, "{}"));
         }
     }
 }

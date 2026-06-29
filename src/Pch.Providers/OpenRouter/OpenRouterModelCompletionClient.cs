@@ -64,7 +64,7 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
             Encoding.UTF8,
             "application/json");
 
-        using var response = await SendAsync(httpRequest, timeout.Token).ConfigureAwait(false);
+        using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
@@ -106,7 +106,7 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         AddAuthorization(httpRequest);
         AddOptionalHeaders(httpRequest);
 
-        using var response = await SendAsync(httpRequest, timeout.Token).ConfigureAwait(false);
+        using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
@@ -185,11 +185,18 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         return timeout;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken timeoutToken,
+        CancellationToken callerCancellationToken)
     {
         try
         {
-            return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            return await _httpClient.SendAsync(request, timeoutToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (OperationCanceledException ex)
         {
