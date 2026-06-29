@@ -17,7 +17,7 @@ public sealed record MissionPlannerResult(
     string MissionKind,
     IReadOnlyList<MissionFieldProposal> Fields,
     IReadOnlyList<MissionCommitmentProposal> Commitments,
-    IReadOnlyList<string> Constraints,
+    IReadOnlyList<MissionConstraintProposal> Constraints,
     IReadOnlyList<string> PendingConfirmations,
     string MemoryDigest,
     int ResponseContentLength,
@@ -26,16 +26,32 @@ public sealed record MissionPlannerResult(
     string? RequestId);
 
 public sealed record MissionFieldProposal(
-    string Name,
+    string FieldPath,
     string Value,
-    MissionProposalSource Source,
+    MissionProposalSource AuthoritySource,
+    IReadOnlyList<string> EvidenceIds,
     bool RequiresConfirmation);
+
+public sealed record MissionConstraintProposal(
+    string ConstraintId,
+    string Label,
+    string Value,
+    MissionProposalSource AuthoritySource,
+    bool IsHard,
+    IReadOnlyList<string> EvidenceIds);
 
 public sealed record MissionCommitmentProposal(
     string CommitmentId,
-    string Description,
-    MissionCommitmentPriority Priority,
-    MissionProposalSource Source);
+    string CommitmentKind,
+    string Title,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? EndsAt,
+    string? Location,
+    bool IsIrreversible,
+    bool RequiresSpend,
+    MissionCommitmentPriority CommitmentPriority,
+    MissionProposalSource AuthoritySource,
+    IReadOnlyList<string> EvidenceIds);
 
 public enum MissionProposalSource
 {
@@ -67,6 +83,7 @@ public sealed record SanitizedMissionPlannerEvalRow(
     int UserStatedFieldCount,
     int InferredFieldCount,
     int CommitmentCount,
+    int ConstraintCount,
     int PendingConfirmationCount,
     int? ResponseContentLength,
     string? Provider,

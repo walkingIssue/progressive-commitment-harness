@@ -32,12 +32,21 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             options,
             "vacation",
             [
-                UserField("purpose", "vacation"),
-                UserField("destination_country", "Japan"),
-                InferredField("pace", "balanced", requiresConfirmation: true)
+                UserField("/mission/purpose", "vacation", "evidence-user-purpose"),
+                UserField("/mission/destination_country", "Japan", "evidence-user-destination"),
+                InferredField("/mission/pace", "balanced", requiresConfirmation: true, "evidence-model-pace")
             ],
-            [Commitment("commitment-rest", "Protect downtime between sightseeing days.", MissionCommitmentPriority.Normal, MissionProposalSource.ModelInferred)],
-            ["Keep one flexible day."],
+            [
+                Commitment(
+                    "commitment-rest",
+                    "downtime",
+                    "Protect downtime between sightseeing days.",
+                    MissionCommitmentPriority.Normal,
+                    MissionProposalSource.ModelInferred,
+                    requiresSpend: false,
+                    evidenceId: "evidence-model-pace")
+            ],
+            [Constraint("constraint-flex-day", "Flexible day", "Keep one flexible day.", MissionProposalSource.ModelInferred, isHard: false, "evidence-model-pace")],
             ["Confirm travel dates.", "Confirm budget range."],
             "Vacation mission: Japan, balanced pace, dates and budget pending.");
 
@@ -47,12 +56,21 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             options,
             "business",
             [
-                UserField("purpose", "business"),
-                UserField("destination_city", "Berlin"),
-                InferredField("meeting_window", "weekday mornings", requiresConfirmation: true)
+                UserField("/mission/purpose", "business", "evidence-user-purpose"),
+                UserField("/mission/destination_city", "Berlin", "evidence-user-destination"),
+                InferredField("/mission/meeting_window", "weekday mornings", requiresConfirmation: true, "evidence-model-window")
             ],
-            [Commitment("commitment-meeting", "Prioritize client meeting arrival reliability.", MissionCommitmentPriority.High, MissionProposalSource.UserStated)],
-            ["Hotel must support work calls."],
+            [
+                Commitment(
+                    "commitment-meeting",
+                    "client_meeting",
+                    "Prioritize client meeting arrival reliability.",
+                    MissionCommitmentPriority.High,
+                    MissionProposalSource.UserStated,
+                    requiresSpend: true,
+                    evidenceId: "evidence-user-purpose")
+            ],
+            [Constraint("constraint-work-calls", "Work-call support", "Hotel must support work calls.", MissionProposalSource.UserStated, isHard: true, "evidence-user-purpose")],
             ["Confirm meeting address."],
             "Business mission: Berlin client meeting, reliability and work-call support.");
 
@@ -62,12 +80,22 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             options,
             "funeral_downtime",
             [
-                UserField("purpose", "funeral logistics and downtime"),
-                UserField("destination_region", "Midwest"),
-                InferredField("emotional_load", "high", requiresConfirmation: true)
+                UserField("/mission/purpose", "funeral logistics and downtime", "evidence-user-purpose"),
+                UserField("/mission/destination_region", "Midwest", "evidence-user-destination"),
+                InferredField("/mission/emotional_load", "high", requiresConfirmation: true, "evidence-model-care")
             ],
-            [Commitment("commitment-service", "Arrive before the memorial service.", MissionCommitmentPriority.Critical, MissionProposalSource.UserStated)],
-            ["Avoid tightly packed itinerary."],
+            [
+                Commitment(
+                    "commitment-service",
+                    "memorial_service",
+                    "Arrive before the memorial service.",
+                    MissionCommitmentPriority.Critical,
+                    MissionProposalSource.UserStated,
+                    requiresSpend: true,
+                    evidenceId: "evidence-user-purpose",
+                    isIrreversible: true)
+            ],
+            [Constraint("constraint-low-pressure", "Low-pressure itinerary", "Avoid tightly packed itinerary.", MissionProposalSource.ModelInferred, isHard: true, "evidence-model-care")],
             ["Confirm service time.", "Confirm family lodging preference."],
             "Funeral/downtime mission: critical service arrival, low itinerary pressure.");
 
@@ -77,12 +105,21 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             options,
             "helping_family",
             [
-                UserField("purpose", "helping family"),
-                UserField("support_role", "care and errands"),
-                InferredField("schedule_flexibility", "high", requiresConfirmation: true)
+                UserField("/mission/purpose", "helping family", "evidence-user-purpose"),
+                UserField("/mission/support_role", "care and errands", "evidence-user-support"),
+                InferredField("/mission/schedule_flexibility", "high", requiresConfirmation: true, "evidence-model-flexibility")
             ],
-            [Commitment("commitment-care", "Keep daytime availability for family support.", MissionCommitmentPriority.High, MissionProposalSource.UserStated)],
-            ["Prefer refundable bookings."],
+            [
+                Commitment(
+                    "commitment-care",
+                    "family_support",
+                    "Keep daytime availability for family support.",
+                    MissionCommitmentPriority.High,
+                    MissionProposalSource.UserStated,
+                    requiresSpend: false,
+                    evidenceId: "evidence-user-support")
+            ],
+            [Constraint("constraint-refundable", "Refundable bookings", "Prefer refundable bookings.", MissionProposalSource.ModelInferred, isHard: false, "evidence-model-flexibility")],
             ["Confirm family address.", "Confirm caregiver schedule."],
             "Helping-family mission: flexible support travel with refundable logistics.");
 
@@ -91,9 +128,17 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             packet,
             options,
             "general",
-            [UserField("purpose", "general travel")],
+            [UserField("/mission/purpose", "general travel", "evidence-user-purpose")],
             [],
-            packet.KnownConstraints,
+            packet.KnownConstraints
+                .Select((constraint, index) => Constraint(
+                    $"constraint-known-{index + 1}",
+                    $"Known constraint {index + 1}",
+                    constraint,
+                    MissionProposalSource.UserStated,
+                    isHard: false,
+                    $"evidence-known-{index + 1}"))
+                .ToArray(),
             ["Confirm primary purpose."],
             "General mission: primary purpose pending confirmation.");
 
@@ -103,7 +148,7 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
         string missionKind,
         IReadOnlyList<MissionFieldProposal> fields,
         IReadOnlyList<MissionCommitmentProposal> commitments,
-        IReadOnlyList<string> constraints,
+        IReadOnlyList<MissionConstraintProposal> constraints,
         IReadOnlyList<string> pendingConfirmations,
         string memoryDigest)
     {
@@ -121,16 +166,44 @@ public sealed class MockMissionPlannerClient : IMissionPlannerClient
             $"mock-mission-{packet.PacketId}");
     }
 
-    private static MissionFieldProposal UserField(string name, string value) =>
-        new(name, value, MissionProposalSource.UserStated, RequiresConfirmation: false);
+    private static MissionFieldProposal UserField(string fieldPath, string value, string evidenceId) =>
+        new(fieldPath, value, MissionProposalSource.UserStated, [evidenceId], RequiresConfirmation: false);
 
-    private static MissionFieldProposal InferredField(string name, string value, bool requiresConfirmation) =>
-        new(name, value, MissionProposalSource.ModelInferred, requiresConfirmation);
+    private static MissionFieldProposal InferredField(
+        string fieldPath,
+        string value,
+        bool requiresConfirmation,
+        string evidenceId) =>
+        new(fieldPath, value, MissionProposalSource.ModelInferred, [evidenceId], requiresConfirmation);
+
+    private static MissionConstraintProposal Constraint(
+        string constraintId,
+        string label,
+        string value,
+        MissionProposalSource source,
+        bool isHard,
+        string evidenceId) =>
+        new(constraintId, label, value, source, isHard, [evidenceId]);
 
     private static MissionCommitmentProposal Commitment(
         string commitmentId,
-        string description,
+        string commitmentKind,
+        string title,
         MissionCommitmentPriority priority,
-        MissionProposalSource source) =>
-        new(commitmentId, description, priority, source);
+        MissionProposalSource source,
+        bool requiresSpend,
+        string evidenceId,
+        bool isIrreversible = false) =>
+        new(
+            commitmentId,
+            commitmentKind,
+            title,
+            null,
+            null,
+            null,
+            isIrreversible,
+            requiresSpend,
+            priority,
+            source,
+            [evidenceId]);
 }

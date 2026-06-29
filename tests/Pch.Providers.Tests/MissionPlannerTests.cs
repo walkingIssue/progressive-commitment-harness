@@ -21,8 +21,31 @@ public sealed class MissionPlannerTests
         Assert.Equal(expectedKind, result.MissionKind);
         Assert.Equal("mock-mission-planner", result.Provider);
         Assert.NotEmpty(result.Fields);
-        Assert.Contains(result.Fields, field => field.Source == MissionProposalSource.UserStated);
-        Assert.Contains(result.Fields, field => field.Source == MissionProposalSource.ModelInferred);
+        Assert.Contains(result.Fields, field => field.AuthoritySource == MissionProposalSource.UserStated);
+        Assert.Contains(result.Fields, field => field.AuthoritySource == MissionProposalSource.ModelInferred);
+        Assert.Contains(result.Fields, field => field.FieldPath == "/mission/purpose");
+        Assert.All(result.Fields, field =>
+        {
+            Assert.StartsWith("/mission/", field.FieldPath, StringComparison.Ordinal);
+            Assert.NotEmpty(field.Value);
+            Assert.NotEmpty(field.EvidenceIds);
+        });
+        Assert.NotEmpty(result.Constraints);
+        Assert.All(result.Constraints, constraint =>
+        {
+            Assert.NotEmpty(constraint.ConstraintId);
+            Assert.NotEmpty(constraint.Label);
+            Assert.NotEmpty(constraint.Value);
+            Assert.NotEmpty(constraint.EvidenceIds);
+        });
+        Assert.NotEmpty(result.Commitments);
+        Assert.All(result.Commitments, commitment =>
+        {
+            Assert.NotEmpty(commitment.CommitmentId);
+            Assert.NotEmpty(commitment.CommitmentKind);
+            Assert.NotEmpty(commitment.Title);
+            Assert.NotEmpty(commitment.EvidenceIds);
+        });
         Assert.NotEmpty(result.PendingConfirmations);
         Assert.NotEmpty(result.MemoryDigest);
     }
@@ -44,12 +67,47 @@ public sealed class MissionPlannerTests
         Assert.Equal("vacation", row.ActualMissionKind);
         Assert.True(row.UserStatedFieldCount > 0);
         Assert.True(row.InferredFieldCount > 0);
+        Assert.True(row.CommitmentCount > 0);
+        Assert.True(row.ConstraintCount > 0);
         Assert.True(row.PendingConfirmationCount > 0);
 
         var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.DoesNotContain(sentinel, serialized);
         Assert.DoesNotContain("Vacation mission", serialized);
         Assert.DoesNotContain("Japan", serialized);
+        Assert.DoesNotContain("Protect downtime", serialized);
+        Assert.DoesNotContain("Keep one flexible day", serialized);
+        Assert.DoesNotContain("evidence-model-pace", serialized);
+    }
+
+    [Fact]
+    public async Task SanitizedEvalRowsDoNotPersistStructuredProposalValues()
+    {
+        const string fieldValue = "FIELD_VALUE_SENTINEL_SHOULD_NOT_PERSIST";
+        const string commitmentTitle = "COMMITMENT_TITLE_SENTINEL_SHOULD_NOT_PERSIST";
+        const string constraintValue = "CONSTRAINT_VALUE_SENTINEL_SHOULD_NOT_PERSIST";
+        const string memoryDigest = "MEMORY_DIGEST_SENTINEL_SHOULD_NOT_PERSIST";
+        const string credential = "sk-credential-sentinel-should-not-persist";
+        var evaluator = new MissionPlannerEvaluator(new SentinelPlanner(
+            fieldValue,
+            commitmentTitle,
+            constraintValue,
+            memoryDigest));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new MissionPlannerEvalCase("sentinel", CreatePacket("vacation", credential), "vacation")]));
+
+        Assert.True(row.Passed);
+        Assert.Equal(1, row.UserStatedFieldCount);
+        Assert.Equal(1, row.CommitmentCount);
+        Assert.Equal(1, row.ConstraintCount);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(fieldValue, serialized);
+        Assert.DoesNotContain(commitmentTitle, serialized);
+        Assert.DoesNotContain(constraintValue, serialized);
+        Assert.DoesNotContain(memoryDigest, serialized);
+        Assert.DoesNotContain(credential, serialized);
     }
 
     [Fact]
@@ -100,7 +158,14 @@ public sealed class MissionPlannerTests
             return Task.FromResult(new MissionPlannerResult(
                 "RAW_PACKET_ID_SHOULD_NOT_PERSIST",
                 "business",
-                [new MissionFieldProposal("purpose", "business", MissionProposalSource.UserStated, false)],
+                [
+                    new MissionFieldProposal(
+                        "/mission/purpose",
+                        "business",
+                        MissionProposalSource.UserStated,
+                        ["evidence-user-purpose"],
+                        false)
+                ],
                 [],
                 [],
                 [],
@@ -119,5 +184,59 @@ public sealed class MissionPlannerTests
             MissionPlannerOptions? options = null,
             CancellationToken cancellationToken = default) =>
             Task.FromException<MissionPlannerResult>(exception);
+    }
+
+    private sealed class SentinelPlanner(
+        string fieldValue,
+        string commitmentTitle,
+        string constraintValue,
+        string memoryDigest) : IMissionPlannerClient
+    {
+        public Task<MissionPlannerResult> PlanAsync(
+            MissionPlannerPacket packet,
+            MissionPlannerOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new MissionPlannerResult(
+                packet.PacketId,
+                "vacation",
+                [
+                    new MissionFieldProposal(
+                        "/mission/purpose",
+                        fieldValue,
+                        MissionProposalSource.UserStated,
+                        ["evidence-field-sentinel"],
+                        false)
+                ],
+                [
+                    new MissionCommitmentProposal(
+                        "commitment-sentinel",
+                        "sentinel_kind",
+                        commitmentTitle,
+                        StartsAt: null,
+                        EndsAt: null,
+                        Location: null,
+                        IsIrreversible: false,
+                        RequiresSpend: true,
+                        MissionCommitmentPriority.High,
+                        MissionProposalSource.UserStated,
+                        ["evidence-commitment-sentinel"])
+                ],
+                [
+                    new MissionConstraintProposal(
+                        "constraint-sentinel",
+                        "Sentinel constraint",
+                        constraintValue,
+                        MissionProposalSource.ModelInferred,
+                        IsHard: true,
+                        ["evidence-constraint-sentinel"])
+                ],
+                ["Confirm sentinel."],
+                memoryDigest,
+                42,
+                "test-provider",
+                "test-model",
+                "request-sentinel-safe-id"));
+        }
     }
 }
