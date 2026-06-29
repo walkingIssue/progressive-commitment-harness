@@ -1,0 +1,45 @@
+@namespace Pch.UI.Features.Approvals
+@using Pch.UI.Features.StageCockpit
+
+<article class="panel approval-panel" data-approval-id="@Approval.Id" data-response-state="@Response.State">
+    <div class="panel-head">
+        <span>@Approval.Title</span>
+        <small>@Response.Label</small>
+    </div>
+    <p>@Approval.Summary</p>
+    <dl class="approval-details">
+        <div>
+            <dt>Required for</dt>
+            <dd>@Approval.RequiredFor</dd>
+        </div>
+        <div>
+            <dt>Approval id</dt>
+            <dd><code>@Approval.Id</code></dd>
+        </div>
+        <div>
+            <dt>Response</dt>
+            <dd>@Response.State</dd>
+        </div>
+    </dl>
+    <button class="approve" type="button" @onclick="OnApprove">
+        Generate approval token
+    </button>
+    @if (!string.IsNullOrWhiteSpace(ApprovalToken))
+    {
+        <p class="token">Approval token: <code>@ApprovalToken</code></p>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public ApprovalGateFixture Approval { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public SessionResponseFixture Response { get; set; } = default!;
+
+    [Parameter]
+    public string ApprovalToken { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public EventCallback OnApprove { get; set; }
+}

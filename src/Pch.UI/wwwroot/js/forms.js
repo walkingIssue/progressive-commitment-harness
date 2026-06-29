@@ -43,4 +43,13 @@ export function markRequiredSummary(rootSelector, summarySelector) {
     summary.dataset.requiredCount = requiredCount.toString();
     summary.textContent = `${requiredCount} required ${noun}`;
 }
+export function responseStateCounts(rootSelector) {
+    const root = document.querySelector(rootSelector);
+    const counts = {};
+    root?.querySelectorAll("[data-response-state]").forEach((element) => {
+        const state = element.dataset.responseState ?? "unknown";
+        counts[state] = (counts[state] ?? 0) + 1;
+    });
+    return counts;
+}
 //# sourceMappingURL=forms.js.map

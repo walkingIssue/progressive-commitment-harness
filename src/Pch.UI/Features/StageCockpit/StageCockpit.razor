@@ -1,4 +1,6 @@
 @using Microsoft.JSInterop
+@using Pch.UI.Features.Approvals
+@using Pch.UI.Features.EvidenceTrace
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
@@ -87,47 +89,46 @@
             </div>
         </article>
 
-        <article class="panel approval-panel">
+        <article class="panel session-panel">
             <div class="panel-head">
-                <span>@Fixture.Approval.Title</span>
-                <small>@ApprovalState</small>
+                <span>Session Response Seam</span>
+                <small>@Fixture.Session.EndpointHint</small>
             </div>
-            <p>@Fixture.Approval.Summary</p>
-            <dl class="approval-details">
-                <div>
-                    <dt>Required for</dt>
-                    <dd>@Fixture.Approval.RequiredFor</dd>
-                </div>
-                <div>
-                    <dt>Approval id</dt>
-                    <dd><code>@Fixture.Approval.Id</code></dd>
-                </div>
-            </dl>
-            <button class="approve" type="button" @onclick="ApproveMockHold">
-                Generate mock approval token
-            </button>
-            @if (!string.IsNullOrWhiteSpace(ApprovalToken))
-            {
-                <p class="token">Approval token: <code>@ApprovalToken</code></p>
-            }
+            <div class="response-list" data-session-id="@Fixture.Session.Id">
+                @foreach (var response in SessionResponses)
+                {
+                    <section class="response-card" data-response-id="@response.Id" data-response-state="@response.State" data-target="@response.Target">
+                        <div>
+                            <strong>@response.Label</strong>
+                            <p>@response.Summary</p>
+                        </div>
+                        <code>@response.Id</code>
+                        <div class="response-actions">
+                            @if (response.State == SessionResponseState.Pending)
+                            {
+                                <button class="ghost" type="button" @onclick="() => SetResponseState(response.Id, SessionResponseState.Applied)">Apply</button>
+                                <button class="ghost danger" type="button" @onclick="() => SetResponseState(response.Id, SessionResponseState.Rejected)">Reject</button>
+                            }
+                            else if (response.State == SessionResponseState.ApprovalRequired)
+                            {
+                                <span data-approval-id="@response.ApprovalId">Approval id: <code>@response.ApprovalId</code></span>
+                            }
+                            else
+                            {
+                                <span>@response.State</span>
+                            }
+                        </div>
+                    </section>
+                }
+            </div>
         </article>
 
-        <article class="panel trace-panel">
-            <div class="panel-head">
-                <span>Evidence Trace Preview</span>
-                <small>claim-ledger fixture</small>
-            </div>
-            <ol class="trace-list">
-                @foreach (var claim in TraceClaims)
-                {
-                    <li>
-                        <strong>@claim.Text</strong>
-                        <span>@claim.Source / @claim.Reference</span>
-                        <code>@claim.Id</code>
-                    </li>
-                }
-            </ol>
-        </article>
+        <ApprovalGate Approval="Fixture.Approval"
+                      Response="ApprovalResponse"
+                      ApprovalToken="@ApprovalToken"
+                      OnApprove="ApproveMockHold" />
+
+        <EvidenceTracePreview Trace="Fixture.Trace" Claims="TraceClaims.ToArray()" />
     </section>
 </main>
 
@@ -135,15 +136,19 @@
     private readonly StageCockpitFixture Fixture = new StageCockpitFixtureProvider().GetFixture();
     private readonly Dictionary<string, string> FormValues = [];
     private IJSObjectReference? module;
+    private List<SessionResponseFixture> SessionResponses = [];
     private string SelectedCandidateId = "";
-    private string ApprovalState = "";
     private string ApprovalToken = "";
+
+    private SessionResponseFixture ApprovalResponse =>
+        SessionResponses.FirstOrDefault(response => response.ApprovalId == Fixture.Approval.Id)
+        ?? Fixture.Session.Responses.First(response => response.ApprovalId == Fixture.Approval.Id);
 
     private IEnumerable<EvidenceClaimFixture> TraceClaims =>
     [
         ..Fixture.Trace.Claims.Where(claim => claim.Id != "claim.choice" && claim.Id != "claim.approval"),
         new("claim.choice", $"Selected candidate remains {SelectedCandidateId}", "fixture", SelectedCandidateId),
-        new("claim.approval", ApprovalState == "approved" ? "Mock hold is approved" : "Mock hold is waiting for approval", "ui-state", Fixture.Approval.Id)
+        new("claim.approval", ApprovalToken.Length > 0 ? "Fixture hold is approved for adapter handoff" : "Fixture hold is waiting for approval", "ui-state", Fixture.Approval.Id)
     ];
 
     protected override void OnInitialized()
@@ -154,7 +159,7 @@
         }
 
         SelectedCandidateId = Fixture.ChoiceSet.SelectedCandidateId;
-        ApprovalState = Fixture.Approval.State;
+        SessionResponses = [..Fixture.Session.Responses];
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -179,15 +184,34 @@
             pair => pair.Key,
             object? (pair) => pair.Value);
         values["selectedCandidateId"] = SelectedCandidateId;
-        values["approvalState"] = ApprovalState;
+        values["responseStates"] = string.Join(",", SessionResponses.Select(response => $"{response.Id}:{response.State}"));
 
         await module.InvokeVoidAsync("saveDraft", Fixture.Packet.Id, values);
     }
 
     private void ApproveMockHold()
     {
-        ApprovalState = "approved";
-        ApprovalToken = $"mock-approval-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+        ApprovalToken = $"fixture-approval-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+        SetResponseState(ApprovalResponse.Id, SessionResponseState.Applied);
+    }
+
+    private void SetResponseState(string responseId, SessionResponseState state)
+    {
+        var index = SessionResponses.FindIndex(response => response.Id == responseId);
+        if (index < 0) return;
+
+        var current = SessionResponses[index];
+        SessionResponses[index] = current with
+        {
+            State = state,
+            Label = state switch
+            {
+                SessionResponseState.Applied => "Applied",
+                SessionResponseState.Rejected => "Rejected",
+                SessionResponseState.ApprovalRequired => "Approval required",
+                _ => "Pending"
+            }
+        };
     }
 
     public async ValueTask DisposeAsync()
