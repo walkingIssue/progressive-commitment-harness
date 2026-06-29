@@ -150,7 +150,7 @@ public sealed class ExternalActionDecoder
                 OptionalStringArray(proposal.Arguments, "risk_flags") ?? [],
                 OptionalDecimal(proposal.Arguments, "spend_amount"),
                 OptionalString(proposal.Arguments, "currency"),
-                OptionalString(proposal.Arguments, "approval_token"))));
+                null)));
     }
 
     private static ActionDecodeResult DecodePatch(ExternalActionProposal proposal)

@@ -1,5 +1,6 @@
 using Pch.Core;
 using Pch.Harness;
+using System.Text.Json;
 using Xunit;
 
 namespace Pch.Harness.Tests;
@@ -107,6 +108,59 @@ public sealed class ExternalActionDecoderTests
         Assert.Equal("approval_id_mismatch", intake.Trace.Single().Outcome);
         Assert.Empty(session.Actions);
         Assert.Empty(session.ApprovalTokens);
+    }
+
+    [Fact]
+    public void DecodedApprovalIgnoresProviderSuppliedTokenAndDoesNotPersistIt()
+    {
+        const string sentinelToken = "RAW_PROVIDER_APPROVAL_TOKEN_SHOULD_NOT_LEAK";
+        var decode = new ExternalActionDecoder().DecodeJson(
+            "action-approval",
+            HarnessAction.RequestApprovalKind,
+            $$"""
+            {
+              "approval_id": "approval-review",
+              "approval_action_id": "mock-booking",
+              "prompt": "Approve.",
+              "risk_flags": ["booking"],
+              "approval_token": "{{sentinelToken}}"
+            }
+            """);
+
+        var action = Assert.IsType<RequestApprovalAction>(decode.Action);
+        var serialized = JsonSerializer.Serialize(decode);
+
+        Assert.True(decode.IsDecoded);
+        Assert.Null(action.Approval.ApprovalToken);
+        Assert.DoesNotContain(sentinelToken, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(sentinelToken, decode.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DecodedApprovalWithOnlyProviderTokenIsBlockedByIntakeGateWithoutMutation()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        session.MoveTo(HarnessStage.ApprovalQueue);
+        var decode = new ExternalActionDecoder().DecodeJson(
+            "action-approval",
+            HarnessAction.RequestApprovalKind,
+            """
+            {
+              "approval_id": "approval-review",
+              "approval_action_id": "mock-booking",
+              "prompt": "Approve.",
+              "risk_flags": ["booking"],
+              "approval_token": "RAW_PROVIDER_APPROVAL_TOKEN_SHOULD_NOT_LEAK"
+            }
+            """);
+
+        var intake = new HarnessActionIntake().Accept(session, decode.Action!);
+
+        Assert.True(intake.IsBlocked);
+        Assert.Equal("approval_required", intake.Trace.Single().Outcome);
+        Assert.Empty(session.Actions);
+        Assert.Empty(session.ApprovalTokens);
+        Assert.Empty(session.DecisionLedger.Records);
     }
 
     [Fact]
