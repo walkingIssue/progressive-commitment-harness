@@ -127,3 +127,34 @@ Verification:
 - Accepted, blocked, and decode-failure outcomes are deterministic, tested, and visible in the UI.
 - No required test uses provider credentials or network.
 - No raw prompt, provider payload, proposal JSON, approval token, secret, or raw exception message is persisted or rendered.
+
+## Result
+
+Status: complete.
+
+Integrated heads:
+
+- Shellby: `ef9270a22fc26efaf22d4394249f4020a5de7035`
+- Kaneki: `eca6c102c31f1a738b41c243749c72f11039abe6`
+- Sarah: `8d253cf80412dfe4375756fa67011bd850a16a69`
+- Final local integration before docs: `7d55d7f076da907a963416b57314a02716d0db60`
+
+What landed:
+
+- `RuntimeActionApplication` is the harness-owned decode-plus-intake composition service for runtime action proposals.
+- `ProviderActionBridge` converts model action results into an in-memory runtime proposal while persisting only sanitized bridge metadata. It now rejects packet/result id mismatches before proposal creation.
+- Stage Cockpit has a server-side deterministic run-model loop that uses `ProviderActionBridge -> ExternalActionProposal -> RuntimeActionApplication`.
+- UI model-run cards render separate provider bridge, runtime decode, and runtime intake markers.
+
+Final verification:
+
+- `dotnet test`: passed, 84 tests.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke on `http://127.0.0.1:5130/`: accepted, blocked-intake, and runtime decode-failure paths passed; old model-run marker names were absent; raw sentinel and internal prompt text were absent.
+
+Deferred hardening:
+
+- Replace deterministic model-run scenarios with a real server-provided model runner endpoint.
+- Add persisted eval artifacts only after a redaction review for prompt/user input fields.
+- Keep live OpenRouter/Qwen smoke optional and credit-guarded; current hosted Qwen smoke remains blocked on empty provider output.

@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `8ca17aa23a7a61658af5504bb4c860ad04f4cd04`
+Latest integrated code before this progress update: `7d55d7f076da907a963416b57314a02716d0db60`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, and a server-backed UI suggested-action path that enters through decoder plus `HarnessActionIntake`. Stage 5/6 have provider-local model-action eval scaffolding, sanitized golden packet eval rows, decode/intake outcome codes, and a guarded Qwen smoke result that currently blocks on unusable provider output. The next decisive gap is a runtime UI/server action loop that asks a model source for a proposal and applies it through the same safe intake boundary.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, and a reusable runtime action application result. Stage 5/6 now have provider-local model-action eval scaffolding, sanitized golden packet eval rows, decode/intake outcome codes, and an in-memory provider runtime proposal bridge. The UI now has a deterministic server-side run-model action loop that enters through `ProviderActionBridge`, maps to `ExternalActionProposal`, and applies through `RuntimeActionApplication`. The next decisive gap is Stage 4/structured memory: messy user intent should become a typed mission, high-priority commitments, and a bounded memory digest before small-model stage packets depend on it.
 
 ## Sprint Ledger
 
@@ -41,6 +41,9 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 004 | Stage 3/10 precursor | Approval token hardening | External/provider approval proposals intentionally drop `approval_token`; only trusted user approval flow can supply tokens | done |
 | 004 | Stage 5/6 | Provider bridge eval outcomes | Provider-local action bridge and sanitized eval rows record decode/intake outcome codes without raw prompt/model payloads or raw argument values | done as provider-local groundwork |
 | 004 | UI gate | Model suggested action path | Stage Cockpit applies deterministic suggested actions through `ExternalActionDecoder` plus `HarnessActionIntake`; accepted `defer_slot`, blocked `handoff`, and malformed JSON paths are visible in UI | done |
+| 005 | Stage 3 | Runtime action application | `RuntimeActionApplication` composes decode plus intake into one sanitized result shape with decode/intake codes, stage, packet id, summary, and replayable trace | done |
+| 005 | Stage 5/6 | Runtime provider proposal bridge | Provider bridge carries raw argument JSON only in memory as `ProviderRuntimeActionProposal`; persisted diagnostics keep action/argument-key/provider metadata and fixed codes only | done |
+| 005 | UI/Stage 9 precursor | Server model suggestion loop | Stage Cockpit can run a deterministic server-side model action through provider bridge, runtime application, UI response state, and trace markers | done |
 
 ## Sprint 001 Verification
 
@@ -114,18 +117,38 @@ Sprint 004 connected model/provider-shaped action proposals to harness-owned int
   - model-suggested UI actions cannot mutate state unless decoder and `HarnessActionIntake` accept them;
   - provider eval/runtime diagnostics avoid raw prompt/model payload persistence.
 
-## Sprint 005 Target
+## Sprint 005 Result
 
-Sprint 005 should turn the deterministic suggested-action seam into the first runtime model-action loop inside the UI/server vertical slice.
+Sprint 005 turned the deterministic suggested-action seam into the first runtime model-action loop inside the UI/server vertical slice.
 
-- add a harness/application result shape for decode plus intake so UI and eval can render the same safe outcome codes;
-- add a provider runtime bridge that can pass argument JSON in memory to the harness decoder while persisting only sanitized eval metadata;
-- add a Stage Cockpit "run model suggestion" server action using deterministic mock providers by default and optional guarded OpenRouter/Qwen smoke only outside required tests;
-- keep all live provider calls optional, credit-guarded, and blocked rather than falling back when output is empty, malformed, or paid credits fail.
+- `RuntimeActionApplication` is the canonical decode-plus-intake boundary for externally proposed runtime actions.
+- `ProviderActionBridge` rejects packet/result mismatches, rejects disallowed action names, and exposes raw arguments only through a non-serialized in-memory runtime proposal.
+- Stage Cockpit now runs accepted, blocked-intake, and runtime decode-failure model suggestions through `ProviderActionBridge -> ExternalActionProposal -> RuntimeActionApplication`.
+- UI markers distinguish provider bridge outcome from runtime decode and runtime intake outcome, so provider acceptance is not confused with harness acceptance.
+
+## Sprint 005 Verification
+
+- `dotnet test`: 84 tests passed across core, harness, providers, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke on `http://127.0.0.1:5130/`: accepted `server-model.accept.defer-slot`, blocked `server-model.block.form-mismatch`, and decode-failed `server-model.decode.missing-argument`.
+- Repair gates enforced:
+  - stale/crossed provider `PacketId` values cannot become runtime proposals;
+  - UI model-run path uses `RuntimeActionApplication` instead of duplicating decoder/intake;
+  - raw proposal JSON, provider payloads, prompt text, approval tokens, and sentinel values were absent from rendered UI.
+
+## Sprint 006 Target
+
+Sprint 006 should start Stage 4 and structured memory: turn a messy user prompt into a typed mission and bounded memory digest before deeper planning/search begins.
+
+- add a harness-owned mission-intake application that treats model-inferred fields as proposals unless authority policy allows direct application;
+- add compact memory/digest surfaces that explain what gets fed back into small model stage packets;
+- add provider-local planner/mission proposal runners with deterministic mocks and sanitized eval rows;
+- add a UI mission intake panel that turns a rambling prompt into structured trip purpose, constraints, high-priority commitments, and confirmation-ready fields without live provider dependency.
 
 ## Not Yet Started
 
-- Stage 4 strong-model planner/expander/auditor.
+- Stage 4 live strong-model planner/expander/auditor beyond deterministic planner mocks.
 - Stage 5 true small-model structured generation beyond deterministic/mock runtime action loops.
 - Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
 - Stage 7 real Amadeus availability and pricing adapters.
