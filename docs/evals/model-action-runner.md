@@ -1,0 +1,25 @@
+# Model Action Runner Eval Scaffold
+
+Sprint 002 adds a provider-local model action runner for packet-shaped prompts. It does not consume or define core harness contracts; Sprint 003 can map these provider-local outputs into `HarnessAction` after the core contract owner freezes that surface.
+
+Default evaluation uses deterministic mocks:
+
+- packet-shaped prompt input
+- a constrained list of allowed action names
+- strict JSON action output with `action`, `arguments`, and optional `summary`
+- pass/fail rows comparing the selected action to an expected action
+
+Provider-dependent evals may use OpenRouter `qwen/qwen3-14b` only when a key is present and `/api/v1/credits` reports usable credit. If credit is exhausted or provider checks fail, pause and report `BLOCKED`; do not silently fall back to a different hosted model.
+
+Production-readiness notes:
+
+- Required tests do not use live network calls, API keys, or provider credits.
+- Exceptions and docs must not include raw key material, raw prompts containing secrets, or provider credentials.
+- The runner rejects action names outside the packet's allowed action list before any harness commit side effect is possible.
+- Booking/hold/pay actions still require separate approval-token checks in commit adapters.
+
+Sprint 003 assumptions for mapping into `HarnessAction`:
+
+- `action` maps to a future harness-owned action discriminator.
+- `arguments` remain provider-local JSON until the harness owns typed argument schemas.
+- Packet action definitions should become the bridge between harness-owned stage contracts and provider-local response schemas.
