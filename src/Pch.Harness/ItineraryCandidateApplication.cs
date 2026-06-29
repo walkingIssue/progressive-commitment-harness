@@ -106,22 +106,22 @@ public sealed class ItineraryCandidateApplication
             return Reject("invalid_candidate", "Itinerary slot decision candidate failed validation.");
         }
 
-        var candidate = session.CandidatePools
+        var isKnownCandidate = session.CandidatePools
             .SelectMany(pool => pool.Candidates)
-            .FirstOrDefault(candidate => string.Equals(candidate.CandidateId, request.CandidateId, StringComparison.Ordinal));
-        if (candidate is null)
+            .Any(candidate => string.Equals(candidate.CandidateId, request.CandidateId, StringComparison.Ordinal));
+        if (!isKnownCandidate)
         {
             return Reject("unknown_candidate", "Itinerary slot decision references an unknown candidate.");
+        }
+
+        if (!session.TryGetItineraryCandidateForSlot(slot.SlotId, request.CandidateId, out var candidate))
+        {
+            return Reject("candidate_pool_mismatch", "Itinerary candidate is not associated with the compiled slot.");
         }
 
         if (candidate.Kind != request.CandidateKind)
         {
             return Reject("category_mismatch", "Itinerary slot decision category did not match the candidate.");
-        }
-
-        if (!session.HasItineraryCandidateForSlot(slot.SlotId, candidate.CandidateId))
-        {
-            return Reject("candidate_pool_mismatch", "Itinerary candidate is not associated with the compiled slot.");
         }
 
         if (!CandidateMatchesSlot(slot.Kind, candidate.Kind))

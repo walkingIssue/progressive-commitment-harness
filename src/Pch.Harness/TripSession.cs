@@ -151,15 +151,28 @@ public sealed class TripSession
 
     public bool HasItineraryCandidateForSlot(string slotId, string candidateId)
     {
+        return TryGetItineraryCandidateForSlot(slotId, candidateId, out _);
+    }
+
+    public bool TryGetItineraryCandidateForSlot(string slotId, string candidateId, out Candidate candidate)
+    {
+        candidate = null!;
         if (!_itineraryCandidatePoolIdsBySlot.TryGetValue(slotId, out var poolIds))
         {
             return false;
         }
 
-        return _candidatePools
+        var match = _candidatePools
             .Where(pool => poolIds.Contains(pool.PoolId))
             .SelectMany(pool => pool.Candidates)
-            .Any(candidate => string.Equals(candidate.CandidateId, candidateId, StringComparison.Ordinal));
+            .FirstOrDefault(candidate => string.Equals(candidate.CandidateId, candidateId, StringComparison.Ordinal));
+        if (match is null)
+        {
+            return false;
+        }
+
+        candidate = match;
+        return true;
     }
 
     private bool IsKnownCandidateId(string candidateId)

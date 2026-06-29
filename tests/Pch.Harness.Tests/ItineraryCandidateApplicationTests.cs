@@ -226,6 +226,53 @@ public sealed class ItineraryCandidateApplicationTests
     }
 
     [Fact]
+    public void DuplicateCandidateIdUsesAssociatedSlotPoolCandidateOnly()
+    {
+        const string sentinel = "RAW_UNASSOCIATED_CANDIDATE_SHOULD_NOT_LEAK";
+        var session = CompiledSession();
+        var slot = Slot(session, ItinerarySlotKind.Activity);
+        session.AddCandidatePool(CandidatePoolFor(
+            "pool-unassociated",
+            new Candidate(
+                "candidate-duplicate",
+                CandidateKind.Activity,
+                sentinel,
+                sentinel,
+                null,
+                null,
+                ["evidence-unassociated-sentinel"],
+                200)));
+        session.AddItineraryCandidatePool(slot.SlotId, CandidatePoolFor(
+            "pool-associated",
+            new Candidate(
+                "candidate-duplicate",
+                CandidateKind.Activity,
+                "Associated activity",
+                "Trusted slot-scoped candidate.",
+                null,
+                null,
+                ["evidence-associated"],
+                100)));
+
+        var result = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
+            session.SessionId,
+            slot.SlotId,
+            ItinerarySlotDecisionKind.Selected,
+            slot.Kind,
+            "candidate-duplicate",
+            CandidateKind.Activity,
+            FixedNow));
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        Assert.True(result.IsAccepted);
+        Assert.Equal(["evidence-associated"], result.EvidenceIds);
+        Assert.Equal(["evidence-associated"], result.Decision!.EvidenceIds);
+        Assert.DoesNotContain("evidence-unassociated-sentinel", result.EvidenceIds);
+        Assert.DoesNotContain(sentinel, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("evidence-unassociated-sentinel", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SerializedResultDoesNotContainRawCandidateSentinel()
     {
         const string sentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
