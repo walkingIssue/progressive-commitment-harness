@@ -25,7 +25,7 @@ public sealed record ModelActionRunResult(
     string ActionName,
     JsonElement Arguments,
     string? Summary,
-    string RawContent,
+    int ResponseContentLength,
     string Provider,
     string Model,
     string? RequestId);

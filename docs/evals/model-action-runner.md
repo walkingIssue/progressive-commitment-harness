@@ -15,6 +15,8 @@ Production-readiness notes:
 
 - Required tests do not use live network calls, API keys, or provider credits.
 - Exceptions and docs must not include raw key material, raw prompts containing secrets, or provider credentials.
+- Runner results expose response content length and provider diagnostics, not raw model response text.
+- Disallowed model action failures use sanitized messages and do not echo the untrusted action text.
 - The runner rejects action names outside the packet's allowed action list before any harness commit side effect is possible.
 - Booking/hold/pay actions still require separate approval-token checks in commit adapters.
 

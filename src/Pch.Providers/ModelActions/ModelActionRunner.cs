@@ -120,7 +120,7 @@ public sealed class ModelActionRunner : IModelActionRunner
             var actionName = actionElement.GetString()!;
             if (!packet.AllowedActions.Any(action => string.Equals(action.Name, actionName, StringComparison.Ordinal)))
             {
-                throw new ModelActionRunnerException($"Model action response selected disallowed action '{actionName}'.");
+                throw new ModelActionRunnerException("Model action response selected an action outside the allowed set.");
             }
 
             if (!root.TryGetProperty("arguments", out var argumentsElement) ||
@@ -139,7 +139,7 @@ public sealed class ModelActionRunner : IModelActionRunner
                 actionName,
                 argumentsElement.Clone(),
                 summary,
-                response.Content,
+                response.Content.Length,
                 response.Provider,
                 response.Model,
                 response.RequestId);

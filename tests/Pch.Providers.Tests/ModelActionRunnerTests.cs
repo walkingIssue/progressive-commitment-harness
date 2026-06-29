@@ -22,6 +22,7 @@ public sealed class ModelActionRunnerTests
         Assert.Equal("emit_form", result.ActionName);
         Assert.Equal("destination", result.Arguments.GetProperty("field").GetString());
         Assert.Equal("ask user", result.Summary);
+        Assert.Equal(client.Content.Length, result.ResponseContentLength);
         Assert.Equal("test-provider", result.Provider);
         Assert.Equal("model_action", client.LastRequest?.JsonSchemaName);
         Assert.Contains("emit_form", client.LastRequest?.JsonSchema);
@@ -42,7 +43,10 @@ public sealed class ModelActionRunnerTests
         var runner = new ModelActionRunner(new CapturingCompletionClient(
             """{"action":"book_without_approval","arguments":{}}"""));
 
-        await Assert.ThrowsAsync<ModelActionRunnerException>(() => runner.RunAsync(CreatePacket()));
+        var exception = await Assert.ThrowsAsync<ModelActionRunnerException>(() => runner.RunAsync(CreatePacket()));
+
+        Assert.Equal("Model action response selected an action outside the allowed set.", exception.Message);
+        Assert.DoesNotContain("book_without_approval", exception.Message);
     }
 
     [Fact]
@@ -79,6 +83,22 @@ public sealed class ModelActionRunnerTests
             });
     }
 
+    [Fact]
+    public async Task EvaluatorDoesNotEchoRawDisallowedModelActionInError()
+    {
+        var runner = new ModelActionRunner(new CapturingCompletionClient(
+            """{"action":"book_without_approval","arguments":{}}"""));
+        var evaluator = new ModelActionEvaluator(runner);
+
+        var result = Assert.Single(await evaluator.EvaluateAsync(
+            [new ModelActionEvalCase("bad-action", CreatePacket(), "emit_form")]));
+
+        Assert.False(result.Passed);
+        Assert.Null(result.ActualActionName);
+        Assert.Equal("Model action response selected an action outside the allowed set.", result.Error);
+        Assert.DoesNotContain("book_without_approval", result.Error);
+    }
+
     private static ModelActionPacket CreatePacket()
     {
         var input = JsonSerializer.SerializeToElement(new
@@ -101,6 +121,8 @@ public sealed class ModelActionRunnerTests
 
     private sealed class CapturingCompletionClient(string content) : IModelCompletionClient
     {
+        public string Content { get; } = content;
+
         public ModelCompletionRequest? LastRequest { get; private set; }
 
         public Task<ModelCompletionResponse> CompleteAsync(
@@ -108,7 +130,7 @@ public sealed class ModelActionRunnerTests
             CancellationToken cancellationToken = default)
         {
             LastRequest = request;
-            return Task.FromResult(new ModelCompletionResponse("test-model", content, "test-provider", RequestId: "request-1"));
+            return Task.FromResult(new ModelCompletionResponse("test-model", Content, "test-provider", RequestId: "request-1"));
         }
     }
 }
