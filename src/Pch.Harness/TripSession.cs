@@ -11,6 +11,8 @@ public sealed class TripSession
     private readonly List<ApprovalToken> _approvalTokens = [];
     private readonly List<DeferredSlot> _deferredSlots = [];
     private readonly List<HandoffRequest> _handoffs = [];
+    private readonly List<ItinerarySlotDecision> _itineraryDecisions = [];
+    private readonly Dictionary<string, HashSet<string>> _itineraryCandidatePoolIdsBySlot = new(StringComparer.Ordinal);
     private StructuredMemoryDigest? _memoryDigest;
     private ItineraryCompilationResult? _lastItineraryCompilation;
 
@@ -58,11 +60,35 @@ public sealed class TripSession
 
     public IReadOnlyList<HandoffRequest> Handoffs => _handoffs;
 
+    public IReadOnlyList<ItinerarySlotDecision> ItineraryDecisions => _itineraryDecisions;
+
     public StructuredMemoryDigest? MemoryDigest => _memoryDigest;
 
     public ItineraryCompilationResult? LastItineraryCompilation => _lastItineraryCompilation;
 
     public void AddCandidatePool(CandidatePool pool) => _candidatePools.Add(pool);
+
+    public void AddItineraryCandidatePool(string slotId, CandidatePool pool)
+    {
+        AddCandidatePool(pool);
+        AssociateItineraryCandidatePool(slotId, pool.PoolId);
+    }
+
+    public void AssociateItineraryCandidatePool(string slotId, string poolId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId) || string.IsNullOrWhiteSpace(poolId))
+        {
+            return;
+        }
+
+        if (!_itineraryCandidatePoolIdsBySlot.TryGetValue(slotId, out var associatedPoolIds))
+        {
+            associatedPoolIds = new HashSet<string>(StringComparer.Ordinal);
+            _itineraryCandidatePoolIdsBySlot[slotId] = associatedPoolIds;
+        }
+
+        associatedPoolIds.Add(poolId);
+    }
 
     public void RecordAction(HarnessAction action) => _actions.Add(action);
 
@@ -115,10 +141,38 @@ public sealed class TripSession
 
     public void RecordHandoff(string target, string reason) => _handoffs.Add(new(target, reason));
 
+    public void RecordItineraryDecision(ItinerarySlotDecision decision) => _itineraryDecisions.Add(decision);
+
     public bool HasApprovalToken(string approvalId)
     {
         return _approvalTokens.Any(token => string.Equals(token.ApprovalId, approvalId, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(token.Token));
+    }
+
+    public bool HasItineraryCandidateForSlot(string slotId, string candidateId)
+    {
+        return TryGetItineraryCandidateForSlot(slotId, candidateId, out _);
+    }
+
+    public bool TryGetItineraryCandidateForSlot(string slotId, string candidateId, out Candidate candidate)
+    {
+        candidate = null!;
+        if (!_itineraryCandidatePoolIdsBySlot.TryGetValue(slotId, out var poolIds))
+        {
+            return false;
+        }
+
+        var match = _candidatePools
+            .Where(pool => poolIds.Contains(pool.PoolId))
+            .SelectMany(pool => pool.Candidates)
+            .FirstOrDefault(candidate => string.Equals(candidate.CandidateId, candidateId, StringComparison.Ordinal));
+        if (match is null)
+        {
+            return false;
+        }
+
+        candidate = match;
+        return true;
     }
 
     private bool IsKnownCandidateId(string candidateId)

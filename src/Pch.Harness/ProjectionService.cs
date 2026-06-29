@@ -96,7 +96,9 @@ public sealed class ProjectionService
         [
             $"itinerary_day_count: {session.LastItineraryCompilation.Days.Count}",
             $"itinerary_slot_count: {session.LastItineraryCompilation.SlotCount}",
-            $"itinerary_conflict_count: {session.LastItineraryCompilation.ConflictCount}"
+            $"itinerary_conflict_count: {session.LastItineraryCompilation.ConflictCount}",
+            $"selected_itinerary_count: {session.ItineraryDecisions.Count(decision => decision.Kind == ItinerarySlotDecisionKind.Selected)}",
+            $"deferred_itinerary_count: {session.ItineraryDecisions.Count(decision => decision.Kind == ItinerarySlotDecisionKind.Deferred)}"
         ];
     }
 
