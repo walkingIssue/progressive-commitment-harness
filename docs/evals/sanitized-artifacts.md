@@ -23,4 +23,6 @@ Persisted artifacts must not contain:
 
 The shared provider test fixture `SanitizedEvalArtifactAssert` serializes eval/status artifacts with the same JSON defaults used by lane tests and asserts that sensitive sentinels are absent. New provider eval lanes should add at least one rejected/error-path test through this helper before becoming release artifacts.
 
+Fidelity eval artifacts follow this same policy for Stage 6 bake-off rows: accepted rows may persist trusted candidate ids plus allowlisted decision enums/counts, while rejected rows omit source and candidate details entirely.
+
 Optional live smoke paths remain skipped or blocked by default. A live smoke must be key and health/credit guarded where applicable, use strict timeout/error handling, and must not fall back to another paid provider when blocked.
