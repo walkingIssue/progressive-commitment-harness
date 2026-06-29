@@ -15,6 +15,7 @@ public sealed class HarnessStageCockpitService
     private readonly ProviderActionBridge _providerActionBridge = new();
     private readonly RuntimeActionApplication _runtimeActionApplication = new();
     private readonly RuntimeMissionPlannerService _runtimeMissionPlannerService = new();
+    private readonly ItineraryDayPlannerService _itineraryDayPlannerService = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
@@ -29,6 +30,11 @@ public sealed class HarnessStageCockpitService
     private readonly List<MissionFieldFixture> _promptPendingConfirmations = [];
     private readonly List<MissionCommitmentFixture> _promptHighPriorityCommitments = [];
     private readonly List<MemoryDigestFactFixture> _promptMemoryDigestFacts = [];
+    private readonly List<ItineraryPlannerOutcomeFixture> _itineraryOutcomes = [];
+    private readonly List<ItineraryDayFixture> _itineraryDays = [];
+    private readonly List<ItineraryCandidatePoolFixture> _itineraryCandidatePools = [];
+    private readonly List<ItineraryEvidenceFixture> _itineraryEvidence = [];
+    private readonly List<MemoryDigestFactFixture> _itineraryDigestFacts = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -374,6 +380,28 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunItineraryDayPlanner(string runId)
+    {
+        var result = _itineraryDayPlannerService.Run(_session, runId);
+        UpsertItineraryOutcome(result.Outcome);
+        UpsertRange(_itineraryDays, result.Days, day => day.DayId);
+        UpsertRange(_itineraryCandidatePools, result.CandidatePools, pool => pool.PoolId);
+        UpsertRange(_itineraryEvidence, result.Evidence, evidence => evidence.EvidenceId);
+        UpsertRange(_itineraryDigestFacts, result.DigestFacts, fact => fact.FactId);
+
+        UpsertResponse(new(
+            $"response.{result.Outcome.State}.itinerary.{runId}",
+            result.Outcome.State == "blocked" ? SessionResponseState.Blocked : SessionResponseState.Applied,
+            result.Outcome.State == "blocked" ? "Blocked" : "Applied",
+            result.Outcome.State == "blocked"
+                ? result.Outcome.BlockedReason ?? "Itinerary day planner was blocked."
+                : "Itinerary day planner applied a deterministic day skeleton.",
+            runId,
+            null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -507,7 +535,20 @@ public sealed class HarnessStageCockpitService
                 _promptAppliedFields.ToArray(),
                 _promptPendingConfirmations.ToArray(),
                 _promptHighPriorityCommitments.ToArray(),
-                _promptMemoryDigestFacts.ToArray()));
+                _promptMemoryDigestFacts.ToArray()),
+            ItineraryDayPlanner: new(
+                "Harness itinerary slot compiler through deterministic provider candidate expansion",
+                [
+                    new("itinerary.accepted", "Build day skeleton", "accepted"),
+                    new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
+                    new("itinerary.missing-date", "Check date window", "date-blocked"),
+                    new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked")
+                ],
+                _itineraryOutcomes.ToArray(),
+                _itineraryDays.ToArray(),
+                _itineraryCandidatePools.ToArray(),
+                _itineraryEvidence.ToArray(),
+                _itineraryDigestFacts.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -726,6 +767,19 @@ public sealed class HarnessStageCockpitService
         else
         {
             _promptOutcomes.Add(outcome);
+        }
+    }
+
+    private void UpsertItineraryOutcome(ItineraryPlannerOutcomeFixture outcome)
+    {
+        var index = _itineraryOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _itineraryOutcomes[index] = outcome;
+        }
+        else
+        {
+            _itineraryOutcomes.Add(outcome);
         }
     }
 

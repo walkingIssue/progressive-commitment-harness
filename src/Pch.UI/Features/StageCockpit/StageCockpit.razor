@@ -414,6 +414,126 @@
             </div>
         </article>
 
+        <article class="panel itinerary-day-panel">
+            <div class="panel-head">
+                <span>Itinerary Day Planner</span>
+                <small>@Fixture.ItineraryDayPlanner.EndpointHint</small>
+            </div>
+            <div class="mission-run-list">
+                @foreach (var run in Fixture.ItineraryDayPlanner.Runs)
+                {
+                    var outcome = Fixture.ItineraryDayPlanner.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    <section class="mission-run-card"
+                             data-itinerary-run-id="@run.Id"
+                             data-scenario="@run.Scenario"
+                             data-itinerary-outcome="@outcome?.State"
+                             data-day-id="@outcome?.DayId"
+                             data-selected-outcome="@outcome?.SelectedOutcome"
+                             data-deferred-outcome="@outcome?.DeferredOutcome"
+                             data-blocked-outcome="@outcome?.BlockedOutcome"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason">
+                        <div>
+                            <strong>@run.Label</strong>
+                            <p>@run.Scenario</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.BlockedOutcome</small>
+                            }
+                        </div>
+                        <code>@(outcome?.ErrorCode ?? run.Scenario)</code>
+                        <button class="ghost" type="button" @onclick="() => RunItineraryDayPlanner(run.Id)">
+                            Run day
+                        </button>
+                    </section>
+                }
+            </div>
+            <div class="itinerary-grid">
+                <section>
+                    <strong>Days</strong>
+                    <div class="itinerary-list">
+                        @foreach (var day in Fixture.ItineraryDayPlanner.Days)
+                        {
+                            <div class="itinerary-day"
+                                 data-itinerary-day-id="@day.DayId"
+                                 data-day-date="@day.Date"
+                                 data-day-state="@day.State">
+                                <span>@day.Date</span>
+                                <code>@day.State</code>
+                                <div class="itinerary-slot-list">
+                                    @foreach (var slot in day.Slots)
+                                    {
+                                        <div class="itinerary-slot"
+                                             data-slot-id="@slot.SlotId"
+                                             data-slot-type="@slot.SlotType"
+                                             data-slot-state="@slot.State"
+                                             data-candidate-pool-id="@slot.CandidatePoolId"
+                                             data-selected-candidate-id="@slot.SelectedCandidateId">
+                                            <span>@slot.SlotType</span>
+                                            <code>@slot.State</code>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Candidate Pools</strong>
+                    <div class="itinerary-list">
+                        @foreach (var pool in Fixture.ItineraryDayPlanner.CandidatePools)
+                        {
+                            <div class="candidate-pool"
+                                 data-candidate-pool-id="@pool.PoolId"
+                                 data-slot-id="@pool.SlotId">
+                                <span>@pool.SlotId</span>
+                                @foreach (var candidate in pool.Candidates)
+                                {
+                                    <div class="candidate-option"
+                                         data-candidate-id="@candidate.CandidateId"
+                                         data-candidate-category="@candidate.Category"
+                                         data-evidence-ids="@string.Join(' ', candidate.EvidenceIds)">
+                                        <span>@candidate.Title</span>
+                                        <code>@candidate.Category</code>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Evidence</strong>
+                    <div class="itinerary-list">
+                        @foreach (var evidence in Fixture.ItineraryDayPlanner.Evidence)
+                        {
+                            <div class="itinerary-evidence"
+                                 data-itinerary-evidence-id="@evidence.EvidenceId"
+                                 data-evidence-source="@evidence.Source"
+                                 data-evidence-outcome="@evidence.Outcome">
+                                <span>@evidence.EvidenceId</span>
+                                <code>@evidence.Outcome</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Digest</strong>
+                    <div class="itinerary-list">
+                        @foreach (var fact in Fixture.ItineraryDayPlanner.DigestFacts)
+                        {
+                            <div class="itinerary-digest"
+                                 data-itinerary-digest-fact="@fact.FactId"
+                                 data-memory-source="@fact.Source"
+                                 data-memory-reference="@fact.ReferenceId">
+                                <span>@fact.Text</span>
+                                <code>@fact.ReferenceId</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -514,6 +634,12 @@
     private void RunPromptIntake(string runId)
     {
         Fixture = CockpitService.RunPromptIntake(runId);
+        LoadFixtureState();
+    }
+
+    private void RunItineraryDayPlanner(string runId)
+    {
+        Fixture = CockpitService.RunItineraryDayPlanner(runId);
         LoadFixtureState();
     }
 
