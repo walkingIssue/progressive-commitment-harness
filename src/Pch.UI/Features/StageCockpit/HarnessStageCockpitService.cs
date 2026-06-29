@@ -506,6 +506,7 @@ public sealed class HarnessStageCockpitService
         var approvalAction = nextAction as RequestApprovalAction;
         var candidates = packet.Candidates.Count > 0 ? packet.Candidates : choiceAction?.Choices ?? [];
         var approvalId = approvalAction?.Approval.ApprovalId ?? CurrentApprovalId();
+        var endToEndRuns = BuildEndToEndRuns();
 
         return new(
             Packet: new(
@@ -609,15 +610,9 @@ public sealed class HarnessStageCockpitService
                 _itineraryHolds.ToArray()),
             EndToEndTripRuns: new(
                 "Deterministic prompt-to-hold trip run seam through existing harness/provider boundaries",
-                [
-                    new("e2e.happy-path", "Run happy path", "happy-path"),
-                    new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation"),
-                    new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch"),
-                    new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot"),
-                    new("e2e.missing-approval", "Run missing approval", "missing-approval"),
-                    new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel")
-                ],
+                endToEndRuns,
                 _endToEndOutcomes.ToArray(),
+                BuildEndToEndReleaseSummary(endToEndRuns),
                 _endToEndEvidence.ToArray()));
     }
 
@@ -865,6 +860,77 @@ public sealed class HarnessStageCockpitService
             _endToEndOutcomes.Add(outcome);
         }
     }
+
+    private static IReadOnlyList<EndToEndTripRunFixture> BuildEndToEndRuns() =>
+    [
+        new("e2e.happy-path", "Run happy path", "happy-path", "release-smoke-e2e-happy-path", "control-e2e-happy-path", "Run happy path end-to-end trip smoke"),
+        new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation", "release-smoke-e2e-pending-confirmation", "control-e2e-pending-confirmation", "Run pending confirmation end-to-end trip smoke"),
+        new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch", "release-smoke-e2e-provider-mismatch", "control-e2e-provider-mismatch", "Run provider mismatch end-to-end trip smoke"),
+        new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot", "release-smoke-e2e-wrong-slot", "control-e2e-wrong-slot", "Run wrong-slot candidate end-to-end trip smoke"),
+        new("e2e.missing-approval", "Run missing approval", "missing-approval", "release-smoke-e2e-missing-approval", "control-e2e-missing-approval", "Run missing approval end-to-end trip smoke"),
+        new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel", "release-smoke-e2e-raw-sentinel", "control-e2e-raw-sentinel", "Run raw absence end-to-end trip smoke")
+    ];
+
+    private EndToEndReleaseSmokeSummaryFixture BuildEndToEndReleaseSummary(
+        IReadOnlyList<EndToEndTripRunFixture> runs)
+    {
+        var outcomesByRun = _endToEndOutcomes.ToDictionary(outcome => outcome.RunId, StringComparer.Ordinal);
+        outcomesByRun.TryGetValue("e2e.happy-path", out var primary);
+        var allRequiredPathsRan = runs.All(run => outcomesByRun.ContainsKey(run.Id));
+        var rawAbsenceMarker = outcomesByRun.TryGetValue("e2e.raw-sentinel", out var rawAbsence)
+            && string.Equals(rawAbsence.EvidenceExportOutcomeCode, "evidence_export_ready", StringComparison.Ordinal)
+            ? "raw_absence_verified"
+            : "raw_absence_pending";
+        var summaryState = primary is null
+            ? "not-run"
+            : allRequiredPathsRan
+                && string.Equals(primary.State, "applied", StringComparison.Ordinal)
+                && string.Equals(primary.SnapshotOutcomeCode, "complete", StringComparison.Ordinal)
+                && string.Equals(primary.EvidenceExportOutcomeCode, "evidence_export_ready", StringComparison.Ordinal)
+                && string.Equals(rawAbsenceMarker, "raw_absence_verified", StringComparison.Ordinal)
+                    ? "ready"
+                    : "partial";
+
+        return new(
+            "release-smoke.e2e.summary",
+            summaryState,
+            "e2e.happy-path",
+            primary?.PromptPacketOutcomeCode ?? "not_run",
+            primary?.MissionOutcomeCode ?? "not_run",
+            primary?.ItineraryOutcomeCode ?? "not_run",
+            primary?.SnapshotOutcomeCode ?? "not_run",
+            primary?.EvidenceExportOutcomeCode ?? "not_run",
+            primary?.HoldOutcomeCode ?? "not_run",
+            primary?.ApprovalId,
+            primary?.EvidencePacketId ?? "evidence-packet-pending",
+            primary?.ExportPacketId ?? "export-packet-pending",
+            _endToEndOutcomes.Count(outcome => string.Equals(outcome.State, "applied", StringComparison.Ordinal)),
+            _endToEndOutcomes.Count(outcome => string.Equals(outcome.State, "blocked", StringComparison.Ordinal)),
+            _endToEndOutcomes.Count(outcome => string.Equals(outcome.State, "proposed", StringComparison.Ordinal)),
+            rawAbsenceMarker,
+            runs.Select(run =>
+            {
+                outcomesByRun.TryGetValue(run.Id, out var outcome);
+                return new EndToEndReleaseSmokePathFixture(
+                    run.Id,
+                    run.Scenario,
+                    ExpectedEndToEndState(run.Id),
+                    outcome?.State ?? "not-run",
+                    run.ReleaseMarker,
+                    run.ControlId,
+                    run.ControlAriaLabel,
+                    outcome?.ErrorCode,
+                    outcome?.BlockedReason);
+            }).ToArray());
+    }
+
+    private static string ExpectedEndToEndState(string runId) => runId switch
+    {
+        "e2e.happy-path" => "applied",
+        "e2e.raw-sentinel" => "applied",
+        "e2e.pending-confirmation" => "proposed",
+        _ => "blocked"
+    };
 
     private static void UpsertRange<T>(
         List<T> target,
