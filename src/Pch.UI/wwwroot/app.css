@@ -245,6 +245,40 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.suggestion-panel {
+    grid-column: 1 / -1;
+}
+
+.suggestion-list {
+    display: grid;
+    gap: .75rem;
+}
+
+.suggestion-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: .75rem;
+    align-items: center;
+    border: 1px solid var(--pch-line);
+    border-radius: 8px;
+    padding: .85rem;
+}
+
+.suggestion-card p {
+    color: var(--pch-muted);
+    margin: .25rem 0;
+}
+
+.suggestion-card[data-trace-outcome="suggestion.accepted"] {
+    border-color: #87b49d;
+    background: #f3faf6;
+}
+
+.suggestion-card[data-trace-outcome="suggestion.blocked"] {
+    border-color: #b86969;
+    background: #fff4f4;
+}
+
 .response-list {
     display: grid;
     gap: .75rem;
@@ -366,6 +400,7 @@ h1:focus {
     .stage-hero,
     .stage-workspace,
     .field-grid,
+    .suggestion-card,
     .response-card,
     .trace-list li {
         grid-template-columns: 1fr;
