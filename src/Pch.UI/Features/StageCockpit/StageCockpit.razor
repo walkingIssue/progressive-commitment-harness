@@ -556,6 +556,107 @@
             </div>
         </article>
 
+        <article class="panel availability-preview-panel"
+                 data-availability-preview="stage-cockpit"
+                 data-raw-absence-state="@Fixture.AvailabilityPreview.RawAbsenceState"
+                 data-last-availability-run-id="@Fixture.AvailabilityPreview.LastRunId"
+                 aria-labelledby="availability-preview-title">
+            <div class="panel-head">
+                <span id="availability-preview-title">Availability Preview</span>
+                <small>@Fixture.AvailabilityPreview.EndpointHint</small>
+            </div>
+            <section class="release-summary"
+                     role="status"
+                     aria-live="polite"
+                     data-availability-summary="stage-cockpit"
+                     data-raw-absence-state="@Fixture.AvailabilityPreview.RawAbsenceState"
+                     data-last-availability-run-id="@Fixture.AvailabilityPreview.LastRunId">
+                <div>
+                    <strong>Preview</strong>
+                    <span>@(Fixture.AvailabilityPreview.LastRunId ?? "not-run")</span>
+                </div>
+                <dl>
+                    <div>
+                        <dt>Quote-ready</dt>
+                        <dd>@Fixture.AvailabilityPreview.Outcomes.Count(outcome => outcome.State == "quote-ready")</dd>
+                    </div>
+                    <div>
+                        <dt>Blocked</dt>
+                        <dd>@Fixture.AvailabilityPreview.Outcomes.Count(outcome => outcome.State.Contains("blocked", StringComparison.Ordinal))</dd>
+                    </div>
+                    <div>
+                        <dt>Raw</dt>
+                        <dd>@Fixture.AvailabilityPreview.RawAbsenceState</dd>
+                    </div>
+                </dl>
+            </section>
+            <div class="availability-run-list">
+                @foreach (var run in Fixture.AvailabilityPreview.Runs)
+                {
+                    var outcome = Fixture.AvailabilityPreview.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    <section class="availability-card"
+                             id="@run.MarkerId"
+                             data-availability-run-id="@run.Id"
+                             data-availability-scenario="@run.Scenario"
+                             data-availability-state="@outcome?.State"
+                             data-slot-id="@(outcome?.SlotId ?? run.SlotId)"
+                             data-candidate-id="@(outcome?.CandidateId ?? run.CandidateId)"
+                             data-quote-category="@(outcome?.QuoteCategory ?? run.QuoteCategory)"
+                             data-provider-outcome="@outcome?.ProviderOutcomeCode"
+                             data-harness-outcome="@outcome?.HarnessOutcomeCode"
+                             data-approval-outcome="@outcome?.ApprovalOutcomeCode"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason"
+                             data-provider="@outcome?.Provider"
+                             data-model="@outcome?.Model"
+                             data-request-id="@outcome?.RequestId"
+                             data-raw-absence-state="@Fixture.AvailabilityPreview.RawAbsenceState">
+                        <div>
+                            <strong>@run.Label</strong>
+                            <p>@run.Scenario</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.ProviderOutcomeCode</small>
+                            }
+                        </div>
+                        <code>@(outcome?.ErrorCode ?? run.QuoteCategory)</code>
+                        <button id="@run.ControlId"
+                                class="ghost"
+                                type="button"
+                                aria-label="@run.ControlAriaLabel"
+                                aria-controls="@run.MarkerId"
+                                data-availability-control-id="@run.ControlId"
+                                @onclick="() => RunAvailabilityPreview(run.Id)">
+                            Preview
+                        </button>
+                    </section>
+                }
+            </div>
+            <div class="availability-grid">
+                <section>
+                    <strong>Quote Rows</strong>
+                    <div class="availability-list">
+                        @foreach (var quote in Fixture.AvailabilityPreview.Quotes)
+                        {
+                            <div class="availability-quote"
+                                 data-availability-quote-id="@quote.QuoteId"
+                                 data-availability-run-id="@quote.RunId"
+                                 data-slot-id="@quote.SlotId"
+                                 data-candidate-id="@quote.CandidateId"
+                                 data-quote-category="@quote.QuoteCategory"
+                                 data-provider="@quote.Provider"
+                                 data-price-state="@quote.PriceState"
+                                 data-availability-quote-state="@quote.Outcome"
+                                 data-expires-at="@quote.ExpiresAt">
+                                <span>@quote.QuoteCategory</span>
+                                <code>@quote.Outcome</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        </article>
+
         <article class="panel end-to-end-trip-panel"
                  data-release-smoke-surface="stage-cockpit-e2e"
                  data-release-summary-state="@Fixture.EndToEndTripRuns.ReleaseSummary.State"
@@ -913,6 +1014,12 @@
     private void RunEndToEndTrip(string runId)
     {
         Fixture = CockpitService.RunEndToEndTrip(runId);
+        LoadFixtureState();
+    }
+
+    private void RunAvailabilityPreview(string runId)
+    {
+        Fixture = CockpitService.RunAvailabilityPreview(runId);
         LoadFixtureState();
     }
 

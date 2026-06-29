@@ -1036,6 +1036,153 @@ public sealed class HarnessStageCockpitServiceTests
     }
 
     [Fact]
+    public void AvailabilityAcceptedPreviewProducesQuoteReadyMarkers()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunAvailabilityPreview("availability.accepted");
+        var serialized = SerializeAvailabilityFixture(fixture);
+
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.accepted"
+                && outcome.State == "quote-ready"
+                && outcome.SlotId == "slot-lunch-day-2"
+                && outcome.CandidateId == "candidate-ramen-lunch"
+                && outcome.QuoteCategory == "dining"
+                && outcome.ProviderOutcomeCode == "hold_preparation_preview_ready"
+                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ApprovalOutcomeCode == "approval_not_required"
+                && outcome.ErrorCode is null);
+        Assert.Contains(
+            fixture.AvailabilityPreview.Quotes,
+            quote => quote.RunId == "availability.accepted"
+                && quote.SlotId == "slot-lunch-day-2"
+                && quote.CandidateId == "candidate-ramen-lunch"
+                && quote.PriceState == "preview_only"
+                && quote.Outcome == "quote_ready");
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void AvailabilityUnavailablePreviewUsesFixedSanitizedOutcome()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunAvailabilityPreview("availability.unavailable");
+        var serialized = SerializeAvailabilityFixture(fixture);
+
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.unavailable"
+                && outcome.State == "unavailable"
+                && outcome.ProviderOutcomeCode == "availability_unavailable"
+                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ErrorCode == "PCH_UI_AVAILABILITY_UNAVAILABLE");
+        Assert.DoesNotContain(
+            fixture.AvailabilityPreview.Quotes,
+            quote => quote.RunId == "availability.unavailable");
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void AvailabilityStalePacketBlocksAtProviderBoundary()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunAvailabilityPreview("availability.stale-packet");
+        var serialized = SerializeAvailabilityFixture(fixture);
+
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.stale-packet"
+                && outcome.State == "provider-blocked"
+                && outcome.ProviderOutcomeCode == "hold_preparation_packet_id_mismatch"
+                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ErrorCode == "PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH"
+                && outcome.BlockedReason == "Provider preview result did not match the trusted preview packet.");
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void AvailabilityWrongSlotBlocksBeforeProviderPreview()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunAvailabilityPreview("availability.wrong-slot");
+        var serialized = SerializeAvailabilityFixture(fixture);
+
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.wrong-slot"
+                && outcome.State == "harness-blocked"
+                && outcome.ProviderOutcomeCode == "not_run"
+                && outcome.HarnessOutcomeCode == "harness_blocked_wrong_slot"
+                && outcome.ErrorCode == "PCH_UI_AVAILABILITY_WRONG_SLOT"
+                && outcome.BlockedReason == "Selected candidate is not associated with the trusted itinerary slot.");
+        Assert.DoesNotContain(
+            fixture.AvailabilityPreview.Quotes,
+            quote => quote.RunId == "availability.wrong-slot");
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void AvailabilityApprovalRequiredDoesNotImplyHoldOrBooking()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunAvailabilityPreview("availability.approval-required");
+        var serialized = SerializeAvailabilityFixture(fixture);
+
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.approval-required"
+                && outcome.State == "approval-required"
+                && outcome.ProviderOutcomeCode == "hold_preparation_missing_approval"
+                && outcome.ApprovalOutcomeCode == "approval_required"
+                && outcome.ErrorCode == "PCH_UI_AVAILABILITY_APPROVAL_REQUIRED");
+        Assert.DoesNotContain(
+            fixture.AvailabilityPreview.Quotes,
+            quote => quote.RunId == "availability.approval-required");
+        Assert.DoesNotContain("hold_preparation_hold_prepared", serialized, StringComparison.Ordinal);
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void AvailabilityPreviewControlsAndRawAbsenceMarkersStayStable()
+    {
+        var service = new HarnessStageCockpitService();
+
+        service.RunAvailabilityPreview("availability.accepted");
+        service.RunAvailabilityPreview("availability.unavailable");
+        service.RunAvailabilityPreview("availability.stale-packet");
+        service.RunAvailabilityPreview("availability.wrong-slot");
+        service.RunAvailabilityPreview("availability.approval-required");
+        var fixture = service.RunAvailabilityPreview("availability.raw-sentinel");
+        var serialized = SerializeAvailabilityFixture(fixture);
+        var runs = fixture.AvailabilityPreview.Runs;
+
+        Assert.Equal(6, runs.Count);
+        Assert.Equal("verified", fixture.AvailabilityPreview.RawAbsenceState);
+        Assert.Equal("availability.raw-sentinel", fixture.AvailabilityPreview.LastRunId);
+        Assert.Equal(runs.Count, runs.Select(run => run.ControlId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(runs.Count, runs.Select(run => run.MarkerId).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(runs, run =>
+        {
+            Assert.StartsWith("control-availability-", run.ControlId, StringComparison.Ordinal);
+            Assert.StartsWith("availability-preview-", run.MarkerId, StringComparison.Ordinal);
+            Assert.Contains("availability preview", run.ControlAriaLabel, StringComparison.OrdinalIgnoreCase);
+        });
+        Assert.Contains(
+            fixture.AvailabilityPreview.Outcomes,
+            outcome => outcome.RunId == "availability.raw-sentinel"
+                && outcome.State == "quote-ready"
+                && outcome.ProviderOutcomeCode == "hold_preparation_preview_ready");
+        AssertAvailabilityRawTextAbsent(serialized);
+    }
+
+    [Fact]
     public void FidelityReleaseDashboardShowsStableGateAndArtifactMarkers()
     {
         var service = new HarnessStageCockpitService();
@@ -1151,6 +1298,31 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.FidelityReleaseDashboard,
             fixture.Session
         });
+    }
+
+    private static string SerializeAvailabilityFixture(StageCockpitFixture fixture)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            fixture.AvailabilityPreview,
+            fixture.Session
+        });
+    }
+
+    private static void AssertAvailabilityRawTextAbsent(string serialized)
+    {
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROMPT_TEXT_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("APPROVAL_TOKEN_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_HOLD_REFERENCE_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("CANDIDATE_DISPLAY_VALUE_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_EXCEPTION_MESSAGE_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_SENTINEL", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("mock-hold-slot", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("live booking", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("payment", serialized, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertFidelityRawTextAbsent(string serialized)

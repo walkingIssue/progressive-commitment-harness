@@ -179,6 +179,21 @@ internal sealed class StageCockpitFixtureProvider
                 "raw_absence_pending",
                 []),
             Evidence: []),
+        AvailabilityPreview: new(
+            EndpointHint: "UI-local deterministic availability preview seam pending canonical harness contract",
+            Runs:
+            [
+                new("availability.accepted", "Preview accepted quote", "accepted", "slot-lunch-day-2", "candidate-ramen-lunch", "dining", "availability-preview-accepted", "control-availability-accepted", "Run accepted availability preview"),
+                new("availability.unavailable", "Preview unavailable candidate", "unavailable", "slot-activity-day-2", "candidate-garden-entry", "activity", "availability-preview-unavailable", "control-availability-unavailable", "Run unavailable availability preview"),
+                new("availability.stale-packet", "Preview stale packet", "stale-packet", "slot-transit-day-3", "candidate-rail-pass", "transit", "availability-preview-stale-packet", "control-availability-stale-packet", "Run stale packet availability preview"),
+                new("availability.wrong-slot", "Preview wrong slot", "wrong-slot", "slot-lunch-day-9", "candidate-ramen-lunch", "dining", "availability-preview-wrong-slot", "control-availability-wrong-slot", "Run wrong-slot availability preview"),
+                new("availability.approval-required", "Preview approval required", "approval-required", "slot-dinner-day-4", "candidate-kaiseki-preview", "dining", "availability-preview-approval-required", "control-availability-approval-required", "Run approval-required availability preview"),
+                new("availability.raw-sentinel", "Preview raw absence", "raw-sentinel", "slot-quiet-day-5", "candidate-tea-break", "downtime", "availability-preview-raw-sentinel", "control-availability-raw-sentinel", "Run raw absence availability preview")
+            ],
+            Outcomes: [],
+            Quotes: [],
+            RawAbsenceState: "verified",
+            LastRunId: null),
         FidelityReleaseDashboard: new(
             EndpointHint: "UI-local deterministic release fidelity matrix pending canonical Stage 6 contracts",
             MatrixState: "review-required",
@@ -219,6 +234,7 @@ public sealed record StageCockpitFixture(
     PromptIntakePanelFixture PromptIntake,
     ItineraryDayPlannerPanelFixture ItineraryDayPlanner,
     EndToEndTripRunPanelFixture EndToEndTripRuns,
+    AvailabilityPreviewPanelFixture AvailabilityPreview,
     FidelityReleaseDashboardPanelFixture FidelityReleaseDashboard);
 
 public sealed record StagePacketFixture(
@@ -536,6 +552,51 @@ public sealed record EndToEndReleaseSmokePathFixture(
     string ControlAriaLabel,
     string? ErrorCode,
     string? BlockedReason);
+
+public sealed record AvailabilityPreviewPanelFixture(
+    string EndpointHint,
+    IReadOnlyList<AvailabilityPreviewRunFixture> Runs,
+    IReadOnlyList<AvailabilityPreviewOutcomeFixture> Outcomes,
+    IReadOnlyList<AvailabilityQuoteFixture> Quotes,
+    string RawAbsenceState,
+    string? LastRunId);
+
+public sealed record AvailabilityPreviewRunFixture(
+    string Id,
+    string Label,
+    string Scenario,
+    string SlotId,
+    string CandidateId,
+    string QuoteCategory,
+    string MarkerId,
+    string ControlId,
+    string ControlAriaLabel);
+
+public sealed record AvailabilityPreviewOutcomeFixture(
+    string RunId,
+    string State,
+    string SlotId,
+    string CandidateId,
+    string QuoteCategory,
+    string ProviderOutcomeCode,
+    string HarnessOutcomeCode,
+    string ApprovalOutcomeCode,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId);
+
+public sealed record AvailabilityQuoteFixture(
+    string QuoteId,
+    string RunId,
+    string SlotId,
+    string CandidateId,
+    string QuoteCategory,
+    string Provider,
+    string PriceState,
+    string Outcome,
+    string ExpiresAt);
 
 public sealed record FidelityReleaseDashboardPanelFixture(
     string EndpointHint,

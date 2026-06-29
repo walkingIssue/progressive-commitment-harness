@@ -19,6 +19,7 @@ public sealed class HarnessStageCockpitService
     private readonly RuntimeMissionPlannerService _runtimeMissionPlannerService = new();
     private readonly ItineraryDayPlannerService _itineraryDayPlannerService = new();
     private readonly EndToEndTripRunService _endToEndTripRunService = new();
+    private readonly AvailabilityPreviewService _availabilityPreviewService = new();
     private readonly FidelityMatrix _fidelityMatrix = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
@@ -42,6 +43,9 @@ public sealed class HarnessStageCockpitService
     private readonly List<ItineraryHoldFixture> _itineraryHolds = [];
     private readonly List<EndToEndTripRunOutcomeFixture> _endToEndOutcomes = [];
     private readonly List<EndToEndTripEvidenceFixture> _endToEndEvidence = [];
+    private readonly List<AvailabilityPreviewOutcomeFixture> _availabilityPreviewOutcomes = [];
+    private readonly List<AvailabilityQuoteFixture> _availabilityPreviewQuotes = [];
+    private string? _lastAvailabilityPreviewRunId;
     private readonly List<FidelityReleaseCheckOutcomeFixture> _fidelityCheckOutcomes = [];
     private string? _lastFidelityCheckedRowId;
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
@@ -457,6 +461,42 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunAvailabilityPreview(string runId)
+    {
+        var result = _availabilityPreviewService.Run(runId);
+        UpsertAvailabilityPreviewOutcome(result.Outcome);
+        UpsertRange(_availabilityPreviewQuotes, result.Quotes, quote => quote.QuoteId);
+        _lastAvailabilityPreviewRunId = result.Outcome.RunId;
+
+        UpsertResponse(new(
+            $"response.{result.Outcome.State}.availability.{runId}",
+            result.Outcome.State switch
+            {
+                "quote-ready" => SessionResponseState.Applied,
+                "approval-required" => SessionResponseState.ApprovalRequired,
+                "unavailable" => SessionResponseState.Rejected,
+                _ => SessionResponseState.Blocked
+            },
+            result.Outcome.State switch
+            {
+                "quote-ready" => "Applied",
+                "approval-required" => "Approval required",
+                "unavailable" => "Rejected",
+                _ => "Blocked"
+            },
+            result.Outcome.BlockedReason ?? result.Outcome.State switch
+            {
+                "quote-ready" => "Availability preview produced a deterministic quote-ready result.",
+                "approval-required" => "Availability preview requires explicit approval before mock hold preparation.",
+                "unavailable" => "Availability preview found no deterministic option.",
+                _ => "Availability preview was blocked before any live provider or booking action."
+            },
+            runId,
+            result.Outcome.State == "approval-required" ? "approval-availability-preview" : null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RunFidelityReleaseCheck(string rowId)
     {
         var row = BuildFidelityOwnershipRows(_fidelityMatrix.BuildDefaultMatrix()).FirstOrDefault(candidate =>
@@ -654,6 +694,7 @@ public sealed class HarnessStageCockpitService
                 _endToEndOutcomes.ToArray(),
                 BuildEndToEndReleaseSummary(endToEndRuns),
                 _endToEndEvidence.ToArray()),
+            AvailabilityPreview: BuildAvailabilityPreviewPanel(),
             FidelityReleaseDashboard: BuildFidelityReleaseDashboard());
     }
 
@@ -902,6 +943,19 @@ public sealed class HarnessStageCockpitService
         }
     }
 
+    private void UpsertAvailabilityPreviewOutcome(AvailabilityPreviewOutcomeFixture outcome)
+    {
+        var index = _availabilityPreviewOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _availabilityPreviewOutcomes[index] = outcome;
+        }
+        else
+        {
+            _availabilityPreviewOutcomes.Add(outcome);
+        }
+    }
+
     private void UpsertFidelityCheckOutcome(FidelityReleaseCheckOutcomeFixture outcome)
     {
         var index = _fidelityCheckOutcomes.FindIndex(existing => string.Equals(existing.RowId, outcome.RowId, StringComparison.Ordinal));
@@ -985,6 +1039,27 @@ public sealed class HarnessStageCockpitService
         "e2e.pending-confirmation" => "proposed",
         _ => "blocked"
     };
+
+    private AvailabilityPreviewPanelFixture BuildAvailabilityPreviewPanel()
+    {
+        return new(
+            "UI-local deterministic availability preview seam pending canonical harness availability contract",
+            BuildAvailabilityPreviewRuns(),
+            _availabilityPreviewOutcomes.ToArray(),
+            _availabilityPreviewQuotes.ToArray(),
+            "verified",
+            _lastAvailabilityPreviewRunId);
+    }
+
+    private static IReadOnlyList<AvailabilityPreviewRunFixture> BuildAvailabilityPreviewRuns() =>
+    [
+        new("availability.accepted", "Preview accepted quote", "accepted", "slot-lunch-day-2", "candidate-ramen-lunch", "dining", "availability-preview-accepted", "control-availability-accepted", "Run accepted availability preview"),
+        new("availability.unavailable", "Preview unavailable candidate", "unavailable", "slot-activity-day-2", "candidate-garden-entry", "activity", "availability-preview-unavailable", "control-availability-unavailable", "Run unavailable availability preview"),
+        new("availability.stale-packet", "Preview stale packet", "stale-packet", "slot-transit-day-3", "candidate-rail-pass", "transit", "availability-preview-stale-packet", "control-availability-stale-packet", "Run stale packet availability preview"),
+        new("availability.wrong-slot", "Preview wrong slot", "wrong-slot", "slot-lunch-day-9", "candidate-ramen-lunch", "dining", "availability-preview-wrong-slot", "control-availability-wrong-slot", "Run wrong-slot availability preview"),
+        new("availability.approval-required", "Preview approval required", "approval-required", "slot-dinner-day-4", "candidate-kaiseki-preview", "dining", "availability-preview-approval-required", "control-availability-approval-required", "Run approval-required availability preview"),
+        new("availability.raw-sentinel", "Preview raw absence", "raw-sentinel", "slot-quiet-day-5", "candidate-tea-break", "downtime", "availability-preview-raw-sentinel", "control-availability-raw-sentinel", "Run raw absence availability preview")
+    ];
 
     private FidelityReleaseDashboardPanelFixture BuildFidelityReleaseDashboard()
     {
