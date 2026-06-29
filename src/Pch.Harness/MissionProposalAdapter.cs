@@ -40,11 +40,21 @@ public sealed class MissionProposalAdapter
         return MissionProposalAdapterResult.Accepted(intake.Code, intake.Summary, intake.Digest, intake);
     }
 
-    public MissionProposalAdapterValidation ValidateAndMap(ProviderMissionProposalMirror mirror)
+    public MissionProposalAdapterValidation ValidateAndMap(ProviderMissionProposalMirror? mirror)
     {
+        if (mirror is null)
+        {
+            return Reject("invalid_proposal", "Mission proposal failed validation.");
+        }
+
         if (string.IsNullOrWhiteSpace(mirror.ProposalId) || IsOverlong(mirror.ProposalId))
         {
             return Reject("invalid_proposal_id", "Mission proposal failed validation.");
+        }
+
+        if (mirror.Fields is null || mirror.Constraints is null || mirror.Commitments is null)
+        {
+            return Reject("invalid_proposal", "Mission proposal failed validation.");
         }
 
         if (mirror.Fields.Count > MaxFields || mirror.Constraints.Count > MaxConstraints || mirror.Commitments.Count > MaxCommitments)
@@ -55,6 +65,11 @@ public sealed class MissionProposalAdapter
         var fields = new List<MissionFieldProposal>();
         foreach (var field in mirror.Fields)
         {
+            if (field is null || !ValidText(field.FieldPath))
+            {
+                return Reject("invalid_field", "Mission proposal field failed validation.");
+            }
+
             if (!AllowedFieldPaths.Contains(field.FieldPath))
             {
                 return Reject("unsupported_field_path", "Mission proposal contains an unsupported field path.");
@@ -71,6 +86,11 @@ public sealed class MissionProposalAdapter
         var constraints = new List<ConstraintProposal>();
         foreach (var constraint in mirror.Constraints)
         {
+            if (constraint is null)
+            {
+                return Reject("invalid_constraint", "Mission proposal constraint failed validation.");
+            }
+
             if (!ValidText(constraint.ConstraintId) || !ValidText(constraint.Label) || !ValidText(constraint.Value)
                 || !TryMapSource(constraint.Source, out var source) || !ValidEvidence(constraint.EvidenceIds))
             {
@@ -89,6 +109,11 @@ public sealed class MissionProposalAdapter
         var commitments = new List<CommitmentProposal>();
         foreach (var commitment in mirror.Commitments)
         {
+            if (commitment is null)
+            {
+                return Reject("invalid_commitment", "Mission proposal commitment failed validation.");
+            }
+
             if (!ValidText(commitment.CommitmentId) || !ValidText(commitment.Title)
                 || !TryMapCommitmentKind(commitment.Kind, out var kind)
                 || !TryMapPriority(commitment.Priority, out var priority)
@@ -130,7 +155,7 @@ public sealed class MissionProposalAdapter
         return new(false, code, summary, null);
     }
 
-    private static bool ValidText(string value)
+    private static bool ValidText(string? value)
     {
         return !string.IsNullOrWhiteSpace(value) && !IsOverlong(value);
     }
@@ -140,18 +165,19 @@ public sealed class MissionProposalAdapter
         return value is null || !IsOverlong(value);
     }
 
-    private static bool IsOverlong(string value)
+    private static bool IsOverlong(string? value)
     {
-        return value.Length > MaxTextLength;
+        return value is not null && value.Length > MaxTextLength;
     }
 
-    private static bool ValidEvidence(IReadOnlyList<string> evidenceIds)
+    private static bool ValidEvidence(IReadOnlyList<string>? evidenceIds)
     {
-        return evidenceIds.Count <= MaxEvidenceIds
+        return evidenceIds is not null
+            && evidenceIds.Count <= MaxEvidenceIds
             && evidenceIds.All(id => !string.IsNullOrWhiteSpace(id) && !IsOverlong(id));
     }
 
-    private static bool TryMapSource(string value, out AuthoritySource source)
+    private static bool TryMapSource(string? value, out AuthoritySource source)
     {
         source = value switch
         {
@@ -166,7 +192,7 @@ public sealed class MissionProposalAdapter
         return value is "user" or "trusted_tool" or "strong_model_inference" or "small_model_draft" or "harness_default" or "country_pack_assumption";
     }
 
-    private static bool TryMapPriority(string value, out CommitmentPriority priority)
+    private static bool TryMapPriority(string? value, out CommitmentPriority priority)
     {
         priority = value switch
         {
@@ -177,7 +203,7 @@ public sealed class MissionProposalAdapter
         return value is "normal" or "high";
     }
 
-    private static bool TryMapCommitmentKind(string value, out CommitmentKind kind)
+    private static bool TryMapCommitmentKind(string? value, out CommitmentKind kind)
     {
         kind = value switch
         {

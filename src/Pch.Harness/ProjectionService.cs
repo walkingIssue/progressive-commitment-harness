@@ -5,7 +5,7 @@ namespace Pch.Harness;
 public sealed class ProjectionService
 {
     private const int MaxCandidatesPerPacket = 6;
-    private const int MaxFactsPerPacket = 8;
+    private const int MaxFactsPerPacket = 12;
     private const int MaxConstraintsPerPacket = 8;
     private const int MaxMemoryFactsPerPacket = 4;
     private const int MaxPendingConfirmationsPerPacket = 4;
@@ -74,10 +74,10 @@ public sealed class ProjectionService
             $"destination_country: {session.Mission.DestinationCountry}",
             $"date_window: {session.Mission.StartDate:yyyy-MM-dd}/{session.Mission.EndDate:yyyy-MM-dd}",
             $"day_count: {session.Mission.DayCount}",
-            .. MemoryFacts(session),
             $"traveler_count: {session.Mission.Travelers.Count}",
             $"selected_candidate_count: {session.SelectedCandidateIds.Count}",
             $"deferred_slot_count: {session.DeferredSlots.Count}",
+            .. MemoryFacts(session),
             .. session.Mission.Commitments
                 .OrderBy(commitment => commitment.StartsAt)
                 .Select(commitment => $"commitment: {commitment.Title}")

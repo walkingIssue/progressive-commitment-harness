@@ -25,7 +25,7 @@ public sealed class ProjectionServiceTests
         Assert.Equal(3, packets.Count);
         Assert.All(packets, packet =>
         {
-            Assert.True(packet.LoadBearingFacts.Count <= 8);
+            Assert.True(packet.LoadBearingFacts.Count <= 12);
             Assert.True(packet.Candidates.Count <= 6);
             Assert.True(packet.Constraints.Count <= 8);
             Assert.Contains(packet.LoadBearingFacts, fact => fact.StartsWith("day_count:", StringComparison.Ordinal));

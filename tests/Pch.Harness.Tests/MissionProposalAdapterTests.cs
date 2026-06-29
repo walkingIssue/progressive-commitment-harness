@@ -1,3 +1,4 @@
+using Pch.Core;
 using Pch.Harness;
 using Xunit;
 
@@ -177,6 +178,82 @@ public sealed class MissionProposalAdapterTests
     }
 
     [Fact]
+    public void NullMirrorRejectsWithFixedCodeAndNoMutation()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        var originalPurpose = session.Mission.Purpose;
+
+        var result = new MissionProposalAdapter().Apply(session, null!);
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal("invalid_proposal", result.Code);
+        Assert.Equal("Mission proposal failed validation.", result.Summary);
+        Assert.Equal(originalPurpose, session.Mission.Purpose);
+        Assert.Null(session.MemoryDigest);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.Empty(session.Actions);
+    }
+
+    [Fact]
+    public void NullCollectionsRejectWithFixedCodeAndNoMutation()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        var sentinel = "RAW_NULL_COLLECTION_SENTINEL_SHOULD_NOT_LEAK";
+
+        var result = new MissionProposalAdapter().Apply(session, new ProviderMissionProposalMirror(
+            "planner-null-collections",
+            null!,
+            [],
+            []));
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal("invalid_proposal", result.Code);
+        Assert.DoesNotContain(sentinel, result.Summary, StringComparison.Ordinal);
+        Assert.Null(session.MemoryDigest);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.Empty(session.Actions);
+    }
+
+    [Fact]
+    public void NullEvidenceAndTextRejectWithoutExceptionOrRawEcho()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        var originalPurpose = session.Mission.Purpose;
+        var sentinel = "RAW_NULL_EVIDENCE_SENTINEL_SHOULD_NOT_LEAK";
+
+        var result = new MissionProposalAdapter().Apply(session, new ProviderMissionProposalMirror(
+            "planner-null-evidence",
+            [
+                new("/mission/purpose", sentinel, "user", null!)
+            ],
+            [
+                new("constraint-null", null!, "quiet", "user", true, null!)
+            ],
+            [
+                new(
+                    "commitment-null",
+                    "activity",
+                    null!,
+                    FixedAt,
+                    FixedAt.AddHours(1),
+                    null,
+                    false,
+                    false,
+                    "normal",
+                    "user",
+                    null!)
+            ]));
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal("invalid_field", result.Code);
+        Assert.Equal(originalPurpose, session.Mission.Purpose);
+        Assert.Null(session.MemoryDigest);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.Empty(session.Actions);
+        Assert.DoesNotContain(sentinel, result.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ProjectionIncludesBoundedMemoryDigestFactsAndPendingConfirmations()
     {
         var session = SyntheticTripFactory.CreateSession(7);
@@ -192,8 +269,40 @@ public sealed class MissionProposalAdapterTests
         var packet = new ProjectionService().Project(session, HarnessStage.Intake);
 
         Assert.True(result.IsAccepted);
-        Assert.True(packet.LoadBearingFacts.Count <= 8);
+        Assert.True(packet.LoadBearingFacts.Count <= 12);
         Assert.Contains(packet.LoadBearingFacts, fact => fact.StartsWith("memory: purpose: Funeral travel", StringComparison.Ordinal));
         Assert.Contains(packet.LoadBearingFacts, fact => fact.StartsWith("pending_confirmation: /mission/destination_country", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ProjectionKeepsCoreCountersWhenMemoryDigestIsFull()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        session.SelectCandidates(new ChoiceSelection("logistics", ["candidate-01"], FixedAt));
+        session.DeferSlot("dinner-day-2", "Waiting for family preference.");
+
+        var result = new MissionProposalAdapter().Apply(session, new ProviderMissionProposalMirror(
+            "planner-full-memory",
+            [
+                new("/mission/purpose", "Family travel", "user", ["evidence-user-purpose"]),
+                new("/mission/destination_country", "Japan", "strong_model_inference", ["evidence-model-country"]),
+                new("/mission/start_date", "2027-05-12", "strong_model_inference", ["evidence-model-start"]),
+                new("/mission/end_date", "2027-05-18", "strong_model_inference", ["evidence-model-end"])
+            ],
+            [
+                new("constraint-pace", "pace", "gentle", "strong_model_inference", true, ["evidence-model-pace"]),
+                new("constraint-budget", "budget", "moderate", "strong_model_inference", false, ["evidence-model-budget"])
+            ],
+            []));
+
+        var packet = new ProjectionService().Project(session, HarnessStage.Intake);
+
+        Assert.True(result.IsAccepted);
+        Assert.True(packet.LoadBearingFacts.Count <= 12);
+        Assert.Contains("traveler_count: 1", packet.LoadBearingFacts);
+        Assert.Contains("selected_candidate_count: 1", packet.LoadBearingFacts);
+        Assert.Contains("deferred_slot_count: 1", packet.LoadBearingFacts);
+        Assert.True(packet.LoadBearingFacts.Count(fact => fact.StartsWith("memory:", StringComparison.Ordinal)
+            || fact.StartsWith("pending_confirmation:", StringComparison.Ordinal)) <= 4);
     }
 }
