@@ -7,6 +7,10 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Pch.Harness\Pch.Harness.csproj" />
+  </ItemGroup>
+
   <Target Name="BuildTypeScript" BeforeTargets="Build" Condition="Exists('node_modules/typescript/bin/tsc')">
     <Exec WorkingDirectory="$(ProjectDir)" Command="npm run build:ui" />
   </Target>

@@ -8,6 +8,7 @@ internal sealed class StageCockpitFixtureProvider
             Name: "Trip intent slot collection",
             Summary: "Collect the first load-bearing trip constraints without asking the user to author a plan.",
             State: "Awaiting required slot review",
+            Source: "Fixture fallback",
             RequiredSlotCount: 4,
             CompletedSlotCount: 3,
             AllowedOutputs:
@@ -90,6 +91,7 @@ public sealed record StagePacketFixture(
     string Name,
     string Summary,
     string State,
+    string Source,
     int RequiredSlotCount,
     int CompletedSlotCount,
     IReadOnlyList<string> AllowedOutputs,
@@ -139,5 +141,6 @@ public enum SessionResponseState
     Pending,
     Applied,
     Rejected,
-    ApprovalRequired
+    ApprovalRequired,
+    Blocked
 }

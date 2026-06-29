@@ -1,10 +1,12 @@
 using Pch.UI.Components;
+using Pch.UI.Features.StageCockpit;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddScoped<HarnessStageCockpitService>();
 
 var app = builder.Build();
 

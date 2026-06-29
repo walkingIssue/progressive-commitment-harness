@@ -1,8 +1,12 @@
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Pch.UI.Features.Approvals
 @using Pch.UI.Features.EvidenceTrace
+@rendermode InteractiveServer
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject HarnessStageCockpitService CockpitService
 
 <main class="pch-shell">
     <section class="stage-hero">
@@ -15,6 +19,7 @@
             <span>Stage</span>
             <strong>@Fixture.Packet.Id</strong>
             <small>@Fixture.Packet.CompletedSlotCount of @Fixture.Packet.RequiredSlotCount slots ready</small>
+            <small>@Fixture.Packet.Source</small>
         </div>
     </section>
 
@@ -43,7 +48,10 @@
         <article class="panel form-panel" id="stage-form">
             <div class="panel-head">
                 <span>@Fixture.GeneratedForm.Title</span>
-                <button class="ghost" type="button" @onclick="SaveDraftAsync">Save draft</button>
+                <div class="panel-actions">
+                    <button class="ghost" type="button" @onclick="ApplyFormAsync">Apply form</button>
+                    <button class="ghost" type="button" @onclick="SaveDraftAsync">Save draft</button>
+                </div>
             </div>
             <div class="field-grid">
                 @foreach (var field in Fixture.GeneratedForm.Fields)
@@ -79,7 +87,7 @@
                     <button class="choice-card @(SelectedCandidateId == candidate.Id ? "selected" : "")"
                             type="button"
                             data-candidate-id="@candidate.Id"
-                            @onclick="() => SelectedCandidateId = candidate.Id">
+                            @onclick="() => SelectCandidate(candidate.Id)">
                         <strong>@candidate.Title</strong>
                         <span>@candidate.Summary</span>
                         <small>@candidate.Tradeoff</small>
@@ -91,13 +99,17 @@
 
         <article class="panel session-panel">
             <div class="panel-head">
-                <span>Session Response Seam</span>
+                <span>Harness Session Responses</span>
                 <small>@Fixture.Session.EndpointHint</small>
+            </div>
+            <div class="panel-actions response-toolbar">
+                <button class="ghost" type="button" @onclick="TriggerBlockedSelection">Trigger blocked choice</button>
+                <button class="ghost" type="button" @onclick="RequestApproval">Request approval stage</button>
             </div>
             <div class="response-list" data-session-id="@Fixture.Session.Id">
                 @foreach (var response in SessionResponses)
                 {
-                    <section class="response-card" data-response-id="@response.Id" data-response-state="@response.State" data-target="@response.Target">
+                    <section class="response-card" data-response-id="@response.Id" data-response-state="@response.State" data-target="@response.Target" data-blocked-reason="@(response.State == SessionResponseState.Blocked ? response.Summary : "")">
                         <div>
                             <strong>@response.Label</strong>
                             <p>@response.Summary</p>
@@ -106,8 +118,7 @@
                         <div class="response-actions">
                             @if (response.State == SessionResponseState.Pending)
                             {
-                                <button class="ghost" type="button" @onclick="() => SetResponseState(response.Id, SessionResponseState.Applied)">Apply</button>
-                                <button class="ghost danger" type="button" @onclick="() => SetResponseState(response.Id, SessionResponseState.Rejected)">Reject</button>
+                                <span>Awaiting harness action</span>
                             }
                             else if (response.State == SessionResponseState.ApprovalRequired)
                             {
@@ -126,14 +137,14 @@
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
-                      OnApprove="ApproveMockHold" />
+                      OnApprove="ApproveCurrentRequest" />
 
         <EvidenceTracePreview Trace="Fixture.Trace" Claims="TraceClaims.ToArray()" />
     </section>
 </main>
 
 @code {
-    private readonly StageCockpitFixture Fixture = new StageCockpitFixtureProvider().GetFixture();
+    private StageCockpitFixture Fixture = default!;
     private readonly Dictionary<string, string> FormValues = [];
     private IJSObjectReference? module;
     private List<SessionResponseFixture> SessionResponses = [];
@@ -142,7 +153,13 @@
 
     private SessionResponseFixture ApprovalResponse =>
         SessionResponses.FirstOrDefault(response => response.ApprovalId == Fixture.Approval.Id)
-        ?? Fixture.Session.Responses.First(response => response.ApprovalId == Fixture.Approval.Id);
+        ?? new(
+            "response.pending.approval",
+            SessionResponseState.Pending,
+            "Pending",
+            "No approval request is active for the current harness stage.",
+            Fixture.Approval.Id,
+            Fixture.Approval.Id);
 
     private IEnumerable<EvidenceClaimFixture> TraceClaims =>
     [
@@ -153,13 +170,8 @@
 
     protected override void OnInitialized()
     {
-        foreach (var field in Fixture.GeneratedForm.Fields)
-        {
-            FormValues[field.Id] = field.Value;
-        }
-
-        SelectedCandidateId = Fixture.ChoiceSet.SelectedCandidateId;
-        SessionResponses = [..Fixture.Session.Responses];
+        Fixture = CockpitService.Current();
+        LoadFixtureState();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -176,6 +188,31 @@
         FormValues[id] = value ?? "";
     }
 
+    private Task ApplyFormAsync()
+    {
+        Fixture = CockpitService.ApplyForm(FormValues);
+        LoadFixtureState();
+        return Task.CompletedTask;
+    }
+
+    private void SelectCandidate(string candidateId)
+    {
+        Fixture = CockpitService.SelectCandidate(candidateId);
+        LoadFixtureState();
+    }
+
+    private void TriggerBlockedSelection()
+    {
+        Fixture = CockpitService.TriggerBlockedSelection();
+        LoadFixtureState();
+    }
+
+    private void RequestApproval()
+    {
+        Fixture = CockpitService.RequestApprovalStage();
+        LoadFixtureState();
+    }
+
     private async Task SaveDraftAsync()
     {
         if (module is null) return;
@@ -189,29 +226,23 @@
         await module.InvokeVoidAsync("saveDraft", Fixture.Packet.Id, values);
     }
 
-    private void ApproveMockHold()
+    private void ApproveCurrentRequest()
     {
-        ApprovalToken = $"fixture-approval-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
-        SetResponseState(ApprovalResponse.Id, SessionResponseState.Applied);
+        Fixture = CockpitService.ApproveCurrentRequest();
+        ApprovalToken = $"ui-approval-present-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}";
+        LoadFixtureState();
     }
 
-    private void SetResponseState(string responseId, SessionResponseState state)
+    private void LoadFixtureState()
     {
-        var index = SessionResponses.FindIndex(response => response.Id == responseId);
-        if (index < 0) return;
-
-        var current = SessionResponses[index];
-        SessionResponses[index] = current with
+        FormValues.Clear();
+        foreach (var field in Fixture.GeneratedForm.Fields)
         {
-            State = state,
-            Label = state switch
-            {
-                SessionResponseState.Applied => "Applied",
-                SessionResponseState.Rejected => "Rejected",
-                SessionResponseState.ApprovalRequired => "Approval required",
-                _ => "Pending"
-            }
-        };
+            FormValues[field.Id] = field.Value;
+        }
+
+        SelectedCandidateId = Fixture.ChoiceSet.SelectedCandidateId;
+        SessionResponses = [.. Fixture.Session.Responses];
     }
 
     public async ValueTask DisposeAsync()

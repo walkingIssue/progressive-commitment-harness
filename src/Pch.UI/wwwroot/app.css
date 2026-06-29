@@ -158,6 +158,13 @@ h1:focus {
     font-weight: 500;
 }
 
+.panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-end;
+}
+
 .packet-list {
     display: grid;
     gap: .85rem;
@@ -273,10 +280,20 @@ h1:focus {
     background: #fffaf0;
 }
 
+.response-card[data-response-state="Blocked"] {
+    border-color: #b86969;
+    background: #fff4f4;
+}
+
 .response-actions {
     display: flex;
     justify-content: flex-end;
     gap: .5rem;
+}
+
+.response-toolbar {
+    justify-content: flex-start;
+    margin-bottom: .85rem;
 }
 
 .ghost,
