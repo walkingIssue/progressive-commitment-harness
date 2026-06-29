@@ -130,3 +130,18 @@ Verification:
 - Eval rows report decode/intake outcomes without raw payload persistence.
 - The UI can display and apply a deterministic suggested action through the same blocked/accepted path users will later exercise with a small model.
 - No required test uses provider credentials or network.
+
+## Result
+
+Status: done in Sprint 004.
+
+- Shellby added harness-owned `ExternalActionProposal`, `ExternalActionDecoder`, sanitized decode outcomes, no-mutation decode/intake failure tests, and approval-token dropping for external/provider approval proposals.
+- Kaneki added provider-local bridge/eval rows with decode/intake outcome codes and sanitized metadata only; live OpenRouter/Qwen remained blocked after guarded provider failure.
+- Sarah repaired the model-suggested UI path so deterministic suggestions route through `ExternalActionDecoder` plus `HarnessActionIntake`, with accepted, blocked, and malformed proposal states rendered through sanitized markers.
+
+Final verification:
+
+- `dotnet test`: 73 tests passed.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke passed for accepted `defer_slot`, blocked `handoff`, malformed JSON, and no raw sentinel page leakage.
