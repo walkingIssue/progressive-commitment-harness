@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Pch.Providers.Errors;
@@ -118,7 +119,91 @@ public sealed class OpenRouterClientTests
         await Assert.ThrowsAsync<ProviderCreditExhaustedException>(() => exhausted.GetCreditStatusAsync());
     }
 
+    [Fact]
+    public async Task CallerCancellationDuringCompletionIsNotMappedToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            CheckCreditsBeforeCompletion = false,
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new CancellationObservingHandler()),
+            options,
+            () => "unit-test-key");
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")]),
+            cancellation.Token));
+    }
+
+    [Fact]
+    public async Task CallerCancellationDuringCreditCheckIsNotMappedToProviderUnavailable()
+    {
+        var client = CreateClient(new CancellationObservingHandler());
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")]),
+            cancellation.Token));
+    }
+
+    [Fact]
+    public async Task TimeoutDuringCompletionBodyReadMapsToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            CheckCreditsBeforeCompletion = false,
+            Timeout = TimeSpan.FromMilliseconds(1)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new QueueHandler(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new BlockingContent()
+            })),
+            options,
+            () => "unit-test-key");
+
+        await Assert.ThrowsAsync<ProviderUnavailableException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")])));
+    }
+
+    [Fact]
+    public async Task TimeoutDuringCreditsBodyReadMapsToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            Timeout = TimeSpan.FromMilliseconds(1)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new QueueHandler(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new BlockingContent()
+            })),
+            options,
+            () => "unit-test-key");
+
+        await Assert.ThrowsAsync<ProviderUnavailableException>(() => client.GetCreditStatusAsync());
+    }
+
     private static OpenRouterModelCompletionClient CreateClient(QueueHandler handler)
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        return new OpenRouterModelCompletionClient(new HttpClient(handler), options, () => "unit-test-key");
+    }
+
+    private static OpenRouterModelCompletionClient CreateClient(HttpMessageHandler handler)
     {
         var options = new OpenRouterOptions
         {
@@ -170,6 +255,44 @@ public sealed class OpenRouterClientTests
             }
 
             return clone;
+        }
+    }
+
+    private sealed class CancellationObservingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(Json(HttpStatusCode.OK, "{}"));
+        }
+    }
+
+    private sealed class BlockingContent : HttpContent
+    {
+        public BlockingContent()
+        {
+            Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        }
+
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = -1;
+            return false;
         }
     }
 }
