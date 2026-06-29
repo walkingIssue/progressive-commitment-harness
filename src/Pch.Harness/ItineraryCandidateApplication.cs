@@ -119,6 +119,11 @@ public sealed class ItineraryCandidateApplication
             return Reject("category_mismatch", "Itinerary slot decision category did not match the candidate.");
         }
 
+        if (!session.HasItineraryCandidateForSlot(slot.SlotId, candidate.CandidateId))
+        {
+            return Reject("candidate_pool_mismatch", "Itinerary candidate is not associated with the compiled slot.");
+        }
+
         if (!CandidateMatchesSlot(slot.Kind, candidate.Kind))
         {
             return Reject("candidate_slot_mismatch", "Itinerary candidate does not match the compiled slot.");

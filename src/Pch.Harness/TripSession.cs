@@ -12,6 +12,7 @@ public sealed class TripSession
     private readonly List<DeferredSlot> _deferredSlots = [];
     private readonly List<HandoffRequest> _handoffs = [];
     private readonly List<ItinerarySlotDecision> _itineraryDecisions = [];
+    private readonly Dictionary<string, HashSet<string>> _itineraryCandidatePoolIdsBySlot = new(StringComparer.Ordinal);
     private StructuredMemoryDigest? _memoryDigest;
     private ItineraryCompilationResult? _lastItineraryCompilation;
 
@@ -66,6 +67,28 @@ public sealed class TripSession
     public ItineraryCompilationResult? LastItineraryCompilation => _lastItineraryCompilation;
 
     public void AddCandidatePool(CandidatePool pool) => _candidatePools.Add(pool);
+
+    public void AddItineraryCandidatePool(string slotId, CandidatePool pool)
+    {
+        AddCandidatePool(pool);
+        AssociateItineraryCandidatePool(slotId, pool.PoolId);
+    }
+
+    public void AssociateItineraryCandidatePool(string slotId, string poolId)
+    {
+        if (string.IsNullOrWhiteSpace(slotId) || string.IsNullOrWhiteSpace(poolId))
+        {
+            return;
+        }
+
+        if (!_itineraryCandidatePoolIdsBySlot.TryGetValue(slotId, out var associatedPoolIds))
+        {
+            associatedPoolIds = new HashSet<string>(StringComparer.Ordinal);
+            _itineraryCandidatePoolIdsBySlot[slotId] = associatedPoolIds;
+        }
+
+        associatedPoolIds.Add(poolId);
+    }
 
     public void RecordAction(HarnessAction action) => _actions.Add(action);
 
@@ -124,6 +147,19 @@ public sealed class TripSession
     {
         return _approvalTokens.Any(token => string.Equals(token.ApprovalId, approvalId, StringComparison.Ordinal)
             && !string.IsNullOrWhiteSpace(token.Token));
+    }
+
+    public bool HasItineraryCandidateForSlot(string slotId, string candidateId)
+    {
+        if (!_itineraryCandidatePoolIdsBySlot.TryGetValue(slotId, out var poolIds))
+        {
+            return false;
+        }
+
+        return _candidatePools
+            .Where(pool => poolIds.Contains(pool.PoolId))
+            .SelectMany(pool => pool.Candidates)
+            .Any(candidate => string.Equals(candidate.CandidateId, candidateId, StringComparison.Ordinal));
     }
 
     private bool IsKnownCandidateId(string candidateId)

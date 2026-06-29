@@ -16,6 +16,7 @@ public sealed class ItineraryCandidateApplicationTests
     {
         var session = CompiledSession();
         var slot = Slot(session, ItinerarySlotKind.Activity);
+        Associate(session, slot, "pool-logistics");
 
         var result = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
             session.SessionId,
@@ -100,6 +101,7 @@ public sealed class ItineraryCandidateApplicationTests
     {
         var session = CompiledSession();
         var slot = Slot(session, ItinerarySlotKind.Activity);
+        Associate(session, slot, "pool-logistics");
 
         var result = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
             session.SessionId,
@@ -147,6 +149,7 @@ public sealed class ItineraryCandidateApplicationTests
         var session = CompiledSession();
         var activity = Slot(session, ItinerarySlotKind.Activity);
         var meal = Slot(session, ItinerarySlotKind.Meal);
+        Associate(session, activity, "pool-logistics");
         var application = new ItineraryCandidateApplication();
 
         application.Apply(session, new ItinerarySlotDecisionRequest(
@@ -173,27 +176,72 @@ public sealed class ItineraryCandidateApplicationTests
     }
 
     [Fact]
+    public void CandidateFromDifferentSameKindSlotPoolBlocksWithoutMutation()
+    {
+        const string sentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
+        var session = CompiledSession();
+        var mealSlots = session.LastItineraryCompilation!.Days
+            .SelectMany(day => day.Slots)
+            .Where(slot => slot.Kind == ItinerarySlotKind.Meal)
+            .Take(2)
+            .ToArray();
+        var breakfast = mealSlots[0];
+        var lunch = mealSlots[1];
+        session.AddItineraryCandidatePool(breakfast.SlotId, CandidatePoolFor(
+            "pool-breakfast",
+            new Candidate(
+                "candidate-breakfast",
+                CandidateKind.Restaurant,
+                "Breakfast option",
+                "Breakfast slot candidate.",
+                null,
+                null,
+                ["evidence-breakfast"],
+                110)));
+        session.AddItineraryCandidatePool(lunch.SlotId, CandidatePoolFor(
+            $"pool-{sentinel}",
+            new Candidate(
+                "candidate-lunch",
+                CandidateKind.Restaurant,
+                sentinel,
+                sentinel,
+                null,
+                null,
+                ["evidence-lunch"],
+                120)));
+
+        var result = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
+            session.SessionId,
+            breakfast.SlotId,
+            ItinerarySlotDecisionKind.Selected,
+            breakfast.Kind,
+            "candidate-lunch",
+            CandidateKind.Restaurant,
+            FixedNow));
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        AssertBlocked(result, "candidate_pool_mismatch", session);
+        Assert.DoesNotContain(sentinel, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("pool-", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SerializedResultDoesNotContainRawCandidateSentinel()
     {
         const string sentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
         var session = CompiledSession();
-        session.AddCandidatePool(new CandidatePool(
-            "pool-sentinel",
-            "all",
-            [
-                new(
-                    "candidate-safe-id",
-                    CandidateKind.Activity,
-                    sentinel,
-                    sentinel,
-                    null,
-                    null,
-                    ["evidence-fixture-candidates"],
-                    140)
-            ],
-            [],
-            ObservedAt));
         var slot = Slot(session, ItinerarySlotKind.Activity);
+        session.AddItineraryCandidatePool(slot.SlotId, CandidatePoolFor(
+            "pool-sentinel",
+            new Candidate(
+                "candidate-safe-id",
+                CandidateKind.Activity,
+                sentinel,
+                sentinel,
+                null,
+                null,
+                ["evidence-fixture-candidates"],
+                140)));
 
         var result = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
             session.SessionId,
@@ -227,6 +275,21 @@ public sealed class ItineraryCandidateApplicationTests
         return session.LastItineraryCompilation!.Days
             .SelectMany(day => day.Slots)
             .First(slot => slot.Kind == kind);
+    }
+
+    private static void Associate(TripSession session, ItinerarySlot slot, string poolId)
+    {
+        session.AssociateItineraryCandidatePool(slot.SlotId, poolId);
+    }
+
+    private static CandidatePool CandidatePoolFor(string poolId, Candidate candidate)
+    {
+        return new CandidatePool(
+            poolId,
+            "all",
+            [candidate],
+            [],
+            ObservedAt);
     }
 
     private static void AssertBlocked(
