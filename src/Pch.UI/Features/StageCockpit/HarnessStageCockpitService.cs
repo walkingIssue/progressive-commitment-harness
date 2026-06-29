@@ -1,5 +1,7 @@
 using Pch.Core;
 using Pch.Harness;
+using Pch.Providers.ModelActions;
+using System.Text.Json;
 
 namespace Pch.UI.Features.StageCockpit;
 
@@ -10,9 +12,12 @@ public sealed class HarnessStageCockpitService
     private readonly StageMachine _stageMachine = new();
     private readonly ExternalActionDecoder _externalActionDecoder = new();
     private readonly HarnessActionIntake _actionIntake = new();
+    private readonly ProviderActionBridge _providerActionBridge = new();
+    private readonly RuntimeActionApplication _runtimeActionApplication = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
+    private readonly List<ModelSuggestionRunOutcomeFixture> _modelRunOutcomes = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -203,6 +208,82 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunModelSuggestion(string runId)
+    {
+        var packet = _projection.Project(_session, _session.Stage);
+        var scenario = CreateModelScenario(runId, packet);
+        if (scenario is null)
+        {
+            AddModelRunOutcome(new(
+                runId,
+                "blocked",
+                "unknown",
+                "decode_not_run",
+                "not_run",
+                "intake_not_run",
+                "server_model.blocked",
+                "PCH_UI_MODEL_RUN_UNKNOWN",
+                "Server model suggestion scenario is not recognized.",
+                "deterministic-mock",
+                "mock-stage-action",
+                null));
+            return Current();
+        }
+
+        var bridge = _providerActionBridge.Bridge(scenario.Packet, scenario.Result);
+        if (!bridge.IsAccepted)
+        {
+            AddModelRunOutcome(new(
+                scenario.RunId,
+                "blocked",
+                scenario.Result.ActionName,
+                bridge.DecodeOutcomeCode,
+                "not_run",
+                bridge.IntakeOutcomeCode,
+                bridge.DecodeOutcomeCode,
+                $"PCH_UI_BRIDGE_{bridge.DecodeOutcomeCode.ToUpperInvariant()}",
+                "Provider bridge rejected the model action before harness intake.",
+                scenario.Result.Provider,
+                scenario.Result.Model,
+                scenario.Result.RequestId));
+            UpsertModelRunResponse(scenario.RunId, SessionResponseState.Blocked, bridge.DecodeOutcomeCode, "Provider bridge rejected the model action before harness intake.");
+            return Current();
+        }
+
+        var runtimeProposal = bridge.RuntimeProposal!;
+        var externalProposal = new ExternalActionProposal(
+            runtimeProposal.ActionId,
+            runtimeProposal.Kind,
+            runtimeProposal.Arguments.Clone());
+        var runtime = _runtimeActionApplication.Apply(_session, externalProposal);
+        _lastTurn = null;
+        var trace = runtime.Trace.FirstOrDefault();
+        var traceOutcome = trace?.Outcome ?? (runtime.IsBlocked ? "blocked" : "accepted");
+        var state = runtime.IsBlocked ? "blocked" : "accepted";
+
+        AddModelRunOutcome(new(
+            scenario.RunId,
+            state,
+            runtimeProposal.Kind,
+            bridge.DecodeOutcomeCode,
+            runtime.DecodeCode,
+            runtime.IntakeCode,
+            runtime.IsBlocked ? traceOutcome : "server_model.accepted",
+            runtime.IsBlocked ? RuntimeErrorCode(runtime) : null,
+            runtime.IsBlocked ? runtime.Summary : null,
+            scenario.Result.Provider,
+            scenario.Result.Model,
+            scenario.Result.RequestId));
+
+        UpsertModelRunResponse(
+            scenario.RunId,
+            runtime.IsBlocked ? SessionResponseState.Blocked : SessionResponseState.Applied,
+            runtime.IsBlocked ? runtime.IntakeCode : "server_model.accepted",
+            runtime.IsBlocked ? runtime.Summary : $"Runtime accepted model action {runtimeProposal.Kind}.");
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -298,7 +379,15 @@ public sealed class HarnessStageCockpitService
             SuggestedActions: new(
                 "Deterministic UI seam using harness decoder/intake",
                 _suggestions,
-                _suggestionOutcomes.ToArray()));
+                _suggestionOutcomes.ToArray()),
+            ModelSuggestionRuns: new(
+                "Server-side deterministic mock provider through provider bridge and runtime application",
+                [
+                    new("server-model.accept.defer-slot", "Run accepted model suggestion", HarnessAction.DeferSlotKind),
+                    new("server-model.block.form-mismatch", "Run blocked model suggestion", HarnessAction.EmitFormKind),
+                    new("server-model.decode.missing-argument", "Run decode-failure model suggestion", HarnessAction.DeferSlotKind)
+                ],
+                _modelRunOutcomes.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -397,4 +486,91 @@ public sealed class HarnessStageCockpitService
             _suggestionOutcomes.Add(outcome);
         }
     }
+
+    private ModelRunScenario? CreateModelScenario(string runId, StagePacket packet)
+    {
+        var actionKind = runId switch
+        {
+            "server-model.accept.defer-slot" => HarnessAction.DeferSlotKind,
+            "server-model.block.form-mismatch" => HarnessAction.EmitFormKind,
+            "server-model.decode.missing-argument" => HarnessAction.DeferSlotKind,
+            _ => null
+        };
+        if (actionKind is null)
+        {
+            return null;
+        }
+
+        using var arguments = JsonDocument.Parse(runId switch
+        {
+            "server-model.accept.defer-slot" => """{ "slot_id": "dinner-day-2", "reason": "Need user preference." }""",
+            "server-model.block.form-mismatch" => """{ "form_id": "wrong-form", "title": "Slot collection" }""",
+            "server-model.decode.missing-argument" => """{ "slot_id": "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK" }""",
+            _ => "{}"
+        });
+
+        var modelPacket = new ModelActionPacket(
+            packet.PacketId,
+            packet.Stage,
+            packet.CurrentSubtask,
+            [
+                "Choose one allowed harness action.",
+                "Return structured action arguments only."
+            ],
+            new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            {
+                ["session_id"] = JsonSerializer.SerializeToElement(packet.SessionId),
+                ["stage"] = JsonSerializer.SerializeToElement(packet.Stage),
+                ["allowed_action_count"] = JsonSerializer.SerializeToElement(packet.AllowedActions.Count)
+            },
+            packet.AllowedActions.Select(action => new ModelActionDefinition(action, $"Harness action {action}.")).ToArray());
+
+        var result = new ModelActionRunResult(
+            modelPacket.PacketId,
+            actionKind,
+            arguments.RootElement.Clone(),
+            null,
+            0,
+            "deterministic-mock",
+            "mock-stage-action",
+            $"mock-{runId}");
+
+        return new(runId, modelPacket, result);
+    }
+
+    private void AddModelRunOutcome(ModelSuggestionRunOutcomeFixture outcome)
+    {
+        var index = _modelRunOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _modelRunOutcomes[index] = outcome;
+        }
+        else
+        {
+            _modelRunOutcomes.Add(outcome);
+        }
+    }
+
+    private void UpsertModelRunResponse(string runId, SessionResponseState state, string code, string summary)
+    {
+        UpsertResponse(new(
+            $"response.{state.ToString().ToLowerInvariant()}.model-run.{runId}",
+            state,
+            state == SessionResponseState.Applied ? "Applied" : "Blocked",
+            $"{code}: {summary}",
+            runId,
+            null));
+    }
+
+    private static string RuntimeErrorCode(RuntimeActionApplicationResult runtime)
+    {
+        return runtime.IntakeCode == "not_run"
+            ? $"PCH_UI_RUNTIME_DECODE_{runtime.DecodeCode.ToUpperInvariant()}"
+            : $"PCH_UI_RUNTIME_INTAKE_{runtime.IntakeCode.ToUpperInvariant()}";
+    }
+
+    private sealed record ModelRunScenario(
+        string RunId,
+        ModelActionPacket Packet,
+        ModelActionRunResult Result);
 }

@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pch.Harness\Pch.Harness.csproj" />
+    <ProjectReference Include="..\Pch.Providers\Pch.Providers.csproj" />
   </ItemGroup>
 
   <Target Name="BuildTypeScript" BeforeTargets="Build" Condition="Exists('node_modules/typescript/bin/tsc')">

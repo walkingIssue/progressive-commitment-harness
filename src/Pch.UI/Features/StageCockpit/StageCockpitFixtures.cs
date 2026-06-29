@@ -84,6 +84,15 @@ internal sealed class StageCockpitFixtureProvider
                 new("suggestion.blocked.booking", "Blocked booking handoff", "handoff", "Rejected by harness intake because booking handoff is not allowed for the current stage.", null, "approval-review", """{ "target": "booking-adapter", "reason": "Mock booking handoff." }"""),
                 new("suggestion.decode.failure", "Malformed proposal", "defer_slot", "Show a sanitized decode failure without exposing proposal payload.", null, null, """{ "slot_id": "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK" """)
             ],
+            Outcomes: []),
+        ModelSuggestionRuns: new(
+            EndpointHint: "Server-side deterministic mock provider through provider bridge and runtime application",
+            Runs:
+            [
+                new("server-model.accept.defer-slot", "Run accepted model suggestion", "defer_slot"),
+                new("server-model.block.form-mismatch", "Run blocked model suggestion", "emit_form"),
+                new("server-model.decode.missing-argument", "Run decode-failure model suggestion", "defer_slot")
+            ],
             Outcomes: []));
 }
 
@@ -94,7 +103,8 @@ public sealed record StageCockpitFixture(
     ApprovalGateFixture Approval,
     EvidenceTraceFixture Trace,
     StageSessionFixture Session,
-    SuggestedActionPanelFixture SuggestedActions);
+    SuggestedActionPanelFixture SuggestedActions,
+    ModelSuggestionRunPanelFixture ModelSuggestionRuns);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -169,6 +179,30 @@ public sealed record SuggestedActionOutcomeFixture(
     string? ApprovalId,
     string? ErrorCode,
     string? BlockedReason);
+
+public sealed record ModelSuggestionRunPanelFixture(
+    string EndpointHint,
+    IReadOnlyList<ModelSuggestionRunFixture> Runs,
+    IReadOnlyList<ModelSuggestionRunOutcomeFixture> Outcomes);
+
+public sealed record ModelSuggestionRunFixture(
+    string Id,
+    string Label,
+    string ExpectedActionKind);
+
+public sealed record ModelSuggestionRunOutcomeFixture(
+    string RunId,
+    string State,
+    string ActionKind,
+    string BridgeOutcomeCode,
+    string RuntimeDecodeOutcomeCode,
+    string RuntimeIntakeOutcomeCode,
+    string TraceOutcome,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId);
 
 public enum SessionResponseState
 {
