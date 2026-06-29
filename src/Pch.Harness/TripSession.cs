@@ -67,6 +67,8 @@ public sealed class TripSession
 
     public void MoveTo(HarnessStage stage) => Stage = stage;
 
+    public void ReplaceMission(TripMission mission) => Mission = mission;
+
     public void ApplyFormResponse(FormResponse response)
     {
         foreach (var (key, value) in response.Values.OrderBy(pair => pair.Key, StringComparer.Ordinal))
