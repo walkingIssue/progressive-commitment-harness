@@ -85,6 +85,73 @@ public sealed class CandidateExpansionTests
     }
 
     [Fact]
+    public async Task EvalRowsRejectUnknownResultSlotWithoutPersistingRawSlotMetadata()
+    {
+        const string contextSentinel = "RAW_CONTEXT_SENTINEL_SHOULD_NOT_PERSIST";
+        const string slotSentinel = "RAW_RESULT_SLOT_ID_SHOULD_NOT_PERSIST";
+        var evaluator = new CandidateExpansionEvaluator(new SlotMismatchSource(
+            [
+                CreateExpansionSlot(slotSentinel, CandidateCategory.Dining)
+            ]));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new CandidateExpansionEvalCase("unknown-slot", CreatePacket(contextSentinel))]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(CandidateExpansionEvaluator.OutcomeSlotMismatch, row.OutcomeCode);
+        Assert.Empty(row.Slots);
+        Assert.Equal(0, row.TotalCandidateCount);
+        Assert.Null(row.Provider);
+        Assert.Null(row.Model);
+        Assert.Null(row.RequestId);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(slotSentinel, serialized);
+        Assert.DoesNotContain(contextSentinel, serialized);
+        Assert.DoesNotContain("RESULT_CANDIDATE_NAME_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("RESULT_TAG_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST", serialized);
+    }
+
+    [Fact]
+    public async Task EvalRowsRejectCategoryMismatchUsingTrustedPacketSlotCategory()
+    {
+        var evaluator = new CandidateExpansionEvaluator(new SlotMismatchSource(
+            [
+                CreateExpansionSlot("slot-dining", CandidateCategory.Activity)
+            ]));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new CandidateExpansionEvalCase("category-mismatch", CreatePacket())]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(CandidateExpansionEvaluator.OutcomeSlotMismatch, row.OutcomeCode);
+        Assert.Empty(row.Slots);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("RESULT_CANDIDATE_NAME_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("RESULT_TAG_SHOULD_NOT_PERSIST", serialized);
+    }
+
+    [Fact]
+    public async Task EvalRowsRejectDuplicateResultSlotIds()
+    {
+        var evaluator = new CandidateExpansionEvaluator(new SlotMismatchSource(
+            [
+                CreateExpansionSlot("slot-dining", CandidateCategory.Dining),
+                CreateExpansionSlot("slot-dining", CandidateCategory.Dining)
+            ]));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new CandidateExpansionEvalCase("duplicate-slot", CreatePacket())]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(CandidateExpansionEvaluator.OutcomeSlotMismatch, row.OutcomeCode);
+        Assert.Empty(row.Slots);
+        Assert.Equal(0, row.TotalCandidateCount);
+    }
+
+    [Fact]
     public async Task EvalRowsUseFixedErrorCodeInsteadOfRawExceptionText()
     {
         const string sentinel = "RAW_EXCEPTION_SHOULD_NOT_PERSIST";
@@ -140,6 +207,36 @@ public sealed class CandidateExpansionTests
                 "test-provider",
                 "test-model",
                 "request-1"));
+    }
+
+    private static CandidateSlotExpansion CreateExpansionSlot(string slotId, CandidateCategory category) =>
+        new(
+            slotId,
+            category,
+            [
+                new ItineraryCandidate(
+                    "candidate-result",
+                    category,
+                    "RESULT_CANDIDATE_NAME_SHOULD_NOT_PERSIST",
+                    ["RESULT_TAG_SHOULD_NOT_PERSIST", "PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST"],
+                    60,
+                    CandidateCostLevel.High,
+                    RequiresBooking: true)
+            ]);
+
+    private sealed class SlotMismatchSource(IReadOnlyList<CandidateSlotExpansion> slots) : ICandidateExpansionSource
+    {
+        public Task<CandidateExpansionResult> ExpandAsync(
+            CandidateExpansionPacket packet,
+            CandidateExpansionOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CandidateExpansionResult(
+                packet.PacketId,
+                slots,
+                99,
+                "provider-should-not-persist",
+                "model-should-not-persist",
+                "request-should-not-persist"));
     }
 
     private sealed class ThrowingSource(Exception exception) : ICandidateExpansionSource

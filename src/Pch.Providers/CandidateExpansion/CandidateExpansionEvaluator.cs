@@ -4,6 +4,7 @@ public sealed class CandidateExpansionEvaluator
 {
     public const string OutcomeAccepted = "candidate_expansion_accepted";
     public const string OutcomePacketIdMismatch = "candidate_expansion_packet_id_mismatch";
+    public const string OutcomeSlotMismatch = "candidate_expansion_slot_mismatch";
     public const string OutcomeError = "candidate_expansion_error";
 
     private readonly ICandidateExpansionSource _source;
@@ -69,11 +70,36 @@ public sealed class CandidateExpansionEvaluator
                 null);
         }
 
-        var slotRows = result.Slots
-            .Select(slot => new SanitizedCandidateSlotEvalRow(
-                slot.SlotId,
-                slot.Category,
-                slot.Candidates.Count))
+        var packetSlots = evalCase.Packet.Slots.ToDictionary(slot => slot.SlotId, StringComparer.Ordinal);
+        var resultSlotIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var resultSlot in result.Slots)
+        {
+            if (!resultSlotIds.Add(resultSlot.SlotId) ||
+                !packetSlots.TryGetValue(resultSlot.SlotId, out var packetSlot) ||
+                packetSlot.Category != resultSlot.Category)
+            {
+                return new SanitizedCandidateExpansionEvalRow(
+                    evalCase.Name,
+                    evalCase.Packet.PacketId,
+                    false,
+                    OutcomeSlotMismatch,
+                    null,
+                    [],
+                    0,
+                    null,
+                    null,
+                    null,
+                    null);
+            }
+        }
+
+        var resultSlotsById = result.Slots.ToDictionary(slot => slot.SlotId, StringComparer.Ordinal);
+        var slotRows = evalCase.Packet.Slots
+            .Where(packetSlot => resultSlotsById.ContainsKey(packetSlot.SlotId))
+            .Select(packetSlot => new SanitizedCandidateSlotEvalRow(
+                packetSlot.SlotId,
+                packetSlot.Category,
+                resultSlotsById[packetSlot.SlotId].Candidates.Count))
             .OrderBy(slot => slot.SlotId, StringComparer.Ordinal)
             .ToArray();
 
