@@ -382,7 +382,7 @@ public sealed class HarnessStageCockpitService
 
     public StageCockpitFixture RunItineraryDayPlanner(string runId)
     {
-        var result = _itineraryDayPlannerService.Run(runId);
+        var result = _itineraryDayPlannerService.Run(_session, runId);
         UpsertItineraryOutcome(result.Outcome);
         UpsertRange(_itineraryDays, result.Days, day => day.DayId);
         UpsertRange(_itineraryCandidatePools, result.CandidatePools, pool => pool.PoolId);
@@ -537,11 +537,12 @@ public sealed class HarnessStageCockpitService
                 _promptHighPriorityCommitments.ToArray(),
                 _promptMemoryDigestFacts.ToArray()),
             ItineraryDayPlanner: new(
-                "UI-local day planner seam pending harness day compiler and provider candidate expansion",
+                "Harness itinerary slot compiler through deterministic provider candidate expansion",
                 [
                     new("itinerary.accepted", "Build day skeleton", "accepted"),
                     new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
-                    new("itinerary.missing-date", "Check date window", "date-blocked")
+                    new("itinerary.missing-date", "Check date window", "date-blocked"),
+                    new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked")
                 ],
                 _itineraryOutcomes.ToArray(),
                 _itineraryDays.ToArray(),

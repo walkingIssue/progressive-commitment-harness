@@ -531,21 +531,21 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.ItineraryDayPlanner.Outcomes,
             outcome => outcome.RunId == "itinerary.accepted"
                 && outcome.State == "applied"
-                && outcome.DayId == "day-2026-10-06"
+                && outcome.DayId == "day-20270402"
                 && outcome.SelectedOutcome == "selected"
                 && outcome.DeferredOutcome == "deferred"
                 && outcome.BlockedOutcome == "none");
         Assert.Contains(
             fixture.ItineraryDayPlanner.Days,
-            day => day.DayId == "day-2026-10-06"
+            day => day.DayId == "day-20270402"
                 && day.State == "accepted"
-                && day.Slots.Any(slot => slot.SlotId == "slot.day-2026-10-06.lunch"
+                && day.Slots.Any(slot => slot.SlotId == "slot-20270402-lunch"
                     && slot.SlotType == "meal"
                     && slot.State == "selected"
-                    && slot.SelectedCandidateId == "candidate.lunch.ramen"));
+                    && slot.SelectedCandidateId == "slot-20270402-lunch-dining-1"));
         Assert.Contains(
             fixture.ItineraryDayPlanner.DigestFacts,
-            fact => fact.Text == "date_window: 2026-10-05/2026-10-19");
+            fact => fact.Text == "date_window: 2027-04-02/2027-04-02");
         AssertItineraryRawTextAbsent(serialized);
     }
 
@@ -558,14 +558,14 @@ public sealed class HarnessStageCockpitServiceTests
 
         Assert.Contains(
             fixture.ItineraryDayPlanner.CandidatePools,
-            pool => pool.PoolId == "pool.day-2026-10-06.lunch"
-                && pool.SlotId == "slot.day-2026-10-06.lunch"
-                && pool.Candidates.Any(candidate => candidate.CandidateId == "candidate.lunch.ramen"
-                    && candidate.Category == "meal"
-                    && candidate.EvidenceIds.Contains("evidence.destination.japan")));
+            pool => pool.PoolId == "pool-slot-20270402-lunch"
+                && pool.SlotId == "slot-20270402-lunch"
+                && pool.Candidates.Any(candidate => candidate.CandidateId == "slot-20270402-lunch-dining-1"
+                    && candidate.Category == "dining"
+                    && candidate.EvidenceIds.Contains("evidence.candidate.meal")));
         Assert.Contains(
             fixture.ItineraryDayPlanner.Evidence,
-            evidence => evidence.EvidenceId == "evidence.digest.low-cognitive-load"
+            evidence => evidence.EvidenceId == "evidence.candidate.recovery"
                 && evidence.Outcome == "deferred");
     }
 
@@ -581,13 +581,36 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.ItineraryDayPlanner.Outcomes,
             outcome => outcome.RunId == "itinerary.conflict"
                 && outcome.State == "blocked"
-                && outcome.DayId == "day-2026-10-06"
+                && outcome.DayId == "day-20270402"
                 && outcome.BlockedOutcome == "blocked_conflict"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_FIXED_COMMITMENT_CONFLICT"
-                && outcome.BlockedReason == "Fixed commitment conflicts with the candidate slot.");
+                && outcome.BlockedReason == "Fixed commitment conflict blocks itinerary compilation.");
         Assert.Empty(fixture.ItineraryDayPlanner.Days);
         Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
         AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryProviderSlotMismatchBlocksBeforeCandidateRendering()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.provider-mismatch");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.provider-mismatch"
+                && outcome.State == "blocked"
+                && outcome.DayId == "day-20270402"
+                && outcome.BlockedOutcome == "blocked_candidate_expansion"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_CANDIDATE_SLOT_MISMATCH"
+                && outcome.BlockedReason == "Candidate expansion returned an invalid compiled slot.");
+        Assert.Empty(fixture.ItineraryDayPlanner.Days);
+        Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
+        AssertItineraryRawTextAbsent(serialized);
+        Assert.DoesNotContain("slot-provider-unknown", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("candidate-provider-unknown", serialized, StringComparison.Ordinal);
     }
 
     [Fact]

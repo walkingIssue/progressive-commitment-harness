@@ -127,12 +127,13 @@ internal sealed class StageCockpitFixtureProvider
             HighPriorityCommitments: [],
             MemoryDigestFacts: []),
         ItineraryDayPlanner: new(
-            EndpointHint: "UI-local day planner seam pending harness day compiler and provider candidate expansion",
+            EndpointHint: "Harness itinerary slot compiler through deterministic provider candidate expansion",
             Runs:
             [
                 new("itinerary.accepted", "Build day skeleton", "accepted"),
                 new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
-                new("itinerary.missing-date", "Check date window", "date-blocked")
+                new("itinerary.missing-date", "Check date window", "date-blocked"),
+                new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked")
             ],
             Outcomes: [],
             Days: [],
