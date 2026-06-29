@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `3704af6 Merge sprint-011 UI end-to-end trip run`
+Latest integrated code before this progress update: `c4d53cdb28695fa4f8eb78915919c6dce38e13a1 Merge sprint-012 UI release smoke`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, and evidence-export eval rows, decode/intake/runtime outcome codes, and in-memory proposal handoffs that avoid persisted raw payloads. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, and final evidence export. The next decisive gap is Stage 10 hardening: replayable end-to-end corpora, release-quality smoke/CI discipline, and cross-surface redaction audits.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, evidence-export, and shared eval artifact redaction checks. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, final evidence export, and release-smoke summary. Stage 10 now has deterministic replay audit, cross-provider sanitized artifact policy, and UI release-smoke/a11y markers. The next decisive gap is Stage 6 fidelity bake-off: proving which stages can be owned by small models, strong models, or harness-only logic before adding more live availability/search surface.
 
 ## Sprint Ledger
 
@@ -64,6 +64,9 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 011 | Stage 9 | Trip run snapshot | Harness-owned `TripRunSnapshotBuilder` composes mission, memory, itinerary, decisions, mock hold readiness, evidence refs, and trace refs into a sanitized final run snapshot | done |
 | 011 | Stage 6/9 | Evidence export bridge | Provider-local evidence export packets/results, deterministic mock exporter, trusted-packet validation, and sanitized eval rows for final trip-plan summaries | done |
 | 011 | Stage 9 | End-to-end UI trip run | Stage Cockpit runs prompt -> mission -> itinerary -> candidates -> mock hold -> snapshot -> evidence export with happy, pending, provider-blocked, wrong-slot, missing-approval, and raw-absence paths | done |
+| 012 | Stage 10 | Replay audit corpus | `TripRunReplayAudit` replays accepted and blocked trip-run snapshot cases with deterministic hashes, read-only checks, bounded evidence refs, and sanitized trace refs | done |
+| 012 | Stage 6/10 | Sanitized eval artifact policy | Shared provider eval artifact redaction tests and docs cover model-action, mission-planner, candidate-expansion, hold-preparation, and evidence-export rejected/error rows | done |
+| 012 | Stage 9/10 | Release smoke and a11y markers | Stage Cockpit release-smoke summary, stable `data-*` markers, keyboard-friendly controls, and browser smoke across six deterministic end-to-end paths | done |
 
 ## Sprint 001 Verification
 
@@ -346,12 +349,41 @@ Sprint 012 should harden the deterministic end-to-end slice for release-quality 
 - extend Stage Cockpit release smoke coverage with a stable deterministic run summary, browser-smoke-friendly markers, and accessibility/regression checks for the end-to-end panel;
 - keep required tests deterministic/offline and keep live provider/OpenRouter/OpenAI smoke optional, guarded, and blocked on credit/provider failure without fallback.
 
+## Sprint 012 Result
+
+Sprint 012 hardened the deterministic end-to-end trip run into a repeatable release smoke surface.
+
+- `TripRunReplayAudit` replays vacation, business, funeral/downtime, family-support, blocked compiler, blocked candidate, pending confirmation, and missing-approval scenarios without mutating source sessions.
+- Replay results expose sanitized case/scenario ids, snapshot/result codes, deterministic snapshot hashes, bounded evidence references, and bounded trace references rather than raw snapshots or provider inputs.
+- Provider eval artifact tests now share `SanitizedEvalArtifactAssert` and cover rejected/error rows across model action, mission planner, candidate expansion, hold preparation, and evidence export.
+- Provider eval docs now define persisted-safe fields, fixed outcome/error-code behavior, trusted packet-map derivation, and no paid-provider fallback for optional live paths.
+- Stage Cockpit end-to-end release smoke now exposes a stable release summary with accepted/blocked/pending path counts, primary run marker, evidence export marker, raw-absence marker, and keyboard-accessible run controls.
+- The browser smoke covers happy path, pending confirmation, provider candidate mismatch, wrong-slot candidate, missing approval, and raw-sentinel export paths.
+
+## Sprint 012 Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: 38 tests passed.
+- `dotnet test`: 242 tests passed across core, harness, providers, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5165/`: release summary reached `ready`, with 2 accepted paths, 3 blocked paths, 1 pending path, `complete` snapshot, `evidence_export_ready`, `hold_preparation_hold_prepared`, and `raw_absence_verified`.
+- Smoke verified no rendered raw prompt, provider payload, packet id, secret, mock approval token, mock hold reference, or provider mismatch sentinel strings.
+
+## Sprint 013 Target
+
+Sprint 013 should begin the original Stage 6 fidelity bake-off before broadening live integrations.
+
+- add a harness-owned fidelity/ownership matrix that scores deterministic stage packets and trip-run replay cases for schema validity, faithfulness, candidate-id preservation, unsupported claims, fallback need, and mutation safety;
+- add provider-side sanitized fidelity eval rows that can compare small-model, strong-model, and harness-only candidates while keeping raw prompts, provider payloads, exception text, credentials, approval tokens, and candidate display values out of persisted artifacts;
+- extend Stage Cockpit with a release-readiness/fidelity panel that renders the ownership matrix, replay coverage, fallback counts, and release gate status with stable browser-smoke markers;
+- keep required tests offline/deterministic, with any Ollama/OpenRouter/OpenAI live checks optional, guarded, and reported as skipped or blocked rather than silently falling back.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
 - Stage 5 true small-model structured itinerary generation beyond deterministic/mock runtime action loops.
-- Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
+- Stage 6 full fidelity bake-off with ownership matrix beyond Sprint 013's first deterministic harness/provider/UI pass.
 - Stage 7 real Amadeus availability and pricing adapters.
 - Stage 8 full dependency propagation beyond the first day/slot compiler and candidate selection slices.
-- Stage 9 live/search-backed end-to-end UI run beyond the deterministic Sprint 011 run.
-- Stage 10 release hardening beyond the Sprint 012 target.
+- Stage 9 live/search-backed end-to-end UI run beyond the deterministic Sprint 012 release-smoke run.

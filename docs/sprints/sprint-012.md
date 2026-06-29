@@ -115,3 +115,32 @@ Verification:
 - The UI has stable release-smoke markers and tests around the final trip-run summary.
 - Required tests remain offline and deterministic.
 - No raw prompt, provider payload, proposal JSON, credential, approval token, hold reference, payment data, exception text, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Sprint 012 completed the release-hardening pass around the deterministic end-to-end trip run.
+
+- Shellby added `TripRunReplayAudit`, replay DTOs, default replay corpus, deterministic snapshot hashing, read-only checks, bounded evidence/trace references, and sanitized replay result codes.
+- Kaneki added shared provider eval artifact redaction tests and documentation, and hardened mission planner rejected rows so failed packet/kind cases do not retain provider result metadata/counts.
+- Sarah added a Stage Cockpit release-smoke summary surface with stable markers, path counts, primary-run markers, raw-absence markers, and keyboard-accessible controls for the six deterministic end-to-end paths.
+
+## Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 38 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 242 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator headless browser smoke on `http://127.0.0.1:5165/`: passed across happy path, pending confirmation, provider mismatch, wrong-slot candidate, missing approval, and raw-sentinel export paths.
+
+Release-smoke marker results:
+
+- summary state: `ready`
+- primary run: `e2e.happy-path`
+- path counts: accepted `2`, blocked `3`, pending `1`
+- snapshot outcome: `complete`
+- evidence export outcome: `evidence_export_ready`
+- hold outcome: `hold_preparation_hold_prepared`
+- raw absence marker: `raw_absence_verified`
+
+Raw absence checks passed for prompt/provider payload sentinels, packet-id sentinels, secret sentinels, mock approval tokens, mock hold references, and provider mismatch sentinel strings.
