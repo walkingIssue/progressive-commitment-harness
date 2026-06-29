@@ -75,7 +75,16 @@ internal sealed class StageCockpitFixtureProvider
                 new("response.applied.pace", SessionResponseState.Applied, "Applied", "Pace preference accepted into the local session fixture.", "pace", null),
                 new("response.rejected.date-window", SessionResponseState.Rejected, "Rejected", "Date window change rejected because it would invert start and end dates.", "endDate", null),
                 new("response.approval.hold", SessionResponseState.ApprovalRequired, "Approval required", "Fixture itinerary hold requires explicit user approval before any adapter action.", "approval.mock_hold", "approval.mock_hold")
-            ]));
+            ]),
+        SuggestedActions: new(
+            EndpointHint: "UI-local deterministic seam pending Shellby decoder contract",
+            Suggestions:
+            [
+                new("suggestion.accept.defer-slot", "Defer dinner slot", "defer_slot", "Route a stage-allowed defer-slot action through harness decoder and intake.", null, null, """{ "slot_id": "dinner-day-2", "reason": "Need user preference." }"""),
+                new("suggestion.blocked.booking", "Blocked booking handoff", "handoff", "Rejected by harness intake because booking handoff is not allowed for the current stage.", null, "approval-review", """{ "target": "booking-adapter", "reason": "Mock booking handoff." }"""),
+                new("suggestion.decode.failure", "Malformed proposal", "defer_slot", "Show a sanitized decode failure without exposing proposal payload.", null, null, """{ "slot_id": "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK" """)
+            ],
+            Outcomes: []));
 }
 
 public sealed record StageCockpitFixture(
@@ -84,7 +93,8 @@ public sealed record StageCockpitFixture(
     ChoiceSetFixture ChoiceSet,
     ApprovalGateFixture Approval,
     EvidenceTraceFixture Trace,
-    StageSessionFixture Session);
+    StageSessionFixture Session,
+    SuggestedActionPanelFixture SuggestedActions);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -135,6 +145,30 @@ public sealed record SessionResponseFixture(
     string Summary,
     string Target,
     string? ApprovalId);
+
+public sealed record SuggestedActionPanelFixture(
+    string EndpointHint,
+    IReadOnlyList<SuggestedActionFixture> Suggestions,
+    IReadOnlyList<SuggestedActionOutcomeFixture> Outcomes);
+
+public sealed record SuggestedActionFixture(
+    string Id,
+    string Title,
+    string ActionKind,
+    string Summary,
+    string? CandidateId,
+    string? ApprovalId,
+    string JsonArguments);
+
+public sealed record SuggestedActionOutcomeFixture(
+    string SuggestionId,
+    string State,
+    string ActionKind,
+    string TraceOutcome,
+    string? CandidateId,
+    string? ApprovalId,
+    string? ErrorCode,
+    string? BlockedReason);
 
 public enum SessionResponseState
 {

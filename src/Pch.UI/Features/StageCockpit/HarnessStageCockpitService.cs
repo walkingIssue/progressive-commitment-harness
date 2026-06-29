@@ -8,8 +8,38 @@ public sealed class HarnessStageCockpitService
     private readonly SessionLoop _loop = new();
     private readonly ProjectionService _projection = new();
     private readonly StageMachine _stageMachine = new();
+    private readonly ExternalActionDecoder _externalActionDecoder = new();
+    private readonly HarnessActionIntake _actionIntake = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
+    private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
+    private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
+    [
+        new(
+            "suggestion.accept.defer-slot",
+            "Defer dinner slot",
+            HarnessAction.DeferSlotKind,
+            "Route a stage-allowed defer-slot action through harness decoder and intake.",
+            null,
+            null,
+            """{ "slot_id": "dinner-day-2", "reason": "Need user preference." }"""),
+        new(
+            "suggestion.blocked.booking",
+            "Blocked booking handoff",
+            HarnessAction.HandoffKind,
+            "Rejected by harness intake because booking handoff is not allowed for the current stage.",
+            null,
+            "approval-review",
+            """{ "target": "booking-adapter", "reason": "Mock booking handoff." }"""),
+        new(
+            "suggestion.decode.failure",
+            "Malformed proposal",
+            HarnessAction.DeferSlotKind,
+            "Show a sanitized decode failure without exposing proposal payload.",
+            null,
+            null,
+            """{ "slot_id": "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK" """)
+    ];
     private SessionTurnResult? _lastTurn;
 
     public HarnessStageCockpitService()
@@ -109,6 +139,70 @@ public sealed class HarnessStageCockpitService
 
     public StageCockpitFixture TriggerBlockedSelection() => SelectCandidate("candidate-missing-from-harness");
 
+    public StageCockpitFixture ApplySuggestedAction(string suggestionId)
+    {
+        var suggestion = _suggestions.FirstOrDefault(candidate => string.Equals(candidate.Id, suggestionId, StringComparison.Ordinal));
+        if (suggestion is null)
+        {
+            AddBlockedSuggestionOutcome(
+                suggestionId,
+                "unknown",
+                null,
+                null,
+                "PCH_UI_SUGGESTION_UNKNOWN",
+                "Suggested action is not recognized by the UI seam.");
+            return Current();
+        }
+
+        var decode = _externalActionDecoder.DecodeJson(suggestion.Id, suggestion.ActionKind, suggestion.JsonArguments);
+        if (!decode.IsDecoded)
+        {
+            AddBlockedSuggestionOutcome(
+                suggestion.Id,
+                suggestion.ActionKind,
+                suggestion.CandidateId,
+                suggestion.ApprovalId,
+                $"PCH_UI_DECODE_{decode.Code.ToUpperInvariant()}",
+                decode.Summary);
+            return Current();
+        }
+
+        var decodedAction = decode.Action!;
+        _lastTurn = _actionIntake.Accept(_session, decodedAction);
+        var trace = _lastTurn.Trace.FirstOrDefault();
+        var traceOutcome = trace?.Outcome ?? (_lastTurn.IsBlocked ? "blocked" : "accepted");
+        var candidateId = suggestion.CandidateId ?? ExtractCandidateId(decodedAction);
+        var approvalId = suggestion.ApprovalId ?? ExtractApprovalId(decodedAction);
+
+        UpsertSuggestedOutcome(new(
+            suggestion.Id,
+            _lastTurn.IsBlocked ? "blocked" : "accepted",
+            decodedAction.Kind,
+            _lastTurn.IsBlocked ? traceOutcome : "suggestion.accepted",
+            candidateId,
+            approvalId,
+            _lastTurn.IsBlocked ? $"PCH_UI_INTAKE_{traceOutcome.ToUpperInvariant()}" : null,
+            _lastTurn.IsBlocked ? _lastTurn.BlockedReason ?? trace?.Summary ?? "Harness intake blocked the suggestion." : null));
+
+        UpsertResponse(_lastTurn.IsBlocked
+            ? new(
+                $"response.blocked.suggestion.{_responses.Count + 1}",
+                SessionResponseState.Blocked,
+                "Blocked",
+                $"{traceOutcome}: {_lastTurn.BlockedReason ?? "Harness intake blocked the suggestion."}",
+                suggestion.Id,
+                approvalId)
+            : new(
+                $"response.applied.suggestion.{_session.Actions.Count}",
+                SessionResponseState.Applied,
+                "Applied",
+                $"Harness intake accepted suggested action {decodedAction.Kind}.",
+                suggestion.Id,
+                approvalId));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -187,7 +281,7 @@ public sealed class HarnessStageCockpitService
             ChoiceSet: new(
                 choiceAction?.ActionId ?? "harness-candidates",
                 choiceAction?.Title ?? "Harness Candidates",
-                _session.SelectedCandidateIds.LastOrDefault() ?? candidates.FirstOrDefault()?.CandidateId ?? "",
+                _session.SelectedCandidateIds.LastOrDefault() ?? "",
                 candidates.Select(candidate => new ChoiceCandidateFixture(
                     candidate.CandidateId,
                     candidate.Title,
@@ -200,7 +294,11 @@ public sealed class HarnessStageCockpitService
                 approvalAction?.Approval.ActionId ?? "adapter handoff",
                 _session.HasApprovalToken(approvalId) ? "approved" : "approval-required"),
             Trace: new("harness trace", BuildClaims(packet, approvalId)),
-            Session: new(_session.SessionId, "Pch.Harness server-side session service", _responses.ToArray()));
+            Session: new(_session.SessionId, "Pch.Harness server-side session service", _responses.ToArray()),
+            SuggestedActions: new(
+                "Deterministic UI seam using harness decoder/intake",
+                _suggestions,
+                _suggestionOutcomes.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -234,6 +332,20 @@ public sealed class HarnessStageCockpitService
         ];
     }
 
+    private static string? ExtractCandidateId(HarnessAction? action)
+    {
+        return action is EmitChoiceSetAction choiceSet
+            ? choiceSet.Choices.FirstOrDefault()?.CandidateId
+            : null;
+    }
+
+    private static string? ExtractApprovalId(HarnessAction? action)
+    {
+        return action is RequestApprovalAction approval
+            ? approval.Approval.ApprovalId
+            : null;
+    }
+
     private void UpsertResponse(SessionResponseFixture response)
     {
         var index = _responses.FindIndex(existing => string.Equals(existing.Id, response.Id, StringComparison.Ordinal));
@@ -244,6 +356,45 @@ public sealed class HarnessStageCockpitService
         else
         {
             _responses.Add(response);
+        }
+    }
+
+    private void AddBlockedSuggestionOutcome(
+        string suggestionId,
+        string actionKind,
+        string? candidateId,
+        string? approvalId,
+        string errorCode,
+        string blockedReason)
+    {
+        UpsertSuggestedOutcome(new(
+            suggestionId,
+            "blocked",
+            actionKind,
+            "suggestion.blocked",
+            candidateId,
+            approvalId,
+            errorCode,
+            blockedReason));
+        UpsertResponse(new(
+            $"response.blocked.suggestion.{_responses.Count + 1}",
+            SessionResponseState.Blocked,
+            "Blocked",
+            $"{errorCode}: {blockedReason}",
+            suggestionId,
+            approvalId));
+    }
+
+    private void UpsertSuggestedOutcome(SuggestedActionOutcomeFixture outcome)
+    {
+        var index = _suggestionOutcomes.FindIndex(existing => string.Equals(existing.SuggestionId, outcome.SuggestionId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _suggestionOutcomes[index] = outcome;
+        }
+        else
+        {
+            _suggestionOutcomes.Add(outcome);
         }
     }
 }

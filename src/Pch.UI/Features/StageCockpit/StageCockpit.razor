@@ -134,6 +134,40 @@
             </div>
         </article>
 
+        <article class="panel suggestion-panel">
+            <div class="panel-head">
+                <span>Model Suggested Action</span>
+                <small>@Fixture.SuggestedActions.EndpointHint</small>
+            </div>
+            <div class="suggestion-list">
+                @foreach (var suggestion in Fixture.SuggestedActions.Suggestions)
+                {
+                    var outcome = Fixture.SuggestedActions.Outcomes.FirstOrDefault(candidate => candidate.SuggestionId == suggestion.Id);
+                    <section class="suggestion-card"
+                             data-suggestion-id="@suggestion.Id"
+                             data-action-kind="@suggestion.ActionKind"
+                             data-candidate-id="@suggestion.CandidateId"
+                             data-approval-id="@suggestion.ApprovalId"
+                             data-trace-outcome="@outcome?.TraceOutcome"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason">
+                        <div>
+                            <strong>@suggestion.Title</strong>
+                            <p>@suggestion.Summary</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.TraceOutcome</small>
+                            }
+                        </div>
+                        <code>@suggestion.ActionKind</code>
+                        <button class="ghost" type="button" @onclick="() => ApplySuggestedAction(suggestion.Id)">
+                            Apply suggestion
+                        </button>
+                    </section>
+                }
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -210,6 +244,12 @@
     private void RequestApproval()
     {
         Fixture = CockpitService.RequestApprovalStage();
+        LoadFixtureState();
+    }
+
+    private void ApplySuggestedAction(string suggestionId)
+    {
+        Fixture = CockpitService.ApplySuggestedAction(suggestionId);
         LoadFixtureState();
     }
 
