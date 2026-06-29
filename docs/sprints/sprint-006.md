@@ -130,3 +130,34 @@ Verification:
 - The memory digest is bounded, traceable, and safe to feed into later small-model stage packets.
 - No required test uses provider credentials or network.
 - No raw provider payload, raw exception message, credential, approval token, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Status: complete.
+
+Integrated heads:
+
+- Shellby: `5b33c5555c37d80c9a30380dd7131fdd664fa8d4`
+- Kaneki: `d2da57fe623e7f359dc9813d749b490f3f3c8f51`
+- Sarah: `534f6b545b96db9709b6bf48a495e6f98d2debec`
+- Final local integration before docs: `f5c876f42c204e3eb47c4305d48aa2276e5c9d7c`
+
+What landed:
+
+- `MissionIntakeApplication` applies structured mission fields, constraints, and commitments through authority checks.
+- `StructuredMemoryDigest` bounds load-bearing mission facts, pending confirmations, and trace references.
+- Provider mission planner results now preserve field paths, authority/evidence, structured constraints, and structured commitments while sanitized eval rows avoid raw mission content.
+- Stage Cockpit mission intake runs provider DTOs through a UI adapter into `MissionIntakeApplication`, then renders applied fields, pending confirmations, high-priority commitments, and digest facts.
+
+Final verification:
+
+- `dotnet test`: passed, 99 tests.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke on `http://127.0.0.1:5134/`: vacation, high-priority commitment, and pending-confirmation paths passed through canonical mission intake and structured memory digest rendering.
+
+Deferred hardening:
+
+- Replace deterministic UI-owned mission planner source with a guarded provider planner/session endpoint.
+- Add adapter-level max length and enum/value validation before accepting live provider output.
+- Project `StructuredMemoryDigest` into small-model stage packets and measure budget stability.

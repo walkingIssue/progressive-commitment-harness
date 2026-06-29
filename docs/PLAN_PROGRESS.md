@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `7d55d7f076da907a963416b57314a02716d0db60`
+Latest integrated code before this progress update: `f5c876f42c204e3eb47c4305d48aa2276e5c9d7c`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, and a reusable runtime action application result. Stage 5/6 now have provider-local model-action eval scaffolding, sanitized golden packet eval rows, decode/intake outcome codes, and an in-memory provider runtime proposal bridge. The UI now has a deterministic server-side run-model action loop that enters through `ProviderActionBridge`, maps to `ExternalActionProposal`, and applies through `RuntimeActionApplication`. The next decisive gap is Stage 4/structured memory: messy user intent should become a typed mission, high-priority commitments, and a bounded memory digest before small-model stage packets depend on it.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, and an authority-checked mission intake application. Stage 4 has its first provider-shaped mission planner DTOs and deterministic planner mocks. Stage 5/6 now have provider-local model-action eval scaffolding, sanitized golden packet eval rows, decode/intake outcome codes, an in-memory provider runtime proposal bridge, and sanitized mission-planner eval rows. The UI now has deterministic server-side model-action and mission-intake loops. The next decisive gap is a real but guarded strong-model mission planner endpoint plus a bounded mission-to-stage packet projection, so later small-model packets consume structured memory instead of raw prompt history.
 
 ## Sprint Ledger
 
@@ -44,6 +44,10 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 005 | Stage 3 | Runtime action application | `RuntimeActionApplication` composes decode plus intake into one sanitized result shape with decode/intake codes, stage, packet id, summary, and replayable trace | done |
 | 005 | Stage 5/6 | Runtime provider proposal bridge | Provider bridge carries raw argument JSON only in memory as `ProviderRuntimeActionProposal`; persisted diagnostics keep action/argument-key/provider metadata and fixed codes only | done |
 | 005 | UI/Stage 9 precursor | Server model suggestion loop | Stage Cockpit can run a deterministic server-side model action through provider bridge, runtime application, UI response state, and trace markers | done |
+| 006 | Stage 3/4 | Mission intake application | Harness applies structured mission proposals through authority checks; user/trusted facts apply, model-inferred facts become pending confirmations, high-priority commitments can anchor planning | done |
+| 006 | Stage 4/6 | Provider mission planner bridge | Provider-local mission planner DTOs, deterministic mocks, structured field/constraint/commitment mirrors, and sanitized eval rows aligned to harness mission intake | done |
+| 006 | Stage 5 | Structured memory digest | `StructuredMemoryDigest` bounds load-bearing mission facts, pending confirmations, and trace references for future small-model packets | done |
+| 006 | UI/Stage 9 precursor | Mission intake UI slice | Stage Cockpit runs provider DTOs through a UI adapter into `MissionIntakeApplication`, renders applied facts, pending confirmations, high-priority commitments, and digest facts | done |
 
 ## Sprint 001 Verification
 
@@ -137,18 +141,36 @@ Sprint 005 turned the deterministic suggested-action seam into the first runtime
   - UI model-run path uses `RuntimeActionApplication` instead of duplicating decoder/intake;
   - raw proposal JSON, provider payloads, prompt text, approval tokens, and sentinel values were absent from rendered UI.
 
-## Sprint 006 Target
+## Sprint 006 Result
 
-Sprint 006 should start Stage 4 and structured memory: turn a messy user prompt into a typed mission and bounded memory digest before deeper planning/search begins.
+Sprint 006 started Stage 4 and structured memory: a messy or rambling prompt can now be represented as provider-shaped mission planner output, mapped into harness-owned mission intake, and rendered as authority-checked mission state plus a bounded digest.
 
-- add a harness-owned mission-intake application that treats model-inferred fields as proposals unless authority policy allows direct application;
-- add compact memory/digest surfaces that explain what gets fed back into small model stage packets;
-- add provider-local planner/mission proposal runners with deterministic mocks and sanitized eval rows;
-- add a UI mission intake panel that turns a rambling prompt into structured trip purpose, constraints, high-priority commitments, and confirmation-ready fields without live provider dependency.
+- `MissionIntakeApplication` applies structured mission proposals through authority checks.
+- `StructuredMemoryDigest` bounds load-bearing facts, pending confirmations, and trace references.
+- Provider mission planner DTOs preserve field paths, authority/evidence, structured constraints, and structured commitments while sanitized eval rows persist only counts/codes/metadata.
+- Stage Cockpit mission intake now uses provider DTOs -> UI adapter -> `MissionIntakeApplication` -> `StructuredMemoryDigest` as the primary path.
+- User-stated vacation facts, high-priority non-vacation commitments, and model-inferred pending confirmations are visible in the UI with stable markers.
+
+## Sprint 006 Verification
+
+- `dotnet test`: 99 tests passed across core, harness, providers, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke on `http://127.0.0.1:5134/`: vacation mission applied purpose/destination/start/end; high-priority family-support commitment applied; pending pace/traveler-need/constraint confirmations remained model-inferred proposals.
+- Raw provider sentinel, raw prompt sentinel, prompt snippet, credential-like text, approval tokens, and provider payloads were absent from rendered UI.
+
+## Sprint 007 Target
+
+Sprint 007 should turn the deterministic mission planner seam into a guarded provider-backed mission planning loop, while keeping required tests offline.
+
+- add a harness/application adapter boundary that maps provider mission planner results into `MissionIntakeProposal` with validation, size limits, and sanitized failure codes;
+- add a provider mission planner runner/client path that can use OpenAI/OpenRouter behind key/credit/timeout guards and deterministic mocks by default;
+- add mission digest projection into stage packets so small-model calls see compact mission facts and pending confirmations;
+- update Stage Cockpit with a run-planner path that can use deterministic provider output now and a guarded live provider later, without rendering raw prompts or payloads.
 
 ## Not Yet Started
 
-- Stage 4 live strong-model planner/expander/auditor beyond deterministic planner mocks.
+- Stage 4 live strong-model planner/expander/auditor beyond guarded mission planner adapter work.
 - Stage 5 true small-model structured generation beyond deterministic/mock runtime action loops.
 - Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
 - Stage 7 real Amadeus availability and pricing adapters.
