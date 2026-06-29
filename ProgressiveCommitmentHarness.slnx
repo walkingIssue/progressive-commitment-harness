@@ -1,5 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Pch.Core/Pch.Core.csproj" />
+    <Project Path="src/Pch.Harness/Pch.Harness.csproj" />
     <Project Path="src/Pch.UI/Pch.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pch.Core.Tests/Pch.Core.Tests.csproj" />
+    <Project Path="tests/Pch.Harness.Tests/Pch.Harness.Tests.csproj" />
   </Folder>
 </Solution>
