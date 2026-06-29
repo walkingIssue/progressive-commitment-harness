@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using Pch.Core;
 
 namespace Pch.Harness;
@@ -36,6 +37,7 @@ public sealed class PromptPacketBuilder
             Locale: request.Locale?.Trim(),
             ScenarioHints: CleanHints(request.ScenarioHints).Take(MaxPacketScenarioHints).ToArray(),
             Prompt: metadata,
+            TransientRawPrompt: request.RawPrompt,
             CurrentMissionFacts: memory.LoadBearingFacts.Take(MaxPacketFacts).ToArray(),
             PendingConfirmations: memory.PendingConfirmations.Take(MaxPacketPendingConfirmations).Select(ToPromptPendingConfirmation).ToArray(),
             KnownConstraints: session.Mission.Constraints
@@ -122,7 +124,7 @@ public sealed class PromptPacketBuilder
 
     private static bool ValidHints(IReadOnlyList<string>? hints)
     {
-        return hints is null || hints.All(hint => ValidOptionalText(hint, MaxHintLength));
+        return hints is null || hints.All(hint => !string.IsNullOrWhiteSpace(hint) && hint.Length <= MaxHintLength);
     }
 
     private static IEnumerable<string> CleanHints(IReadOnlyList<string>? hints)
@@ -196,6 +198,7 @@ public sealed record MissionPlannerPromptPacket(
     string? Locale,
     IReadOnlyList<string> ScenarioHints,
     PromptMetadata Prompt,
+    [property: JsonIgnore] string TransientRawPrompt,
     IReadOnlyList<string> CurrentMissionFacts,
     IReadOnlyList<PromptPendingConfirmation> PendingConfirmations,
     IReadOnlyList<PromptConstraint> KnownConstraints,

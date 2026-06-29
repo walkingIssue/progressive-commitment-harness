@@ -38,11 +38,13 @@ public sealed class PromptPacketBuilderTests
         Assert.Equal(rawPrompt.Length, result.Prompt.Length);
         Assert.NotEmpty(result.Prompt.Sha256);
         Assert.Equal("en-US", result.Packet!.Locale);
+        Assert.Equal(rawPrompt, result.Packet.TransientRawPrompt);
         Assert.Contains("vacation", result.Packet.ScenarioHints);
         Assert.Contains(result.Packet.CurrentMissionFacts, fact => fact == "purpose: Cherry blossom vacation");
         Assert.Contains(result.Packet.PendingConfirmations, pending => pending.FieldPath == "/mission/destination_country");
         Assert.DoesNotContain(rawPrompt, serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_VACATION_SENTINEL", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(rawPrompt, JsonSerializer.Serialize(result.Packet, JsonOptions), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -191,6 +193,26 @@ public sealed class PromptPacketBuilderTests
         Assert.False(result.IsAccepted);
         Assert.Equal("invalid_session", result.Code);
         Assert.Null(result.Packet);
+    }
+
+    [Fact]
+    public void NullScenarioHintRejectsWithFixedCode()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+
+        var result = new PromptPacketBuilder().Build(session, new PromptIntakeRequest(
+            session.SessionId,
+            "Plan a vacation.",
+            null,
+            "en-US",
+            ["vacation", null!]));
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal("invalid_context_hint", result.Code);
+        Assert.Equal("Prompt intake request failed validation.", result.Summary);
+        Assert.Null(result.Packet);
+        Assert.Null(session.MemoryDigest);
+        Assert.Empty(session.Actions);
     }
 
     [Fact]
