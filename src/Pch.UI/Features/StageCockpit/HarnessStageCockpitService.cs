@@ -1,6 +1,8 @@
 using Pch.Core;
 using Pch.Harness;
+using Pch.Providers.Fidelity;
 using Pch.Providers.ModelActions;
+using Pch.Providers.Mock;
 using System.Text.Json;
 
 namespace Pch.UI.Features.StageCockpit;
@@ -17,6 +19,7 @@ public sealed class HarnessStageCockpitService
     private readonly RuntimeMissionPlannerService _runtimeMissionPlannerService = new();
     private readonly ItineraryDayPlannerService _itineraryDayPlannerService = new();
     private readonly EndToEndTripRunService _endToEndTripRunService = new();
+    private readonly FidelityMatrix _fidelityMatrix = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
@@ -456,7 +459,7 @@ public sealed class HarnessStageCockpitService
 
     public StageCockpitFixture RunFidelityReleaseCheck(string rowId)
     {
-        var row = BuildFidelityOwnershipRows().FirstOrDefault(candidate =>
+        var row = BuildFidelityOwnershipRows(_fidelityMatrix.BuildDefaultMatrix()).FirstOrDefault(candidate =>
             string.Equals(candidate.RowId, rowId, StringComparison.Ordinal));
         if (row is null)
         {
@@ -985,16 +988,20 @@ public sealed class HarnessStageCockpitService
 
     private FidelityReleaseDashboardPanelFixture BuildFidelityReleaseDashboard()
     {
-        var rows = BuildFidelityOwnershipRows();
+        var matrix = _fidelityMatrix.BuildDefaultMatrix();
+        var rows = BuildFidelityOwnershipRows(matrix);
         var artifacts = BuildFidelityEvalArtifacts();
+        var hasReviewBlock = rows.Any(row => string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal))
+            || artifacts.Any(artifact => string.Equals(artifact.SchemaValidityState, "review-required", StringComparison.Ordinal));
+
         return new(
-            "UI-local deterministic release fidelity matrix pending canonical Stage 6 contracts",
-            rows.Any(row => string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal)) ? "review-required" : "ready",
-            rows.Any(row => string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal)) ? "blocked_until_review" : "pass",
-            rows.Any(row => string.Equals(row.ReplayCoverageState, "review-needed", StringComparison.Ordinal)) ? "covered_with_review_block" : "covered",
-            rows.Sum(row => row.FallbackCount),
-            rows.Sum(row => row.SchemaValidityCount),
-            rows.Sum(row => row.UnsupportedClaimCount),
+            "Canonical Pch.Harness FidelityMatrix with deterministic Pch.Providers fidelity eval artifacts",
+            hasReviewBlock ? "review-required" : matrix.IsAccepted ? "ready" : "blocked",
+            hasReviewBlock ? "blocked_until_review" : matrix.IsAccepted ? "pass" : "blocked",
+            rows.Any(row => string.Equals(row.ReplayCoverageState, "review-needed", StringComparison.Ordinal)) ? "covered_with_review_block" : matrix.IsAccepted ? "covered" : "blocked",
+            matrix.Totals.FallbackNeedCount,
+            rows.Sum(row => row.SchemaValidityCount) + artifacts.Sum(artifact => artifact.SchemaValidCount),
+            rows.Sum(row => row.UnsupportedClaimCount) + artifacts.Sum(artifact => artifact.UnsupportedClaimCount),
             artifacts.All(artifact => string.Equals(artifact.RawAbsenceState, "verified", StringComparison.Ordinal)) ? "verified" : "review-required",
             rows,
             artifacts,
@@ -1002,21 +1009,165 @@ public sealed class HarnessStageCockpitService
             _lastFidelityCheckedRowId);
     }
 
-    private static IReadOnlyList<FidelityOwnershipRowFixture> BuildFidelityOwnershipRows() =>
-    [
-        new("fidelity.stage.slot-collection", "stage-1-slot-collection", "Slot collection", "harness-only", "owned", "covered", 0, 2, 0, "pass", "verified", null, "release-fidelity-stage-slot-collection", "control-fidelity-stage-slot-collection", "Check slot collection fidelity row"),
-        new("fidelity.stage.mission-planning", "stage-3-mission-planning", "Mission planning", "small-model-candidate", "candidate", "covered", 1, 3, 0, "pass", "verified", null, "release-fidelity-stage-mission-planning", "control-fidelity-stage-mission-planning", "Check mission planning fidelity row"),
-        new("fidelity.stage.hold-prep", "stage-5-hold-prep", "Hold preparation", "strong-model-required", "gated", "covered", 1, 2, 0, "approval_gated", "verified", null, "release-fidelity-stage-hold-prep", "control-fidelity-stage-hold-prep", "Check hold preparation fidelity row"),
-        new("fidelity.stage.stage6-review", "stage-6-fidelity-review", "Stage 6 release review", "blocked-until-review", "blocked", "review-needed", 1, 0, 1, "blocked_until_review", "verified", "Unsupported claim requires release-owner review.", "release-fidelity-stage-stage6-review", "control-fidelity-stage-stage6-review", "Check Stage 6 release review fidelity row")
-    ];
+    private static IReadOnlyList<FidelityOwnershipRowFixture> BuildFidelityOwnershipRows(FidelityMatrixResult matrix) =>
+        matrix.Entries
+            .Select(ToFidelityOwnershipRow)
+            .ToArray();
 
-    private static IReadOnlyList<FidelityEvalArtifactFixture> BuildFidelityEvalArtifacts() =>
-    [
-        new("artifact-mission-runtime", "Mission planner runtime", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
-        new("artifact-candidate-expansion", "Candidate expansion", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
-        new("artifact-hold-preparation", "Hold preparation", "deterministic-mock", "approval_gated", "valid", 1, 0, "verified", null),
-        new("artifact-release-claims", "Release claim audit", "deterministic-audit", "unsupported_claim_blocked", "review-required", 0, 1, "verified", "PCH_UI_FIDELITY_UNSUPPORTED_CLAIM_REVIEW")
-    ];
+    private static FidelityOwnershipRowFixture ToFidelityOwnershipRow(FidelityMatrixEntry entry)
+    {
+        var markerSuffix = SafeMarker(entry.EntryId);
+        var ownership = ToUiOwnership(entry.Ownership);
+        var releaseGateState = ReleaseGateStateFor(entry.Ownership);
+
+        return new(
+            $"fidelity.{markerSuffix}",
+            $"stage-{SafeMarker(entry.Stage)}",
+            StageLabelFor(entry),
+            ownership,
+            MatrixStateFor(entry.Ownership),
+            releaseGateState == "blocked_until_review" ? "review-needed" : "covered",
+            entry.Metrics.NeedsFallback ? 1 : 0,
+            entry.Metrics.SchemaValid ? 1 : 0,
+            entry.Metrics.UnsupportedClaimCount,
+            releaseGateState,
+            "verified",
+            releaseGateState == "blocked_until_review" ? "Canonical fidelity matrix requires release-owner review." : null,
+            $"release-fidelity-stage-{markerSuffix}",
+            $"control-fidelity-stage-{markerSuffix}",
+            $"Check {StageLabelFor(entry)} fidelity row");
+    }
+
+    private static IReadOnlyList<FidelityEvalArtifactFixture> BuildFidelityEvalArtifacts()
+    {
+        var accepted = EvaluateFidelityArtifacts(
+            "artifact-fidelity-agreed",
+            MockFidelityEvalBehavior.SchemaValid);
+        var blocked = EvaluateFidelityArtifacts(
+            "artifact-fidelity-unsupported-claim",
+            MockFidelityEvalBehavior.UnsupportedClaim);
+
+        return [.. accepted, .. blocked];
+    }
+
+    private static IReadOnlyList<FidelityEvalArtifactFixture> EvaluateFidelityArtifacts(
+        string caseName,
+        MockFidelityEvalBehavior smallModelBehavior)
+    {
+        var evaluator = new FidelityEvaluator(
+            [
+                new MockFidelityEvalSource(FidelityEvalSourceKind.SmallModel, smallModelBehavior),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.StrongModel),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.HarnessOnly)
+            ]);
+        var rows = evaluator.EvaluateAsync(
+            [new FidelityEvalCase(caseName, CreateFidelityEvalPacket(caseName))])
+            .GetAwaiter()
+            .GetResult();
+
+        return rows.Select(ToFidelityEvalArtifact).ToArray();
+    }
+
+    private static FidelityEvalPacket CreateFidelityEvalPacket(string caseName) =>
+        new(
+            $"packet-{SafeMarker(caseName)}",
+            [
+                new("candidate-dining", FidelityCandidateCategory.Dining),
+                new("candidate-activity", FidelityCandidateCategory.Activity),
+                new("candidate-transit", FidelityCandidateCategory.Transit),
+                new("candidate-downtime", FidelityCandidateCategory.Downtime)
+            ],
+            "en-US",
+            PromptDigest: "prompt-digest-redacted",
+            ContextDigest: "context-digest-redacted");
+
+    private static FidelityEvalArtifactFixture ToFidelityEvalArtifact(SanitizedFidelityEvalRow row) =>
+        new(
+            row.Name,
+            LabelForArtifact(row),
+            row.Sources.FirstOrDefault()?.Provider ?? MockFidelityEvalSource.ProviderName,
+            row.OutcomeCode,
+            SchemaStateFor(row),
+            row.Passed ? row.CandidateCount : 0,
+            UnsupportedClaimCountFor(row),
+            "verified",
+            row.Passed ? null : FidelityEvalErrorCode(row));
+
+    private static string ToUiOwnership(string ownership) => ownership switch
+    {
+        FidelityMatrix.HarnessOnlyOutcome => "harness-only",
+        FidelityMatrix.SmallModelCandidateOutcome => "small-model-candidate",
+        FidelityMatrix.StrongModelRequiredOutcome => "strong-model-required",
+        FidelityMatrix.BlockedUntilReviewOutcome => "blocked-until-review",
+        _ => "blocked-until-review"
+    };
+
+    private static string MatrixStateFor(string ownership) => ownership switch
+    {
+        FidelityMatrix.HarnessOnlyOutcome => "owned",
+        FidelityMatrix.SmallModelCandidateOutcome => "candidate",
+        FidelityMatrix.StrongModelRequiredOutcome => "gated",
+        _ => "blocked"
+    };
+
+    private static string ReleaseGateStateFor(string ownership) => ownership switch
+    {
+        FidelityMatrix.BlockedUntilReviewOutcome => "blocked_until_review",
+        FidelityMatrix.StrongModelRequiredOutcome => "approval_gated",
+        _ => "pass"
+    };
+
+    private static string StageLabelFor(FidelityMatrixEntry entry)
+    {
+        var source = entry.InputKind == "trip_run_replay"
+            ? $"Replay {entry.Scenario}"
+            : entry.Stage;
+
+        return source
+            .Replace('_', ' ')
+            .Replace('-', ' ');
+    }
+
+    private static string SchemaStateFor(SanitizedFidelityEvalRow row) =>
+        row.OutcomeCode switch
+        {
+            FidelityEvaluator.OutcomeAgreed or FidelityEvaluator.OutcomeDisagreement => "valid",
+            FidelityEvaluator.OutcomeUnsupportedClaim => "review-required",
+            _ => "invalid"
+        };
+
+    private static int UnsupportedClaimCountFor(SanitizedFidelityEvalRow row) =>
+        row.OutcomeCode == FidelityEvaluator.OutcomeUnsupportedClaim
+            ? 1
+            : row.Sources.Sum(source => source.UnsupportedClaimCount);
+
+    private static string LabelForArtifact(SanitizedFidelityEvalRow row) =>
+        row.OutcomeCode switch
+        {
+            FidelityEvaluator.OutcomeAgreed => "Fidelity agreed comparison",
+            FidelityEvaluator.OutcomeUnsupportedClaim => "Unsupported claim review",
+            FidelityEvaluator.OutcomeSchemaInvalid => "Schema invalid review",
+            _ => "Fidelity evaluation review"
+        };
+
+    private static string FidelityEvalErrorCode(SanitizedFidelityEvalRow row) =>
+        row.ErrorCode is not null
+            ? $"PCH_UI_FIDELITY_EVAL_{row.ErrorCode.ToUpperInvariant()}"
+            : $"PCH_UI_FIDELITY_EVAL_{row.OutcomeCode.ToUpperInvariant()}";
+
+    private static string SafeMarker(string value)
+    {
+        var marker = new string(value
+            .Select(character => char.IsLetterOrDigit(character) ? char.ToLowerInvariant(character) : '-')
+            .ToArray());
+
+        while (marker.Contains("--", StringComparison.Ordinal))
+        {
+            marker = marker.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        return marker.Trim('-');
+    }
 
     private static void UpsertRange<T>(
         List<T> target,

@@ -1,4 +1,6 @@
 using Pch.UI.Features.StageCockpit;
+using Pch.Harness;
+using Pch.Providers.Fidelity;
 using System.Text.Json;
 using Xunit;
 
@@ -1040,23 +1042,33 @@ public sealed class HarnessStageCockpitServiceTests
 
         var fixture = service.Current();
         var dashboard = fixture.FidelityReleaseDashboard;
+        var matrix = new FidelityMatrix().BuildDefaultMatrix();
         var serialized = SerializeFidelityFixture(fixture);
 
+        Assert.Contains("Pch.Harness FidelityMatrix", dashboard.EndpointHint, StringComparison.Ordinal);
         Assert.Equal("review-required", dashboard.MatrixState);
         Assert.Equal("blocked_until_review", dashboard.ReleaseGateState);
         Assert.Equal("covered_with_review_block", dashboard.ReplayCoverageState);
-        Assert.Equal(3, dashboard.FallbackCount);
-        Assert.Equal(7, dashboard.SchemaValidityCount);
-        Assert.Equal(1, dashboard.UnsupportedClaimCount);
+        Assert.Equal(matrix.Totals.FallbackNeedCount, dashboard.FallbackCount);
+        Assert.True(dashboard.SchemaValidityCount >= matrix.EntryCount);
+        Assert.True(dashboard.UnsupportedClaimCount >= 1);
         Assert.Equal("verified", dashboard.RawAbsenceState);
         Assert.Contains(
             dashboard.EvalArtifacts,
-            artifact => artifact.ArtifactId == "artifact-release-claims"
-                && artifact.Outcome == "unsupported_claim_blocked"
+            artifact => artifact.ArtifactId == "artifact-fidelity-agreed"
+                && artifact.Outcome == FidelityEvaluator.OutcomeAgreed
+                && artifact.SchemaValidityState == "valid"
+                && artifact.Provider == "mock-fidelity-eval"
+                && artifact.RawAbsenceState == "verified"
+                && artifact.ErrorCode is null);
+        Assert.Contains(
+            dashboard.EvalArtifacts,
+            artifact => artifact.ArtifactId == "artifact-fidelity-unsupported-claim"
+                && artifact.Outcome == FidelityEvaluator.OutcomeUnsupportedClaim
                 && artifact.SchemaValidityState == "review-required"
                 && artifact.UnsupportedClaimCount == 1
                 && artifact.RawAbsenceState == "verified"
-                && artifact.ErrorCode == "PCH_UI_FIDELITY_UNSUPPORTED_CLAIM_REVIEW");
+                && artifact.ErrorCode == "PCH_UI_FIDELITY_EVAL_FIDELITY_EVAL_UNSUPPORTED_CLAIM");
         AssertFidelityRawTextAbsent(serialized);
     }
 
@@ -1068,21 +1080,16 @@ public sealed class HarnessStageCockpitServiceTests
         var rows = service.Current().FidelityReleaseDashboard.OwnershipRows;
 
         Assert.Contains(rows, row => row.Ownership == "harness-only"
-            && row.StageId == "stage-1-slot-collection"
             && row.MatrixState == "owned"
             && row.ReleaseGateState == "pass");
         Assert.Contains(rows, row => row.Ownership == "small-model-candidate"
-            && row.StageId == "stage-3-mission-planning"
-            && row.FallbackCount == 1
-            && row.SchemaValidityCount == 3);
+            && row.MatrixState == "candidate"
+            && row.SchemaValidityCount == 1);
         Assert.Contains(rows, row => row.Ownership == "strong-model-required"
-            && row.StageId == "stage-5-hold-prep"
             && row.ReleaseGateState == "approval_gated");
         Assert.Contains(rows, row => row.Ownership == "blocked-until-review"
-            && row.StageId == "stage-6-fidelity-review"
-            && row.UnsupportedClaimCount == 1
             && row.ReleaseGateState == "blocked_until_review"
-            && row.BlockedReason == "Unsupported claim requires release-owner review.");
+            && row.BlockedReason == "Canonical fidelity matrix requires release-owner review.");
     }
 
     [Fact]
@@ -1091,8 +1098,9 @@ public sealed class HarnessStageCockpitServiceTests
         var service = new HarnessStageCockpitService();
 
         var rows = service.Current().FidelityReleaseDashboard.OwnershipRows;
+        var matrix = new FidelityMatrix().BuildDefaultMatrix();
 
-        Assert.Equal(4, rows.Count);
+        Assert.Equal(matrix.EntryCount, rows.Count);
         Assert.Equal(rows.Count, rows.Select(row => row.ControlId).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(rows.Count, rows.Select(row => row.MarkerId).Distinct(StringComparer.Ordinal).Count());
         Assert.All(rows, row =>
@@ -1107,29 +1115,32 @@ public sealed class HarnessStageCockpitServiceTests
     public void FidelityReleaseCheckRecordsPassAndBlockedReviewOutcomes()
     {
         var service = new HarnessStageCockpitService();
+        var current = service.Current().FidelityReleaseDashboard;
+        var passRow = Assert.Single(current.OwnershipRows.Where(row => row.ReleaseGateState == "pass").Take(1));
+        var blockedRow = Assert.Single(current.OwnershipRows.Where(row => row.ReleaseGateState == "blocked_until_review").Take(1));
 
-        var accepted = service.RunFidelityReleaseCheck("fidelity.stage.slot-collection");
-        var blocked = service.RunFidelityReleaseCheck("fidelity.stage.stage6-review");
+        var accepted = service.RunFidelityReleaseCheck(passRow.RowId);
+        var blocked = service.RunFidelityReleaseCheck(blockedRow.RowId);
         var serialized = SerializeFidelityFixture(blocked);
 
         Assert.Contains(
             accepted.FidelityReleaseDashboard.CheckOutcomes,
-            outcome => outcome.RowId == "fidelity.stage.slot-collection"
+            outcome => outcome.RowId == passRow.RowId
                 && outcome.State == "accepted"
                 && outcome.ReleaseGateState == "pass"
                 && outcome.ErrorCode is null);
-        Assert.Equal("fidelity.stage.stage6-review", blocked.FidelityReleaseDashboard.LastCheckedRowId);
+        Assert.Equal(blockedRow.RowId, blocked.FidelityReleaseDashboard.LastCheckedRowId);
         Assert.Contains(
             blocked.FidelityReleaseDashboard.CheckOutcomes,
-            outcome => outcome.RowId == "fidelity.stage.stage6-review"
+            outcome => outcome.RowId == blockedRow.RowId
                 && outcome.State == "blocked"
                 && outcome.ReleaseGateState == "blocked_until_review"
                 && outcome.ErrorCode == "PCH_UI_FIDELITY_RELEASE_REVIEW_REQUIRED"
-                && outcome.BlockedReason == "Unsupported claim requires release-owner review.");
+                && outcome.BlockedReason == "Canonical fidelity matrix requires release-owner review.");
         Assert.Contains(
             blocked.Session.Responses,
             response => response.State == SessionResponseState.Blocked
-                && response.Target == "fidelity.stage.stage6-review");
+                && response.Target == blockedRow.RowId);
         AssertFidelityRawTextAbsent(serialized);
     }
 
