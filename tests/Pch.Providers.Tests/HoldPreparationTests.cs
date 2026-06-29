@@ -91,6 +91,58 @@ public sealed class HoldPreparationTests
     }
 
     [Fact]
+    public async Task EvaluatorRejectsForgedHoldPreparedWhenApprovalTokenMissing()
+    {
+        const string holdReference = "RAW_HOLD_REFERENCE_SHOULD_NOT_PERSIST";
+        var packet = CreatePacket(HoldPreparationOperation.Hold, approvalToken: null, contextDigest: "RAW_CONTEXT_SHOULD_NOT_PERSIST");
+        var evaluator = new HoldPreparationEvaluator(new StaticHoldPreparationAdapter(CreateForgedHoldPreparedResult(packet, holdReference)));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new HoldPreparationEvalCase("forged-missing-approval", packet)]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(HoldPreparationEvaluator.OutcomeMissingApproval, row.OutcomeCode);
+        Assert.Empty(row.Candidates);
+        Assert.Equal(0, row.CandidateCount);
+        Assert.Null(row.ResponseContentLength);
+        Assert.Null(row.Provider);
+        Assert.Null(row.Model);
+        Assert.Null(row.RequestId);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(holdReference, serialized);
+        Assert.DoesNotContain("RAW_CONTEXT_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("provider-should-not-persist", serialized);
+        Assert.DoesNotContain("request-should-not-persist", serialized);
+    }
+
+    [Fact]
+    public async Task EvaluatorRejectsForgedHoldPreparedWhenApprovalTokenMismatches()
+    {
+        const string approvalToken = "MALICIOUS_APPROVAL_TOKEN_SHOULD_NOT_PERSIST";
+        const string holdReference = "RAW_HOLD_REFERENCE_SHOULD_NOT_PERSIST";
+        var packet = CreatePacket(HoldPreparationOperation.Hold, approvalToken);
+        var evaluator = new HoldPreparationEvaluator(new StaticHoldPreparationAdapter(CreateForgedHoldPreparedResult(packet, holdReference)));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new HoldPreparationEvalCase("forged-mismatched-approval", packet)],
+            new HoldPreparationOptions(RequiredApprovalToken: "expected-approval-token")));
+
+        Assert.False(row.Passed);
+        Assert.Equal(HoldPreparationEvaluator.OutcomeApprovalMismatch, row.OutcomeCode);
+        Assert.Empty(row.Candidates);
+        Assert.Equal(0, row.CandidateCount);
+        Assert.Null(row.Provider);
+        Assert.Null(row.RequestId);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(approvalToken, serialized);
+        Assert.DoesNotContain(holdReference, serialized);
+        Assert.DoesNotContain("provider-should-not-persist", serialized);
+        Assert.DoesNotContain("request-should-not-persist", serialized);
+    }
+
+    [Fact]
     public async Task PacketMismatchUsesFixedOutcomeWithoutRawResultPacketId()
     {
         var evaluator = new HoldPreparationEvaluator(new MockHoldPreparationAdapter(MockHoldPreparationBehavior.PacketMismatch));
@@ -193,6 +245,31 @@ public sealed class HoldPreparationTests
             "en-US",
             approvalToken,
             contextDigest);
+
+    private static HoldPreparationResult CreateForgedHoldPreparedResult(
+        HoldPreparationPacket packet,
+        string holdReference) =>
+        new(
+            packet.PacketId,
+            HoldPreparationResultKind.HoldPrepared,
+            [
+                new HoldPreparationCandidateResult(
+                    "slot-dining",
+                    "candidate-dining",
+                    CandidateCategory.Dining,
+                    HoldPreparationCandidateStatus.HoldPrepared,
+                    holdReference),
+                new HoldPreparationCandidateResult(
+                    "slot-activity",
+                    "candidate-activity",
+                    CandidateCategory.Activity,
+                    HoldPreparationCandidateStatus.HoldPrepared,
+                    holdReference)
+            ],
+            456,
+            "provider-should-not-persist",
+            "model-should-not-persist",
+            "request-should-not-persist");
 
     private sealed class StaticHoldPreparationAdapter(HoldPreparationResult result) : IHoldPreparationAdapter
     {

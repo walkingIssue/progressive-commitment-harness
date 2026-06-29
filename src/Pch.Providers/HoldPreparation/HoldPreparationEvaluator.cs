@@ -31,7 +31,7 @@ public sealed class HoldPreparationEvaluator
             try
             {
                 var result = await _adapter.PrepareAsync(evalCase.Packet, options, cancellationToken).ConfigureAwait(false);
-                rows.Add(ToRow(evalCase, result));
+                rows.Add(ToRow(evalCase, result, options));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -48,7 +48,8 @@ public sealed class HoldPreparationEvaluator
 
     private static SanitizedHoldPreparationEvalRow ToRow(
         HoldPreparationEvalCase evalCase,
-        HoldPreparationResult result)
+        HoldPreparationResult result,
+        HoldPreparationOptions? options)
     {
         if (!string.Equals(evalCase.Packet.PacketId, result.PacketId, StringComparison.Ordinal))
         {
@@ -67,6 +68,15 @@ public sealed class HoldPreparationEvaluator
         if (outcome is OutcomeMissingApproval or OutcomeApprovalMismatch or OutcomeMalformedResult)
         {
             return Rejected(evalCase.Name, evalCase.Packet.PacketId, outcome);
+        }
+
+        if (outcome == OutcomeHoldPrepared)
+        {
+            var approvalOutcome = ValidateApproval(evalCase.Packet, options);
+            if (approvalOutcome is not null)
+            {
+                return Rejected(evalCase.Name, evalCase.Packet.PacketId, approvalOutcome);
+            }
         }
 
         if (!SelectedCandidateSetsMatch(evalCase.Packet.SelectedCandidates, result.Candidates))
@@ -137,6 +147,24 @@ public sealed class HoldPreparationEvaluator
         }
 
         return packetKeys.SetEquals(resultKeys);
+    }
+
+    private static string? ValidateApproval(HoldPreparationPacket packet, HoldPreparationOptions? options)
+    {
+        if (packet.Operation != HoldPreparationOperation.Hold)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(packet.ApprovalToken))
+        {
+            return OutcomeMissingApproval;
+        }
+
+        var requiredApprovalToken = options?.RequiredApprovalToken ?? "mock-approval-token";
+        return string.Equals(packet.ApprovalToken, requiredApprovalToken, StringComparison.Ordinal)
+            ? null
+            : OutcomeApprovalMismatch;
     }
 
     private static string CandidateKey(string slotId, string candidateId) =>
