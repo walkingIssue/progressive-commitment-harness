@@ -311,6 +311,109 @@
             </div>
         </article>
 
+        <article class="panel prompt-intake-panel">
+            <div class="panel-head">
+                <span>Prompt Intake</span>
+                <small>@Fixture.PromptIntake.EndpointHint</small>
+            </div>
+            <div class="mission-run-list">
+                @foreach (var run in Fixture.PromptIntake.Runs)
+                {
+                    var outcome = Fixture.PromptIntake.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    <section class="mission-run-card"
+                             data-prompt-run-id="@run.Id"
+                             data-scenario="@run.Scenario"
+                             data-prompt-packet-outcome="@outcome?.PromptPacketOutcomeCode"
+                             data-provider-runtime-outcome="@outcome?.ProviderRuntimeOutcomeCode"
+                             data-adapter-outcome="@outcome?.AdapterOutcomeCode"
+                             data-intake-outcome="@outcome?.IntakeOutcomeCode"
+                             data-memory-digest-outcome="@outcome?.MemoryDigestOutcomeCode"
+                             data-trace-outcome="@outcome?.TraceOutcome"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason"
+                             data-provider="@outcome?.Provider"
+                             data-model="@outcome?.Model"
+                             data-request-id="@outcome?.RequestId">
+                        <div>
+                            <strong>@run.Label</strong>
+                            <p>@run.Scenario</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.TraceOutcome</small>
+                            }
+                        </div>
+                        <code>@(outcome?.ErrorCode ?? run.Scenario)</code>
+                        <button class="ghost" type="button" @onclick="() => RunPromptIntake(run.Id)">
+                            Run prompt
+                        </button>
+                    </section>
+                }
+            </div>
+            <div class="mission-result-grid">
+                <section>
+                    <strong>Prompt Applied Fields</strong>
+                    <div class="mission-list">
+                        @foreach (var field in Fixture.PromptIntake.AppliedFields)
+                        {
+                            <div class="mission-item"
+                                 data-prompt-applied-field="@field.FieldId"
+                                 data-field-source="@field.Source"
+                                 data-field-state="@field.State">
+                                <span>@field.Label</span>
+                                <code>@field.Value</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Prompt Confirmations</strong>
+                    <div class="mission-list">
+                        @foreach (var field in Fixture.PromptIntake.PendingConfirmations)
+                        {
+                            <div class="mission-item"
+                                 data-prompt-pending-confirmation="@field.FieldId"
+                                 data-field-source="@field.Source"
+                                 data-field-state="@field.State">
+                                <span>@field.Label</span>
+                                <code>@field.Value</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Prompt Commitments</strong>
+                    <div class="mission-list">
+                        @foreach (var commitment in Fixture.PromptIntake.HighPriorityCommitments)
+                        {
+                            <div class="mission-item"
+                                 data-prompt-high-priority-commitment="@commitment.CommitmentId"
+                                 data-commitment-kind="@commitment.Kind"
+                                 data-commitment-priority="@commitment.Priority"
+                                 data-commitment-source="@commitment.Source">
+                                <span>@commitment.Title</span>
+                                <code>@commitment.Priority</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Prompt Digest</strong>
+                    <div class="mission-list">
+                        @foreach (var fact in Fixture.PromptIntake.MemoryDigestFacts)
+                        {
+                            <div class="mission-item"
+                                 data-prompt-memory-digest-fact="@fact.FactId"
+                                 data-memory-source="@fact.Source"
+                                 data-memory-reference="@fact.ReferenceId">
+                                <span>@fact.Text</span>
+                                <code>@fact.ReferenceId</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -405,6 +508,12 @@
     private void RunMissionIntake(string runId)
     {
         Fixture = CockpitService.RunMissionIntake(runId);
+        LoadFixtureState();
+    }
+
+    private void RunPromptIntake(string runId)
+    {
+        Fixture = CockpitService.RunPromptIntake(runId);
         LoadFixtureState();
     }
 

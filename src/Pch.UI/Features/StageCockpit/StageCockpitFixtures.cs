@@ -109,6 +109,22 @@ internal sealed class StageCockpitFixtureProvider
             AppliedFields: [],
             PendingConfirmations: [],
             HighPriorityCommitments: [],
+            MemoryDigestFacts: []),
+        PromptIntake: new(
+            EndpointHint: "UI prompt packet seam through deterministic provider runtime and mission adapter",
+            Runs:
+            [
+                new("prompt.accepted", "Plan from prompt", "accepted"),
+                new("prompt.pending", "Infer pending prompt", "pending-confirmation"),
+                new("prompt.provider-blocked", "Provider-blocked prompt", "provider-blocked"),
+                new("prompt.adapter-blocked", "Adapter-blocked prompt", "adapter-blocked"),
+                new("prompt.blank", "Blank prompt", "validation-blocked"),
+                new("prompt.overlong", "Overlong prompt", "validation-blocked")
+            ],
+            Outcomes: [],
+            AppliedFields: [],
+            PendingConfirmations: [],
+            HighPriorityCommitments: [],
             MemoryDigestFacts: []));
 }
 
@@ -121,7 +137,8 @@ public sealed record StageCockpitFixture(
     StageSessionFixture Session,
     SuggestedActionPanelFixture SuggestedActions,
     ModelSuggestionRunPanelFixture ModelSuggestionRuns,
-    MissionIntakePanelFixture MissionIntake);
+    MissionIntakePanelFixture MissionIntake,
+    PromptIntakePanelFixture PromptIntake);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -269,6 +286,35 @@ public sealed record MemoryDigestFactFixture(
     string Text,
     string Source,
     string ReferenceId);
+
+public sealed record PromptIntakePanelFixture(
+    string EndpointHint,
+    IReadOnlyList<PromptIntakeRunFixture> Runs,
+    IReadOnlyList<PromptIntakeOutcomeFixture> Outcomes,
+    IReadOnlyList<MissionFieldFixture> AppliedFields,
+    IReadOnlyList<MissionFieldFixture> PendingConfirmations,
+    IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
+    IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts);
+
+public sealed record PromptIntakeRunFixture(
+    string Id,
+    string Label,
+    string Scenario);
+
+public sealed record PromptIntakeOutcomeFixture(
+    string RunId,
+    string State,
+    string PromptPacketOutcomeCode,
+    string ProviderRuntimeOutcomeCode,
+    string AdapterOutcomeCode,
+    string IntakeOutcomeCode,
+    string MemoryDigestOutcomeCode,
+    string TraceOutcome,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId);
 
 public enum SessionResponseState
 {

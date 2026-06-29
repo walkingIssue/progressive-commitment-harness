@@ -24,6 +24,11 @@ public sealed class HarnessStageCockpitService
     private readonly List<MissionFieldFixture> _pendingMissionConfirmations = [];
     private readonly List<MissionCommitmentFixture> _highPriorityCommitments = [];
     private readonly List<MemoryDigestFactFixture> _memoryDigestFacts = [];
+    private readonly List<PromptIntakeOutcomeFixture> _promptOutcomes = [];
+    private readonly List<MissionFieldFixture> _promptAppliedFields = [];
+    private readonly List<MissionFieldFixture> _promptPendingConfirmations = [];
+    private readonly List<MissionCommitmentFixture> _promptHighPriorityCommitments = [];
+    private readonly List<MemoryDigestFactFixture> _promptMemoryDigestFacts = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -329,6 +334,46 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunPromptIntake(string runId)
+    {
+        var prompt = PromptForRun(runId);
+        var result = _runtimeMissionPlannerService.RunPrompt(_session, runId, prompt);
+
+        UpsertPromptOutcome(new(
+            runId,
+            result.State,
+            result.PromptPacketOutcomeCode,
+            result.ProviderRuntimeOutcomeCode,
+            result.AdapterOutcomeCode,
+            result.IntakeOutcomeCode,
+            result.MemoryDigestOutcomeCode,
+            result.TraceOutcome,
+            result.ErrorCode,
+            result.BlockedReason,
+            result.Provider,
+            result.Model,
+            result.RequestId));
+
+        UpsertRange(_promptAppliedFields, result.AppliedFields, field => field.FieldId);
+        UpsertRange(_promptPendingConfirmations, result.PendingConfirmations, field => field.FieldId);
+        UpsertRange(_promptHighPriorityCommitments, result.HighPriorityCommitments, commitment => commitment.CommitmentId);
+        UpsertRange(_promptMemoryDigestFacts, result.MemoryDigestFacts, fact => fact.FactId);
+
+        UpsertResponse(new(
+            $"response.{result.State}.prompt.{runId}",
+            result.State == "blocked" ? SessionResponseState.Blocked : result.State == "proposed" ? SessionResponseState.Pending : SessionResponseState.Applied,
+            result.State == "blocked" ? "Blocked" : result.State == "proposed" ? "Pending" : "Applied",
+            result.State == "blocked"
+                ? result.BlockedReason ?? "Prompt intake was blocked."
+                : result.State == "proposed"
+                    ? "Prompt intake produced confirmation-ready inferred fields."
+                    : "Prompt intake applied user-stated mission facts.",
+            runId,
+            null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -447,7 +492,22 @@ public sealed class HarnessStageCockpitService
                 _appliedMissionFields.ToArray(),
                 _pendingMissionConfirmations.ToArray(),
                 _highPriorityCommitments.ToArray(),
-                _memoryDigestFacts.ToArray()));
+                _memoryDigestFacts.ToArray()),
+            PromptIntake: new(
+                "UI prompt packet seam through deterministic provider runtime and mission adapter",
+                [
+                    new("prompt.accepted", "Plan from prompt", "accepted"),
+                    new("prompt.pending", "Infer pending prompt", "pending-confirmation"),
+                    new("prompt.provider-blocked", "Provider-blocked prompt", "provider-blocked"),
+                    new("prompt.adapter-blocked", "Adapter-blocked prompt", "adapter-blocked"),
+                    new("prompt.blank", "Blank prompt", "validation-blocked"),
+                    new("prompt.overlong", "Overlong prompt", "validation-blocked")
+                ],
+                _promptOutcomes.ToArray(),
+                _promptAppliedFields.ToArray(),
+                _promptPendingConfirmations.ToArray(),
+                _promptHighPriorityCommitments.ToArray(),
+                _promptMemoryDigestFacts.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -598,6 +658,20 @@ public sealed class HarnessStageCockpitService
         return new(runId, modelPacket, result);
     }
 
+    private static string PromptForRun(string runId)
+    {
+        return runId switch
+        {
+            "prompt.accepted" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Family wants a calm vacation in Japan in October.",
+            "prompt.pending" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Maybe Japan in October if the dates and destination make sense.",
+            "prompt.provider-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Vacation prompt that creates a provider packet mismatch fixture.",
+            "prompt.adapter-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Vacation prompt with a private note that should not become a mission field.",
+            "prompt.blank" => "",
+            "prompt.overlong" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK " + new string('x', 4_001),
+            _ => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Unknown prompt fixture."
+        };
+    }
+
     private void AddModelRunOutcome(ModelSuggestionRunOutcomeFixture outcome)
     {
         var index = _modelRunOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
@@ -639,6 +713,19 @@ public sealed class HarnessStageCockpitService
         else
         {
             _missionOutcomes.Add(outcome);
+        }
+    }
+
+    private void UpsertPromptOutcome(PromptIntakeOutcomeFixture outcome)
+    {
+        var index = _promptOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _promptOutcomes[index] = outcome;
+        }
+        else
+        {
+            _promptOutcomes.Add(outcome);
         }
     }
 

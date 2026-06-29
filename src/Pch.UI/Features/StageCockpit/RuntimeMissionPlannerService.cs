@@ -14,6 +14,7 @@ public sealed class RuntimeMissionPlannerService
     private const string RawPacketSentinel = "RAW_PACKET_ID_SHOULD_NOT_LEAK";
     private readonly MissionPlannerRuntimeBridge _runtimeBridge = new();
     private readonly MissionProposalAdapter _missionProposalAdapter = new();
+    private readonly PromptPacketBuilder _promptPacketBuilder = new();
 
     public RuntimeMissionPlannerResult Run(TripSession session, string runId)
     {
@@ -32,6 +33,122 @@ public sealed class RuntimeMissionPlannerService
 
         var planner = CreateMissionPlannerResult(packet, runId);
         var handoff = _runtimeBridge.Bridge(packet, planner);
+        if (!handoff.IsAccepted || handoff.RuntimeProposal is null)
+        {
+            return Blocked(
+                runId,
+                handoff.DecodeOutcomeCode,
+                "not_run",
+                "planner_mock_accepted",
+                ProviderRuntimeErrorCode(handoff.DecodeOutcomeCode),
+                ProviderRuntimeBlockedReason(handoff.DecodeOutcomeCode),
+                planner);
+        }
+
+        var mirror = ToProviderMissionProposalMirror(handoff.RuntimeProposal);
+        var adapter = _missionProposalAdapter.Apply(session, mirror);
+        if (!adapter.IsAccepted || adapter.IntakeResult is null)
+        {
+            return new(
+                runId,
+                "blocked",
+                handoff.DecodeOutcomeCode,
+                adapter.Code,
+                "planner_mock_accepted",
+                "not_run",
+                "not_run",
+                "mission_intake.blocked",
+                AdapterErrorCode(adapter.Code),
+                adapter.Summary,
+                planner.Provider,
+                planner.Model,
+                planner.RequestId,
+                [],
+                [],
+                [],
+                ToDigestFacts(adapter.Digest));
+        }
+
+        var intake = adapter.IntakeResult;
+        var state = intake.PendingConfirmations.Count > 0 ? "proposed" : "applied";
+
+        return new(
+            runId,
+            state,
+            handoff.DecodeOutcomeCode,
+            "adapter_accepted",
+            "planner_mock_accepted",
+            intake.Code,
+            "memory_digest_updated",
+            state == "proposed" ? "mission_intake.proposed" : "mission_intake.applied",
+            null,
+            null,
+            planner.Provider,
+            planner.Model,
+            planner.RequestId,
+            ToAppliedFields(intake.AppliedFacts),
+            ToPendingFields(intake.PendingConfirmations),
+            ToHighPriorityCommitments(handoff.RuntimeProposal.Result.Commitments),
+            ToDigestFacts(intake.Digest));
+    }
+
+    public PromptIntakePlannerResult RunPrompt(TripSession session, string runId, string prompt)
+    {
+        var packetResult = _promptPacketBuilder.Build(session, new PromptIntakeRequest(
+            session.SessionId,
+            prompt,
+            session.MemoryDigest,
+            "en-US",
+            PromptScenarioHints(runId)));
+
+        if (!packetResult.IsAccepted || packetResult.Packet is null)
+        {
+            return new(
+                runId,
+                "blocked",
+                packetResult.Code,
+                "not_run",
+                "not_run",
+                "not_run",
+                "not_run",
+                "prompt_intake.blocked",
+                PromptPacketErrorCode(packetResult.Code),
+                packetResult.Summary,
+                "deterministic-mock",
+                "mock-mission-planner",
+                null,
+                [],
+                [],
+                [],
+                []);
+        }
+
+        var runtime = RunPromptPacket(session, runId, packetResult.Packet);
+        return new(
+            runId,
+            runtime.State,
+            packetResult.Code,
+            runtime.ProviderRuntimeOutcomeCode,
+            runtime.AdapterOutcomeCode,
+            runtime.IntakeOutcomeCode,
+            runtime.MemoryDigestOutcomeCode,
+            runtime.TraceOutcome.Replace("mission_intake", "prompt_intake", StringComparison.Ordinal),
+            runtime.ErrorCode,
+            runtime.BlockedReason,
+            runtime.Provider,
+            runtime.Model,
+            runtime.RequestId,
+            runtime.AppliedFields,
+            runtime.PendingConfirmations,
+            runtime.HighPriorityCommitments,
+            runtime.MemoryDigestFacts);
+    }
+
+    private RuntimeMissionPlannerResult RunPromptPacket(TripSession session, string runId, MissionPlannerPromptPacket promptPacket)
+    {
+        var providerPacket = ToProviderMissionPlannerPacket(promptPacket);
+        var planner = CreateMissionPlannerResult(providerPacket, PromptScenarioRunId(runId));
+        var handoff = _runtimeBridge.Bridge(providerPacket, planner);
         if (!handoff.IsAccepted || handoff.RuntimeProposal is null)
         {
             return Blocked(
@@ -238,6 +355,39 @@ public sealed class RuntimeMissionPlannerService
             $"mock-{runId}");
     }
 
+    private static MissionPlannerPacket ToProviderMissionPlannerPacket(MissionPlannerPromptPacket promptPacket)
+    {
+        return new(
+            promptPacket.PacketId,
+            promptPacket.Prompt.Category,
+            promptPacket.TransientRawPrompt,
+            promptPacket.Locale ?? "en-US",
+            promptPacket.KnownConstraints
+                .Select(constraint => constraint.ConstraintId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Take(8)
+                .ToArray());
+    }
+
+    private static string PromptScenarioRunId(string runId) =>
+        runId switch
+        {
+            "prompt.accepted" => "mission.vacation",
+            "prompt.pending" => "mission.pending-confirmation",
+            "prompt.provider-blocked" => "mission.validation-blocked",
+            "prompt.adapter-blocked" => "mission.adapter-blocked",
+            _ => "mission.vacation"
+        };
+
+    private static IReadOnlyList<string> PromptScenarioHints(string runId) =>
+        runId switch
+        {
+            "prompt.pending" => ["pending-confirmation"],
+            "prompt.provider-blocked" => ["provider-blocked"],
+            "prompt.adapter-blocked" => ["adapter-blocked"],
+            _ => ["vacation"]
+        };
+
     private static ProviderMissionProposalMirror ToProviderMissionProposalMirror(ProviderRuntimeMissionIntakeProposal runtimeProposal) =>
         new(
             runtimeProposal.ProposalId,
@@ -324,6 +474,18 @@ public sealed class RuntimeMissionPlannerService
             _ => "Mission planner runtime blocked the provider result."
         };
 
+    private static string PromptPacketErrorCode(string promptCode) =>
+        promptCode switch
+        {
+            "invalid_prompt" => "PCH_UI_PROMPT_PACKET_INVALID_PROMPT",
+            "prompt_too_long" => "PCH_UI_PROMPT_PACKET_TOO_LONG",
+            "invalid_session" => "PCH_UI_PROMPT_PACKET_INVALID_SESSION",
+            "too_many_memory_items" => "PCH_UI_PROMPT_PACKET_TOO_MANY_MEMORY_ITEMS",
+            "too_many_constraints" => "PCH_UI_PROMPT_PACKET_TOO_MANY_CONSTRAINTS",
+            "invalid_context_hint" => "PCH_UI_PROMPT_PACKET_INVALID_CONTEXT_HINT",
+            _ => "PCH_UI_PROMPT_PACKET_BLOCKED"
+        };
+
     private static string AdapterErrorCode(string adapterCode) =>
         adapterCode switch
         {
@@ -403,6 +565,25 @@ public sealed record RuntimeMissionPlannerResult(
     string ProviderRuntimeOutcomeCode,
     string AdapterOutcomeCode,
     string PlannerOutcomeCode,
+    string IntakeOutcomeCode,
+    string MemoryDigestOutcomeCode,
+    string TraceOutcome,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId,
+    IReadOnlyList<MissionFieldFixture> AppliedFields,
+    IReadOnlyList<MissionFieldFixture> PendingConfirmations,
+    IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
+    IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts);
+
+public sealed record PromptIntakePlannerResult(
+    string RunId,
+    string State,
+    string PromptPacketOutcomeCode,
+    string ProviderRuntimeOutcomeCode,
+    string AdapterOutcomeCode,
     string IntakeOutcomeCode,
     string MemoryDigestOutcomeCode,
     string TraceOutcome,
