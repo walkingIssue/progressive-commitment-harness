@@ -556,6 +556,74 @@
             </div>
         </article>
 
+        <article class="panel end-to-end-trip-panel">
+            <div class="panel-head">
+                <span>End-to-End Trip Run</span>
+                <small>@Fixture.EndToEndTripRuns.EndpointHint</small>
+            </div>
+            <div class="mission-run-list">
+                @foreach (var run in Fixture.EndToEndTripRuns.Runs)
+                {
+                    var outcome = Fixture.EndToEndTripRuns.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    <section class="mission-run-card"
+                             data-run-id="@run.Id"
+                             data-e2e-run-id="@run.Id"
+                             data-scenario="@run.Scenario"
+                             data-e2e-state="@outcome?.State"
+                             data-prompt-packet-outcome="@outcome?.PromptPacketOutcomeCode"
+                             data-mission-outcome="@outcome?.MissionOutcomeCode"
+                             data-itinerary-outcome="@outcome?.ItineraryOutcomeCode"
+                             data-memory-digest-outcome="@outcome?.MemoryDigestOutcomeCode"
+                             data-trace-outcome="@outcome?.TraceOutcome"
+                             data-selected-count="@outcome?.SelectedCount"
+                             data-deferred-count="@outcome?.DeferredCount"
+                             data-hold-outcome="@outcome?.HoldOutcomeCode"
+                             data-approval-id="@outcome?.ApprovalId"
+                             data-snapshot-outcome="@outcome?.SnapshotOutcomeCode"
+                             data-evidence-export-outcome="@outcome?.EvidenceExportOutcomeCode"
+                             data-evidence-packet-id="@outcome?.EvidencePacketId"
+                             data-export-packet-id="@outcome?.ExportPacketId"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason"
+                             data-provider="@outcome?.Provider"
+                             data-model="@outcome?.Model"
+                             data-request-id="@outcome?.RequestId">
+                        <div>
+                            <strong>@run.Label</strong>
+                            <p>@run.Scenario</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.TraceOutcome</small>
+                            }
+                        </div>
+                        <code>@(outcome?.ErrorCode ?? run.Scenario)</code>
+                        <button class="ghost" type="button" @onclick="() => RunEndToEndTrip(run.Id)">
+                            Run trip
+                        </button>
+                    </section>
+                }
+            </div>
+            <div class="itinerary-grid">
+                <section>
+                    <strong>Evidence Export</strong>
+                    <div class="itinerary-list">
+                        @foreach (var evidence in Fixture.EndToEndTripRuns.Evidence)
+                        {
+                            <div class="itinerary-evidence"
+                                 data-e2e-evidence-id="@evidence.EvidenceId"
+                                 data-e2e-run-id="@evidence.RunId"
+                                 data-export-packet-id="@evidence.ExportPacketId"
+                                 data-evidence-outcome="@evidence.Outcome"
+                                 data-evidence-reference="@evidence.ReferenceId">
+                                <span>@evidence.Outcome</span>
+                                <code>@evidence.EvidenceId</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -662,6 +730,12 @@
     private void RunItineraryDayPlanner(string runId)
     {
         Fixture = CockpitService.RunItineraryDayPlanner(runId);
+        LoadFixtureState();
+    }
+
+    private void RunEndToEndTrip(string runId)
+    {
+        Fixture = CockpitService.RunEndToEndTrip(runId);
         LoadFixtureState();
     }
 

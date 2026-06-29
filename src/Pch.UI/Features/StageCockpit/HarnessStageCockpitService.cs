@@ -16,6 +16,7 @@ public sealed class HarnessStageCockpitService
     private readonly RuntimeActionApplication _runtimeActionApplication = new();
     private readonly RuntimeMissionPlannerService _runtimeMissionPlannerService = new();
     private readonly ItineraryDayPlannerService _itineraryDayPlannerService = new();
+    private readonly EndToEndTripRunService _endToEndTripRunService = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
@@ -36,6 +37,8 @@ public sealed class HarnessStageCockpitService
     private readonly List<ItineraryEvidenceFixture> _itineraryEvidence = [];
     private readonly List<MemoryDigestFactFixture> _itineraryDigestFacts = [];
     private readonly List<ItineraryHoldFixture> _itineraryHolds = [];
+    private readonly List<EndToEndTripRunOutcomeFixture> _endToEndOutcomes = [];
+    private readonly List<EndToEndTripEvidenceFixture> _endToEndEvidence = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -417,6 +420,38 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunEndToEndTrip(string runId)
+    {
+        var result = _endToEndTripRunService.Run(runId);
+        UpsertEndToEndOutcome(result.Outcome);
+        UpsertRange(_endToEndEvidence, result.Evidence, evidence => evidence.EvidenceId);
+
+        UpsertResponse(new(
+            $"response.{result.Outcome.State}.end-to-end.{runId}",
+            result.Outcome.State switch
+            {
+                "blocked" => SessionResponseState.Blocked,
+                "proposed" => SessionResponseState.Pending,
+                _ => SessionResponseState.Applied
+            },
+            result.Outcome.State switch
+            {
+                "blocked" => "Blocked",
+                "proposed" => "Pending",
+                _ => "Applied"
+            },
+            result.Outcome.State switch
+            {
+                "blocked" => result.Outcome.BlockedReason ?? "End-to-end trip run was blocked.",
+                "proposed" => "End-to-end trip run is waiting for confirmation before itinerary and hold work.",
+                _ => "End-to-end trip run produced a deterministic evidence export summary."
+            },
+            runId,
+            result.Outcome.ApprovalId));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -571,7 +606,19 @@ public sealed class HarnessStageCockpitService
                 _itineraryCandidatePools.ToArray(),
                 _itineraryEvidence.ToArray(),
                 _itineraryDigestFacts.ToArray(),
-                _itineraryHolds.ToArray()));
+                _itineraryHolds.ToArray()),
+            EndToEndTripRuns: new(
+                "Deterministic prompt-to-hold trip run seam through existing harness/provider boundaries",
+                [
+                    new("e2e.happy-path", "Run happy path", "happy-path"),
+                    new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation"),
+                    new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch"),
+                    new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot"),
+                    new("e2e.missing-approval", "Run missing approval", "missing-approval"),
+                    new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel")
+                ],
+                _endToEndOutcomes.ToArray(),
+                _endToEndEvidence.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -803,6 +850,19 @@ public sealed class HarnessStageCockpitService
         else
         {
             _itineraryOutcomes.Add(outcome);
+        }
+    }
+
+    private void UpsertEndToEndOutcome(EndToEndTripRunOutcomeFixture outcome)
+    {
+        var index = _endToEndOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _endToEndOutcomes[index] = outcome;
+        }
+        else
+        {
+            _endToEndOutcomes.Add(outcome);
         }
     }
 

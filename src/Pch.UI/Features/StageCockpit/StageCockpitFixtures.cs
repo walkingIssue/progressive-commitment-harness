@@ -147,7 +147,20 @@ internal sealed class StageCockpitFixtureProvider
             CandidatePools: [],
             Evidence: [],
             DigestFacts: [],
-            Holds: []));
+            Holds: []),
+        EndToEndTripRuns: new(
+            EndpointHint: "Deterministic prompt-to-hold trip run seam through existing harness/provider boundaries",
+            Runs:
+            [
+                new("e2e.happy-path", "Run happy path", "happy-path"),
+                new("e2e.pending-confirmation", "Run pending confirmation", "pending-confirmation"),
+                new("e2e.provider-mismatch", "Run provider mismatch", "provider-mismatch"),
+                new("e2e.wrong-slot", "Run wrong-slot candidate", "wrong-slot"),
+                new("e2e.missing-approval", "Run missing approval", "missing-approval"),
+                new("e2e.raw-sentinel", "Run raw absence check", "raw-sentinel")
+            ],
+            Outcomes: [],
+            Evidence: []));
 }
 
 public sealed record StageCockpitFixture(
@@ -161,7 +174,8 @@ public sealed record StageCockpitFixture(
     ModelSuggestionRunPanelFixture ModelSuggestionRuns,
     MissionIntakePanelFixture MissionIntake,
     PromptIntakePanelFixture PromptIntake,
-    ItineraryDayPlannerPanelFixture ItineraryDayPlanner);
+    ItineraryDayPlannerPanelFixture ItineraryDayPlanner,
+    EndToEndTripRunPanelFixture EndToEndTripRuns);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -404,6 +418,46 @@ public sealed record ItineraryHoldFixture(
     string Provider,
     string? ConfirmationId,
     string? ErrorCode);
+
+public sealed record EndToEndTripRunPanelFixture(
+    string EndpointHint,
+    IReadOnlyList<EndToEndTripRunFixture> Runs,
+    IReadOnlyList<EndToEndTripRunOutcomeFixture> Outcomes,
+    IReadOnlyList<EndToEndTripEvidenceFixture> Evidence);
+
+public sealed record EndToEndTripRunFixture(
+    string Id,
+    string Label,
+    string Scenario);
+
+public sealed record EndToEndTripRunOutcomeFixture(
+    string RunId,
+    string State,
+    string PromptPacketOutcomeCode,
+    string MissionOutcomeCode,
+    string ItineraryOutcomeCode,
+    string MemoryDigestOutcomeCode,
+    string TraceOutcome,
+    int SelectedCount,
+    int DeferredCount,
+    string HoldOutcomeCode,
+    string? ApprovalId,
+    string SnapshotOutcomeCode,
+    string EvidenceExportOutcomeCode,
+    string EvidencePacketId,
+    string ExportPacketId,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId);
+
+public sealed record EndToEndTripEvidenceFixture(
+    string EvidenceId,
+    string ExportPacketId,
+    string RunId,
+    string Outcome,
+    string ReferenceId);
 
 public enum SessionResponseState
 {
