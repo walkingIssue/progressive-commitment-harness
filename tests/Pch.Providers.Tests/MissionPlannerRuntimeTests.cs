@@ -60,7 +60,7 @@ public sealed class MissionPlannerRuntimeTests
     public void RuntimeBridgeRejectsMalformedResultWithFixedCode()
     {
         var packet = CreatePacket("business");
-        var result = CreateSentinelResult(packet.PacketId) with { MissionKind = " " };
+        var result = CreateSentinelResult(packet.PacketId) with { Fields = null! };
 
         var handoff = new MissionPlannerRuntimeBridge().Bridge(packet, result);
 
@@ -68,6 +68,28 @@ public sealed class MissionPlannerRuntimeTests
         Assert.Equal(MissionPlannerRuntimeBridge.DecodeMalformedResult, handoff.DecodeOutcomeCode);
         Assert.Null(handoff.Proposal);
         Assert.Null(handoff.RuntimeProposal);
+    }
+
+    [Fact]
+    public void RuntimeBridgeRejectsUnsupportedMissionKindWithoutLeakingRawKind()
+    {
+        const string sentinel = "RAW_MISSION_KIND_SENTINEL_SHOULD_NOT_LEAK";
+        var packet = CreatePacket("business");
+        var result = CreateSentinelResult(packet.PacketId) with { MissionKind = sentinel };
+
+        var handoff = new MissionPlannerRuntimeBridge().Bridge(packet, result);
+
+        Assert.False(handoff.IsAccepted);
+        Assert.Equal(MissionPlannerRuntimeBridge.DecodeUnsupportedMissionKind, handoff.DecodeOutcomeCode);
+        Assert.Null(handoff.Proposal);
+        Assert.Null(handoff.RuntimeProposal);
+
+        var serialized = JsonSerializer.Serialize(handoff, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(sentinel, serialized);
+        Assert.DoesNotContain("FIELD_VALUE_SENTINEL_SHOULD_NOT_LEAK", serialized);
+        Assert.DoesNotContain("COMMITMENT_TITLE_SENTINEL_SHOULD_NOT_LEAK", serialized);
+        Assert.DoesNotContain("CONSTRAINT_VALUE_SENTINEL_SHOULD_NOT_LEAK", serialized);
+        Assert.DoesNotContain("MEMORY_DIGEST_SENTINEL_SHOULD_NOT_LEAK", serialized);
     }
 
     [Fact]
@@ -114,6 +136,30 @@ public sealed class MissionPlannerRuntimeTests
 
         var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.DoesNotContain(sentinel, serialized);
+    }
+
+    [Fact]
+    public async Task RuntimeEvalRowsDoNotPersistUnsupportedMissionKind()
+    {
+        const string sentinel = "RAW_MISSION_KIND_SENTINEL_SHOULD_NOT_LEAK";
+        var runner = new SanitizedMissionPlannerRuntimeEvalRunner(new StaticPlanner(CreateSentinelResult("packet-business") with
+        {
+            MissionKind = sentinel
+        }));
+
+        var row = Assert.Single(await runner.EvaluateAsync(
+            [new MissionPlannerEvalCase("runtime-unsupported-kind", CreatePacket("business"), "business")]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(MissionPlannerRuntimeBridge.DecodeUnsupportedMissionKind, row.DecodeOutcomeCode);
+        Assert.Null(row.ActualMissionKind);
+        Assert.Equal(0, row.UserStatedFieldCount);
+        Assert.Equal(0, row.CommitmentCount);
+        Assert.Equal(0, row.ConstraintCount);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(sentinel, serialized);
+        Assert.DoesNotContain("FIELD_VALUE_SENTINEL_SHOULD_NOT_LEAK", serialized);
     }
 
     private static MissionPlannerPacket CreatePacket(string scenario, string? prompt = null) =>
@@ -173,5 +219,14 @@ public sealed class MissionPlannerRuntimeTests
             MissionPlannerOptions? options = null,
             CancellationToken cancellationToken = default) =>
             Task.FromException<MissionPlannerResult>(exception);
+    }
+
+    private sealed class StaticPlanner(MissionPlannerResult result) : IMissionPlannerClient
+    {
+        public Task<MissionPlannerResult> PlanAsync(
+            MissionPlannerPacket packet,
+            MissionPlannerOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(result);
     }
 }

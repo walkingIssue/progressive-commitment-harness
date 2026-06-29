@@ -11,6 +11,8 @@ Runtime shape:
 
 The runtime bridge does not reference `Pch.Harness`. Until Shellby's adapter contract is consumed directly by the harness layer, this provider-local mirror assumes a future adapter will map the in-memory `MissionPlannerResult` into `MissionIntakeProposal` and its `MissionFieldProposal`, `ConstraintProposal`, and `CommitmentProposal` children.
 
+Mission kind is provider/model-derived text and is allowlisted before it can appear in persisted metadata or eval rows. Unsupported mission kinds return a fixed decode outcome code, no runtime proposal, and no persisted proposal metadata; the raw kind is never echoed.
+
 Sanitized persisted outputs must not include raw prompt text, raw provider payloads, field values, commitment titles, constraint values, memory digests, raw exception text, credentials, approval tokens, or secret-like sentinels. Runtime eval rows persist only fixed decode/intake/error codes, counts, provider/model/request metadata, response length, packet id, scenario label, and mission kind.
 
 Optional live smoke may be added for OpenAI or OpenRouter-compatible planners only when it is clearly useful and guarded by:

@@ -5,6 +5,7 @@ public sealed class MissionPlannerRuntimeBridge
     public const string DecodeAccepted = "mission_planner_decode_accepted";
     public const string DecodePacketIdMismatch = "mission_planner_decode_packet_id_mismatch";
     public const string DecodeMalformedResult = "mission_planner_decode_malformed_result";
+    public const string DecodeUnsupportedMissionKind = "mission_planner_decode_unsupported_mission_kind";
     public const string IntakeNotRunProviderLocalMirror = "mission_intake_not_run_provider_local_mirror";
 
     public MissionPlannerRuntimeHandoffResult Bridge(MissionPlannerPacket packet, MissionPlannerResult result)
@@ -17,13 +18,17 @@ public sealed class MissionPlannerRuntimeBridge
             return Rejected(DecodePacketIdMismatch);
         }
 
-        if (string.IsNullOrWhiteSpace(result.MissionKind) ||
-            result.Fields is null ||
+        if (result.Fields is null ||
             result.Commitments is null ||
             result.Constraints is null ||
             result.PendingConfirmations is null)
         {
             return Rejected(DecodeMalformedResult);
+        }
+
+        if (!MissionKindPolicy.IsAllowed(result.MissionKind))
+        {
+            return Rejected(DecodeUnsupportedMissionKind);
         }
 
         var proposalId = $"mission-proposal-{packet.PacketId}";

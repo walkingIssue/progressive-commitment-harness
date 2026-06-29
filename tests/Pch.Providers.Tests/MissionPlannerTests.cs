@@ -140,6 +140,32 @@ public sealed class MissionPlannerTests
         Assert.DoesNotContain(sentinel, serialized);
     }
 
+    [Fact]
+    public async Task EvalRowsDoNotPersistUnsupportedMissionKind()
+    {
+        const string sentinel = "RAW_MISSION_KIND_SENTINEL_SHOULD_NOT_PERSIST";
+        var evaluator = new MissionPlannerEvaluator(new SentinelPlanner(
+            "FIELD_VALUE_SENTINEL_SHOULD_NOT_PERSIST",
+            "COMMITMENT_TITLE_SENTINEL_SHOULD_NOT_PERSIST",
+            "CONSTRAINT_VALUE_SENTINEL_SHOULD_NOT_PERSIST",
+            "MEMORY_DIGEST_SENTINEL_SHOULD_NOT_PERSIST",
+            sentinel));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new MissionPlannerEvalCase("unsupported-kind", CreatePacket("vacation"), "vacation")]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(MissionPlannerEvaluator.OutcomeUnsupportedMissionKind, row.OutcomeCode);
+        Assert.Null(row.ActualMissionKind);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(sentinel, serialized);
+        Assert.DoesNotContain("FIELD_VALUE_SENTINEL_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("COMMITMENT_TITLE_SENTINEL_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("CONSTRAINT_VALUE_SENTINEL_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("MEMORY_DIGEST_SENTINEL_SHOULD_NOT_PERSIST", serialized);
+    }
+
     private static MissionPlannerPacket CreatePacket(string scenario, string? prompt = null) =>
         new(
             $"packet-{scenario}",
@@ -190,7 +216,8 @@ public sealed class MissionPlannerTests
         string fieldValue,
         string commitmentTitle,
         string constraintValue,
-        string memoryDigest) : IMissionPlannerClient
+        string memoryDigest,
+        string missionKind = "vacation") : IMissionPlannerClient
     {
         public Task<MissionPlannerResult> PlanAsync(
             MissionPlannerPacket packet,
@@ -199,7 +226,7 @@ public sealed class MissionPlannerTests
         {
             return Task.FromResult(new MissionPlannerResult(
                 packet.PacketId,
-                "vacation",
+                missionKind,
                 [
                     new MissionFieldProposal(
                         "/mission/purpose",

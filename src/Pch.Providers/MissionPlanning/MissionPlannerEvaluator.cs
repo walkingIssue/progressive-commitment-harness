@@ -5,6 +5,7 @@ public sealed class MissionPlannerEvaluator
     public const string OutcomeAccepted = "mission_planner_accepted";
     public const string OutcomePacketIdMismatch = "mission_planner_packet_id_mismatch";
     public const string OutcomeKindMismatch = "mission_planner_kind_mismatch";
+    public const string OutcomeUnsupportedMissionKind = "mission_planner_unsupported_mission_kind";
     public const string OutcomeError = "mission_planner_error";
 
     private readonly IMissionPlannerClient _planner;
@@ -60,10 +61,15 @@ public sealed class MissionPlannerEvaluator
         MissionPlannerResult result)
     {
         var packetMatches = string.Equals(evalCase.Packet.PacketId, result.PacketId, StringComparison.Ordinal);
-        var kindMatches = string.Equals(evalCase.ExpectedMissionKind, result.MissionKind, StringComparison.Ordinal);
-        var outcome = packetMatches
-            ? kindMatches ? OutcomeAccepted : OutcomeKindMismatch
-            : OutcomePacketIdMismatch;
+        var kindAllowed = MissionKindPolicy.IsAllowed(result.MissionKind);
+        var kindMatches = kindAllowed && string.Equals(evalCase.ExpectedMissionKind, result.MissionKind, StringComparison.Ordinal);
+        var outcome = OutcomePacketIdMismatch;
+        if (packetMatches)
+        {
+            outcome = kindAllowed
+                ? kindMatches ? OutcomeAccepted : OutcomeKindMismatch
+                : OutcomeUnsupportedMissionKind;
+        }
 
         return new SanitizedMissionPlannerEvalRow(
             evalCase.Name,
@@ -71,7 +77,7 @@ public sealed class MissionPlannerEvaluator
             evalCase.Packet.Scenario,
             packetMatches && kindMatches,
             evalCase.ExpectedMissionKind,
-            packetMatches ? result.MissionKind : null,
+            packetMatches && kindAllowed ? result.MissionKind : null,
             outcome,
             null,
             result.Fields.Count(field => field.AuthoritySource == MissionProposalSource.UserStated),
