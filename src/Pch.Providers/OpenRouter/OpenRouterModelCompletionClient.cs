@@ -64,8 +64,8 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
             Encoding.UTF8,
             "application/json");
 
-        using var response = await SendAsync(httpRequest, timeout.Token).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+        using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
+        var body = await ReadBodyAsync(response, timeout.Token, cancellationToken).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
         if (string.IsNullOrWhiteSpace(body))
@@ -106,8 +106,8 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         AddAuthorization(httpRequest);
         AddOptionalHeaders(httpRequest);
 
-        using var response = await SendAsync(httpRequest, timeout.Token).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+        using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
+        var body = await ReadBodyAsync(response, timeout.Token, cancellationToken).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
         if (string.IsNullOrWhiteSpace(body))
@@ -185,19 +185,45 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         return timeout;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken timeoutToken,
+        CancellationToken callerCancellationToken)
     {
         try
         {
-            return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            return await _httpClient.SendAsync(request, timeoutToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
         {
             throw new ProviderUnavailableException(ProviderName, "OpenRouter request timed out.", null, ex);
         }
         catch (HttpRequestException ex)
         {
             throw new ProviderUnavailableException(ProviderName, "OpenRouter request failed before receiving a response.", null, ex);
+        }
+    }
+
+    private static async Task<string> ReadBodyAsync(
+        HttpResponseMessage response,
+        CancellationToken timeoutToken,
+        CancellationToken callerCancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(timeoutToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new ProviderUnavailableException(ProviderName, "OpenRouter request timed out.", null, ex);
         }
     }
 
