@@ -359,4 +359,163 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void PromptAcceptedAppliesMissionFactsWithoutRawPrompt()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunPromptIntake("prompt.accepted");
+        var serialized = SerializePromptFixture(fixture);
+
+        Assert.Contains(
+            fixture.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.accepted"
+                && outcome.State == "applied"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "adapter_accepted"
+                && outcome.IntakeOutcomeCode == "mission_intake_applied"
+                && outcome.MemoryDigestOutcomeCode == "memory_digest_updated"
+                && outcome.TraceOutcome == "prompt_intake.applied");
+        Assert.Contains(
+            fixture.PromptIntake.AppliedFields,
+            field => field.FieldId == "mission.purpose"
+                && field.Value == "vacation"
+                && field.Source == "user-stated");
+        Assert.Contains(
+            fixture.PromptIntake.MemoryDigestFacts,
+            fact => fact.Text == "destination_country: Japan");
+        AssertPromptRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void PromptPendingKeepsModelInferencesConfirmationReady()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunPromptIntake("prompt.pending");
+        var serialized = SerializePromptFixture(fixture);
+
+        Assert.Contains(
+            fixture.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.pending"
+                && outcome.State == "proposed"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "adapter_accepted"
+                && outcome.IntakeOutcomeCode == "mission_intake_applied"
+                && outcome.TraceOutcome == "prompt_intake.proposed");
+        Assert.Contains(
+            fixture.PromptIntake.PendingConfirmations,
+            field => field.FieldId == "mission.destination_country"
+                && field.Source == "model-inferred");
+        AssertPromptRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void PromptProviderBlockedStopsBeforeAdapterAndDigest()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunPromptIntake("prompt.provider-blocked");
+        var serialized = SerializePromptFixture(fixture);
+
+        Assert.Contains(
+            fixture.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.provider-blocked"
+                && outcome.State == "blocked"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_packet_id_mismatch"
+                && outcome.AdapterOutcomeCode == "not_run"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.ErrorCode == "PCH_UI_MISSION_PROVIDER_PACKET_ID_MISMATCH");
+        Assert.Empty(fixture.PromptIntake.AppliedFields);
+        Assert.Empty(fixture.PromptIntake.MemoryDigestFacts);
+        AssertPromptRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void PromptAdapterBlockedKeepsSanitizedAdapterFailure()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunPromptIntake("prompt.adapter-blocked");
+        var serialized = SerializePromptFixture(fixture);
+
+        Assert.Contains(
+            fixture.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.adapter-blocked"
+                && outcome.State == "blocked"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "unsupported_field_path"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.ErrorCode == "PCH_UI_MISSION_ADAPTER_UNSUPPORTED_FIELD_PATH");
+        Assert.DoesNotContain(
+            fixture.PromptIntake.AppliedFields,
+            field => field.FieldId == "mission.freeform_secret_note");
+        Assert.DoesNotContain("freeform_secret_note", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("do not persist", serialized, StringComparison.Ordinal);
+        AssertPromptRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void PromptValidationBlocksBlankAndOverlongBeforeProviderRuntime()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var blank = service.RunPromptIntake("prompt.blank");
+        var overlong = service.RunPromptIntake("prompt.overlong");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            BlankPromptIntake = blank.PromptIntake,
+            OverlongPromptIntake = overlong.PromptIntake,
+            overlong.Session
+        });
+
+        Assert.Contains(
+            blank.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.blank"
+                && outcome.State == "blocked"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_blank"
+                && outcome.ProviderRuntimeOutcomeCode == "not_run"
+                && outcome.AdapterOutcomeCode == "not_run"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_BLANK");
+        Assert.Contains(
+            overlong.PromptIntake.Outcomes,
+            outcome => outcome.RunId == "prompt.overlong"
+                && outcome.State == "blocked"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_overlong"
+                && outcome.ProviderRuntimeOutcomeCode == "not_run"
+                && outcome.AdapterOutcomeCode == "not_run"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_OVERLONG");
+        Assert.DoesNotContain(new string('x', 650), serialized, StringComparison.Ordinal);
+        AssertPromptRawTextAbsent(serialized);
+    }
+
+    private static string SerializePromptFixture(StageCockpitFixture fixture)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            fixture.PromptIntake,
+            fixture.Session
+        });
+    }
+
+    private static void AssertPromptRawTextAbsent(string serialized)
+    {
+        Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Family wants a calm vacation", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Maybe Japan in October", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
 }

@@ -12,6 +12,7 @@ public sealed class RuntimeMissionPlannerService
     private const string RawPromptSentinel = "RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK";
     private const string RawProviderSentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
     private const string RawPacketSentinel = "RAW_PACKET_ID_SHOULD_NOT_LEAK";
+    private const int MaxPromptLength = 600;
     private readonly MissionPlannerRuntimeBridge _runtimeBridge = new();
     private readonly MissionProposalAdapter _missionProposalAdapter = new();
 
@@ -91,6 +92,52 @@ public sealed class RuntimeMissionPlannerService
             ToDigestFacts(intake.Digest));
     }
 
+    public PromptIntakePlannerResult RunPrompt(TripSession session, string runId, string prompt)
+    {
+        var packet = CreatePromptPacket(runId, prompt);
+        if (packet.IsBlocked)
+        {
+            return new(
+                runId,
+                "blocked",
+                packet.OutcomeCode,
+                "not_run",
+                "not_run",
+                "not_run",
+                "not_run",
+                "prompt_intake.blocked",
+                packet.ErrorCode,
+                packet.BlockedReason,
+                "deterministic-mock",
+                "mock-mission-planner",
+                null,
+                [],
+                [],
+                [],
+                []);
+        }
+
+        var runtime = Run(session, packet.MissionScenarioRunId);
+        return new(
+            runId,
+            runtime.State,
+            packet.OutcomeCode,
+            runtime.ProviderRuntimeOutcomeCode,
+            runtime.AdapterOutcomeCode,
+            runtime.IntakeOutcomeCode,
+            runtime.MemoryDigestOutcomeCode,
+            runtime.TraceOutcome.Replace("mission_intake", "prompt_intake", StringComparison.Ordinal),
+            runtime.ErrorCode,
+            runtime.BlockedReason,
+            runtime.Provider,
+            runtime.Model,
+            runtime.RequestId,
+            runtime.AppliedFields,
+            runtime.PendingConfirmations,
+            runtime.HighPriorityCommitments,
+            runtime.MemoryDigestFacts);
+    }
+
     private static RuntimeMissionPlannerResult Blocked(
         string runId,
         string providerRuntimeCode,
@@ -141,6 +188,41 @@ public sealed class RuntimeMissionPlannerService
                 $"{RawPromptSentinel} I know this is a mess and need help planning.",
                 "en-US",
                 ["keep diagnostics sanitized"]);
+    }
+
+    private static PromptPacketFixture CreatePromptPacket(string runId, string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return PromptPacketFixture.Blocked(
+                "prompt_packet_blank",
+                "PCH_UI_PROMPT_PACKET_BLANK",
+                "Prompt packet was blocked before provider runtime.");
+        }
+
+        if (prompt.Length > MaxPromptLength)
+        {
+            return PromptPacketFixture.Blocked(
+                "prompt_packet_overlong",
+                "PCH_UI_PROMPT_PACKET_OVERLONG",
+                "Prompt packet exceeded the UI intake limit.");
+        }
+
+        var missionScenarioRunId = runId switch
+        {
+            "prompt.accepted" => "mission.vacation",
+            "prompt.pending" => "mission.pending-confirmation",
+            "prompt.provider-blocked" => "mission.validation-blocked",
+            "prompt.adapter-blocked" => "mission.adapter-blocked",
+            _ => null
+        };
+
+        return missionScenarioRunId is null
+            ? PromptPacketFixture.Blocked(
+                "prompt_packet_unknown_scenario",
+                "PCH_UI_PROMPT_PACKET_UNKNOWN_SCENARIO",
+                "Prompt intake scenario is not recognized.")
+            : PromptPacketFixture.Accepted(missionScenarioRunId);
     }
 
     private static MissionPlannerResult CreateMissionPlannerResult(MissionPlannerPacket packet, string runId)
@@ -415,3 +497,36 @@ public sealed record RuntimeMissionPlannerResult(
     IReadOnlyList<MissionFieldFixture> PendingConfirmations,
     IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
     IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts);
+
+public sealed record PromptIntakePlannerResult(
+    string RunId,
+    string State,
+    string PromptPacketOutcomeCode,
+    string ProviderRuntimeOutcomeCode,
+    string AdapterOutcomeCode,
+    string IntakeOutcomeCode,
+    string MemoryDigestOutcomeCode,
+    string TraceOutcome,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId,
+    IReadOnlyList<MissionFieldFixture> AppliedFields,
+    IReadOnlyList<MissionFieldFixture> PendingConfirmations,
+    IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
+    IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts);
+
+internal sealed record PromptPacketFixture(
+    bool IsBlocked,
+    string OutcomeCode,
+    string? ErrorCode,
+    string? BlockedReason,
+    string MissionScenarioRunId)
+{
+    public static PromptPacketFixture Accepted(string missionScenarioRunId) =>
+        new(false, "prompt_packet_accepted", null, null, missionScenarioRunId);
+
+    public static PromptPacketFixture Blocked(string outcomeCode, string errorCode, string blockedReason) =>
+        new(true, outcomeCode, errorCode, blockedReason, "");
+}
