@@ -35,9 +35,11 @@ public sealed class TripRunSnapshotBuilder
         var evidenceReferences = EvidenceReferences(session).ToArray();
         var traceReferences = TraceReferences(session).ToArray();
         var compilation = session.LastItineraryCompilation;
+        var safeSessionId = SafeId(session.SessionId);
+        var safeMissionId = SafeId(session.Mission.MissionId);
         return new TripRunSnapshot(
-            SnapshotId: $"trip-run-{session.SessionId}-{session.Mission.MissionId}",
-            SessionId: session.SessionId,
+            SnapshotId: $"trip-run-{safeSessionId}-{safeMissionId}",
+            SessionId: safeSessionId,
             Mission: MissionFacts(session),
             Memory: MemorySummary(session.MemoryDigest),
             Itinerary: ItinerarySummary(compilation),
@@ -213,6 +215,12 @@ public sealed class TripRunSnapshotBuilder
         }
 
         return trimmed.Length <= MaxTextLength ? trimmed : trimmed[..MaxTextLength];
+    }
+
+    private static string SafeId(string value)
+    {
+        var safe = SafeText(value);
+        return string.Equals(safe, "[redacted]", StringComparison.Ordinal) ? "redacted" : safe;
     }
 
     private static bool IsSafeReference(string? value)

@@ -191,6 +191,34 @@ public sealed class TripRunSnapshotBuilderTests
         Assert.DoesNotContain("approved-token", serialized, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void UnsafeTopLevelSessionAndMissionIdsAreRedacted()
+    {
+        const string unsafeSessionId = "session-RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
+        const string unsafeMissionId = "mission-RAW_PROMPT_SHOULD_NOT_LEAK";
+        var mission = new TripMission(
+            unsafeMissionId,
+            "Safe trip",
+            "Japan",
+            new DateOnly(2027, 4, 1),
+            new DateOnly(2027, 4, 1),
+            [new Traveler("traveler-1", "Primary traveler", "ARN", [])],
+            [],
+            []);
+        var session = new TripSession(unsafeSessionId, mission);
+
+        var result = new TripRunSnapshotBuilder().Build(session);
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        Assert.Equal("redacted", result.Snapshot.SessionId);
+        Assert.Equal("trip-run-redacted-redacted", result.Snapshot.SnapshotId);
+        Assert.Equal("[redacted]", result.Snapshot.Mission.MissionId);
+        Assert.DoesNotContain(unsafeSessionId, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(unsafeMissionId, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
     private static TripSession CompleteSession()
     {
         var session = SelectedSession();
