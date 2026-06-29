@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `6a20aca Merge sprint-009 UI itinerary day planner`
+Latest integrated code before this progress update: `8c19e51 Merge sprint-010 UI itinerary selection hold flow`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, and a prompt packet boundary with runtime-only raw prompt transfer. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, and provider-local candidate expansion for itinerary slots. Stage 5/6 now have sanitized model-action, mission-planner, and candidate-expansion eval rows, decode/intake/runtime outcome codes, and in-memory proposal handoffs that avoid persisted raw payloads. Stage 8 now has a harness-owned itinerary slot compiler and Stage Cockpit can render canonical itinerary days, slot states, candidate pools, digest facts, and blocked conflict/provider-mismatch paths. The next decisive gap is applying selected candidates into itinerary state and preparing mocked, approval-gated holds without pretending real bookings have happened.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, and hold-preparation eval rows, decode/intake/runtime outcome codes, and in-memory proposal handoffs that avoid persisted raw payloads. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage Cockpit can now render canonical itinerary days, apply/defer slot decisions, block wrong-slot candidates, and show approval-gated mock hold preparation without implying a real booking. The next decisive gap is stitching the slices into one deterministic end-to-end trip run with a final evidence/export packet.
 
 ## Sprint Ledger
 
@@ -58,6 +58,9 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 009 | Stage 2/8 | Itinerary slot compiler | `ItinerarySlotCompiler` turns mission date windows, fixed commitments, sleep/meals/transit/activity/downtime, and pending confirmations into bounded day slots with sanitized blocked results | done |
 | 009 | Stage 4/6 | Candidate expansion bridge | Provider-local candidate expansion packets/results, deterministic source, exact trusted slot-set validation in evals, and sanitized candidate expansion rows | done |
 | 009 | UI/Stage 9 precursor | Itinerary day planner UI | Stage Cockpit runs canonical compiler -> deterministic candidate expansion -> trusted slot-map validation, rendering accepted/conflict/missing-date/provider-mismatch paths | done |
+| 010 | Stage 3/8 | Itinerary candidate application | Harness-owned `ItineraryCandidateApplication`, slot-associated candidate pools, selected/deferred decisions, evidence ids, no-mutation blocked paths, and projection counters | done |
+| 010 | Stage 6/7 | Mock hold preparation | Provider-local hold-preparation packets, deterministic mock adapter, evaluator-side approval-token gate, packet/candidate mismatch blocks, and sanitized eval rows | done |
+| 010 | UI/Stage 9 precursor | Itinerary selection and hold flow | Stage Cockpit selects/defer slots through canonical harness state and shows provider hold-preview/hold-prepared/missing-approval/packet-mismatch outcomes | done |
 
 ## Sprint 001 Verification
 
@@ -268,6 +271,43 @@ Sprint 010 should turn candidate pools into applied itinerary state and a mocked
 - extend Stage Cockpit so users can apply a candidate to a slot, defer a slot, see itinerary state update, request approval for a mock hold, and see blocked hold paths without real booking/network calls;
 - preserve the trusted slot-map rule, fixed sanitized UI codes, and no raw prompt/provider payload/proposal JSON/credentials/approval tokens/sentinels in rendered or persisted output.
 
+## Sprint 010 Result
+
+Sprint 010 completed the selected/deferred itinerary state and mock hold-preparation slice.
+
+- `ItineraryCandidateApplication` records selected and deferred itinerary slot decisions through trusted compiled slots and slot-associated candidate pools.
+- `TripSession` now owns in-memory itinerary decisions and slot-scoped candidate pool associations; accepted duplicate candidate ids resolve only from the trusted associated pool.
+- Blocked selection paths distinguish unknown candidates from known-but-untrusted slot pool mismatches and do not mutate itinerary decisions or decision ledger records.
+- `ProjectionService` includes bounded selected/deferred itinerary counts alongside itinerary day/slot/conflict counts.
+- Provider hold preparation adds `HoldPreparationPacket`, `IHoldPreparationAdapter`, deterministic `MockHoldPreparationAdapter`, `HoldPreparationEvaluator`, and sanitized hold-preparation docs/evals.
+- Hold-like operations require matching approval through evaluator-side checks before any `HoldPrepared` row can pass, even if an adapter returns forged success.
+- Stage Cockpit now applies selected/deferred itinerary decisions through `ItineraryCandidateApplication`, converts provider-expanded candidates into trusted core `CandidatePool`s, and renders canonical hold-prep outcomes from `HoldPreparationEvaluator`.
+
+Repair gates enforced:
+
+- candidate ownership is slot-scoped, not only candidate-id/type scoped;
+- accepted candidate evidence is read from the trusted slot-associated pool, preventing unassociated duplicate candidate ids from influencing accepted decisions;
+- evaluator-side hold approval validation blocks forged hold success without missing/matching approval;
+- UI no longer uses the previous local selection/hold seam after canonical harness/provider heads are available.
+
+## Sprint 010 Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: 30 tests passed.
+- `dotnet test`: 210 tests passed across core, harness, providers, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5160/`: selected candidate, wrong-slot candidate-pool mismatch, deferred slot, provider slot mismatch, approval-required hold preview, prepared mock hold, missing approval block, hold packet mismatch, and raw sentinel absence all passed.
+
+## Sprint 011 Target
+
+Sprint 011 should stitch the deterministic slices into a single end-to-end trip-planning run and produce a final evidence/export bundle.
+
+- add a harness-owned trip run/application boundary that composes prompt packet metadata, mission intake memory, itinerary compilation, candidate decision state, mock hold preparation status, and replay trace into one deterministic run snapshot;
+- add provider/export DTOs for sanitized trip-plan evidence packets and final mock booking/hold summaries, keeping raw prompts, provider payloads, approval tokens, hold references, and credentials out of persisted rows by default;
+- extend Stage Cockpit with an end-to-end run panel that can execute the deterministic flow from prompt fixture to mission facts, itinerary day, selected/deferred candidates, approval-gated mock hold, and final evidence trace;
+- add regression tests and browser smoke for happy path, pending-confirmation path, provider candidate mismatch, missing approval, wrong-slot candidate, and raw sentinel absence across the whole run.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
@@ -275,5 +315,5 @@ Sprint 010 should turn candidate pools into applied itinerary state and a mocked
 - Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
 - Stage 7 real Amadeus availability and pricing adapters.
 - Stage 8 full dependency propagation beyond the first day/slot compiler and candidate selection slices.
-- Stage 9 true end-to-end UI run from rambling prompt through mission, staged forms, model/search expansion, candidate pools, approval queue, mocked holds, and evidence packet.
+- Stage 9 true end-to-end UI run from rambling prompt through mission, staged forms, model/search expansion, candidate pools, approval queue, mocked holds, and evidence packet beyond the Sprint 011 deterministic target.
 - Stage 10 hardening.

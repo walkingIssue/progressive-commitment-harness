@@ -131,3 +131,43 @@ Verification:
 - Mock hold preparation is approval-gated and deterministic/offline.
 - The UI can show selected/deferred itinerary state and mocked hold outcomes without implying real booking happened.
 - No raw prompt, provider payload, proposal JSON, credential, approval token, payment data, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Status: done.
+
+Worker heads:
+
+- Shellby: `e66a4b5d166a07a728f7d57445da2654b6f781f6`
+- Kaneki: `e9ca441e280bee63f9b4a134608a8659a7d81f80`
+- Sarah: `a84e44b7746b22ce2f46fd9d7d6efb85783b8e9c`
+
+Coordinator merges:
+
+- `2ae68bb` - harness itinerary application state
+- `a6becfd` - provider mock hold preparation
+- `8c19e51` - UI itinerary selection hold flow
+
+Completed:
+
+- Harness-owned `ItineraryCandidateApplication` for selected/deferred slot decisions.
+- `TripSession` slot-associated candidate pools and trusted candidate lookup for accepted evidence.
+- Projection facts for selected/deferred itinerary decision counts.
+- Provider-local hold-preparation packet/result DTOs, deterministic mock adapter, approval-token gated evaluator, and sanitized eval rows.
+- Stage Cockpit selection/defer and mock hold flow through canonical harness/provider boundaries.
+
+Repairs before merge:
+
+- Candidate selections now require slot-associated candidate pools, not just globally known candidate ids.
+- Accepted duplicate candidate ids resolve evidence only from the trusted slot-associated pool.
+- Hold-preparation evaluator validates approval before accepting forged or buggy hold success output.
+- UI integration replaced the local selection/hold seam after Shellby and Kaneki canonical heads landed.
+
+Verification:
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: 30 tests passed.
+- `dotnet test`: 210 tests passed.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5160/`: selected candidate, wrong-slot candidate-pool mismatch, deferred slot, provider candidate slot mismatch, approval-required hold preview, prepared mock hold, missing approval block, hold packet mismatch, and raw sentinel absence passed.
