@@ -5,12 +5,18 @@ public sealed class ProviderActionBridge
     public const string DecodeAccepted = "decode_accepted";
     public const string DecodeActionOutsideAllowedSet = "decode_action_outside_allowed_set";
     public const string DecodeMissingArguments = "decode_missing_arguments";
+    public const string DecodePacketIdMismatch = "decode_packet_id_mismatch";
     public const string IntakeNotRunProviderLocalMirror = "intake_not_run_provider_local_mirror";
 
     public ProviderActionBridgeResult Bridge(ModelActionPacket packet, ModelActionRunResult result)
     {
         ArgumentNullException.ThrowIfNull(packet);
         ArgumentNullException.ThrowIfNull(result);
+
+        if (!string.Equals(packet.PacketId, result.PacketId, StringComparison.Ordinal))
+        {
+            return Rejected(DecodePacketIdMismatch);
+        }
 
         if (!packet.AllowedActions.Any(action => string.Equals(action.Name, result.ActionName, StringComparison.Ordinal)))
         {
@@ -35,11 +41,16 @@ public sealed class ProviderActionBridge
             result.Provider,
             result.Model,
             result.RequestId);
+        var runtimeProposal = new ProviderRuntimeActionProposal(
+            proposal.ProposalId,
+            result.ActionName,
+            result.Arguments.Clone());
 
         return new ProviderActionBridgeResult(
             true,
             DecodeAccepted,
             IntakeNotRunProviderLocalMirror,
+            runtimeProposal,
             proposal);
     }
 
@@ -48,5 +59,6 @@ public sealed class ProviderActionBridge
             false,
             decodeOutcomeCode,
             IntakeNotRunProviderLocalMirror,
+            null,
             null);
 }
