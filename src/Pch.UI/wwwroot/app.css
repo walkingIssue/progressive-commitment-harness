@@ -253,14 +253,20 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.mission-intake-panel {
+    grid-column: 1 / -1;
+}
+
 .suggestion-list,
-.model-run-list {
+.model-run-list,
+.mission-run-list {
     display: grid;
     gap: .75rem;
 }
 
 .suggestion-card,
-.model-run-card {
+.model-run-card,
+.mission-run-card {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: .75rem;
@@ -271,7 +277,8 @@ h1:focus {
 }
 
 .suggestion-card p,
-.model-run-card p {
+.model-run-card p,
+.mission-run-card p {
     color: var(--pch-muted);
     margin: .25rem 0;
 }
@@ -286,6 +293,49 @@ h1:focus {
 .model-run-card[data-response-state="blocked"] {
     border-color: #b86969;
     background: #fff4f4;
+}
+
+.mission-run-card[data-proposed-outcome="applied"] {
+    border-color: #87b49d;
+    background: #f3faf6;
+}
+
+.mission-run-card[data-proposed-outcome="proposed"] {
+    border-color: #d4ba72;
+    background: #fffaf0;
+}
+
+.mission-result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+    margin-top: 1rem;
+}
+
+.mission-result-grid section {
+    display: grid;
+    gap: .5rem;
+    border-top: 1px solid var(--pch-line);
+    padding-top: .75rem;
+}
+
+.mission-list {
+    display: grid;
+    gap: .45rem;
+}
+
+.mission-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    border: 1px solid var(--pch-line);
+    border-radius: 6px;
+    padding: .55rem .65rem;
+}
+
+.mission-item span {
+    min-width: 0;
 }
 
 .response-list {
@@ -411,6 +461,8 @@ h1:focus {
     .field-grid,
     .suggestion-card,
     .model-run-card,
+    .mission-run-card,
+    .mission-result-grid,
     .response-card,
     .trace-list li {
         grid-template-columns: 1fr;

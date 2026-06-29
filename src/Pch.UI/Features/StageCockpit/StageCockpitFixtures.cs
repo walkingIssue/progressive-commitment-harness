@@ -93,7 +93,20 @@ internal sealed class StageCockpitFixtureProvider
                 new("server-model.block.form-mismatch", "Run blocked model suggestion", "emit_form"),
                 new("server-model.decode.missing-argument", "Run decode-failure model suggestion", "defer_slot")
             ],
-            Outcomes: []));
+            Outcomes: []),
+        MissionIntake: new(
+            EndpointHint: "UI-local deterministic seam pending provider mission planner, harness intake, and memory digest contracts",
+            Runs:
+            [
+                new("mission.vacation", "Plan vacation intake", "vacation"),
+                new("mission.non-vacation-commitment", "Plan commitment intake", "family-support"),
+                new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation")
+            ],
+            Outcomes: [],
+            AppliedFields: [],
+            PendingConfirmations: [],
+            HighPriorityCommitments: [],
+            MemoryDigestFacts: []));
 }
 
 public sealed record StageCockpitFixture(
@@ -104,7 +117,8 @@ public sealed record StageCockpitFixture(
     EvidenceTraceFixture Trace,
     StageSessionFixture Session,
     SuggestedActionPanelFixture SuggestedActions,
-    ModelSuggestionRunPanelFixture ModelSuggestionRuns);
+    ModelSuggestionRunPanelFixture ModelSuggestionRuns,
+    MissionIntakePanelFixture MissionIntake);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -203,6 +217,53 @@ public sealed record ModelSuggestionRunOutcomeFixture(
     string Provider,
     string Model,
     string? RequestId);
+
+public sealed record MissionIntakePanelFixture(
+    string EndpointHint,
+    IReadOnlyList<MissionIntakeRunFixture> Runs,
+    IReadOnlyList<MissionIntakeOutcomeFixture> Outcomes,
+    IReadOnlyList<MissionFieldFixture> AppliedFields,
+    IReadOnlyList<MissionFieldFixture> PendingConfirmations,
+    IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
+    IReadOnlyList<MemoryDigestFactFixture> MemoryDigestFacts);
+
+public sealed record MissionIntakeRunFixture(
+    string Id,
+    string Label,
+    string Scenario);
+
+public sealed record MissionIntakeOutcomeFixture(
+    string RunId,
+    string State,
+    string PlannerOutcomeCode,
+    string IntakeOutcomeCode,
+    string MemoryDigestOutcomeCode,
+    string TraceOutcome,
+    string? ErrorCode,
+    string? BlockedReason,
+    string Provider,
+    string Model,
+    string? RequestId);
+
+public sealed record MissionFieldFixture(
+    string FieldId,
+    string Label,
+    string Value,
+    string Source,
+    string State);
+
+public sealed record MissionCommitmentFixture(
+    string CommitmentId,
+    string Title,
+    string Kind,
+    string Priority,
+    string Source);
+
+public sealed record MemoryDigestFactFixture(
+    string FactId,
+    string Text,
+    string Source,
+    string ReferenceId);
 
 public enum SessionResponseState
 {

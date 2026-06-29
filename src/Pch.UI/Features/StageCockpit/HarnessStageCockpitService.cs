@@ -1,7 +1,14 @@
 using Pch.Core;
 using Pch.Harness;
 using Pch.Providers.ModelActions;
+using Pch.Providers.MissionPlanning;
 using System.Text.Json;
+using HarnessCommitment = Pch.Harness.CommitmentProposal;
+using HarnessConstraint = Pch.Harness.ConstraintProposal;
+using HarnessField = Pch.Harness.MissionFieldProposal;
+using ProviderCommitment = Pch.Providers.MissionPlanning.MissionCommitmentProposal;
+using ProviderConstraint = Pch.Providers.MissionPlanning.MissionConstraintProposal;
+using ProviderField = Pch.Providers.MissionPlanning.MissionFieldProposal;
 
 namespace Pch.UI.Features.StageCockpit;
 
@@ -14,10 +21,16 @@ public sealed class HarnessStageCockpitService
     private readonly HarnessActionIntake _actionIntake = new();
     private readonly ProviderActionBridge _providerActionBridge = new();
     private readonly RuntimeActionApplication _runtimeActionApplication = new();
+    private readonly MissionIntakeApplication _missionIntakeApplication = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
     private readonly List<ModelSuggestionRunOutcomeFixture> _modelRunOutcomes = [];
+    private readonly List<MissionIntakeOutcomeFixture> _missionOutcomes = [];
+    private readonly List<MissionFieldFixture> _appliedMissionFields = [];
+    private readonly List<MissionFieldFixture> _pendingMissionConfirmations = [];
+    private readonly List<MissionCommitmentFixture> _highPriorityCommitments = [];
+    private readonly List<MemoryDigestFactFixture> _memoryDigestFacts = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -284,6 +297,62 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunMissionIntake(string runId)
+    {
+        var packet = CreateMissionPlannerPacket(runId);
+        if (packet is null)
+        {
+            UpsertMissionOutcome(new(
+                runId,
+                "blocked",
+                "planner_unknown_scenario",
+                "not_run",
+                "not_run",
+                "mission_intake.blocked",
+                "PCH_UI_MISSION_UNKNOWN_SCENARIO",
+                "Mission intake scenario is not recognized.",
+                "deterministic-mock",
+                "mock-mission-planner",
+                null));
+            return Current();
+        }
+
+        var planner = CreateMissionPlannerResult(packet, runId);
+        var adapter = AdaptMissionPlannerResult(planner);
+        var result = _missionIntakeApplication.Apply(_session, adapter.Proposal);
+        var highPriorityCommitments = adapter.HighPriorityCommitments;
+
+        UpsertMissionOutcome(new(
+            runId,
+            result.PendingConfirmations.Count > 0 ? "proposed" : "applied",
+            "planner_mock_accepted",
+            result.Code,
+            "memory_digest_updated",
+            result.PendingConfirmations.Count > 0 ? "mission_intake.proposed" : "mission_intake.applied",
+            null,
+            null,
+            planner.Provider,
+            planner.Model,
+            planner.RequestId));
+
+        UpsertRange(_appliedMissionFields, ToAppliedFields(result.AppliedFacts), field => field.FieldId);
+        UpsertRange(_pendingMissionConfirmations, ToPendingFields(result.PendingConfirmations), field => field.FieldId);
+        UpsertRange(_highPriorityCommitments, highPriorityCommitments, commitment => commitment.CommitmentId);
+        UpsertRange(_memoryDigestFacts, ToDigestFacts(result.Digest), fact => fact.FactId);
+
+        UpsertResponse(new(
+            $"response.{(result.PendingConfirmations.Count > 0 ? "proposed" : "applied")}.mission.{runId}",
+            result.PendingConfirmations.Count > 0 ? SessionResponseState.Pending : SessionResponseState.Applied,
+            result.PendingConfirmations.Count > 0 ? "Pending" : "Applied",
+            result.PendingConfirmations.Count > 0
+                ? "Mission planner produced confirmation-ready inferred fields."
+                : "Mission planner applied user-stated mission facts.",
+            runId,
+            null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -387,7 +456,19 @@ public sealed class HarnessStageCockpitService
                     new("server-model.block.form-mismatch", "Run blocked model suggestion", HarnessAction.EmitFormKind),
                     new("server-model.decode.missing-argument", "Run decode-failure model suggestion", HarnessAction.DeferSlotKind)
                 ],
-                _modelRunOutcomes.ToArray()));
+                _modelRunOutcomes.ToArray()),
+            MissionIntake: new(
+                "UI-local deterministic seam pending provider mission planner, harness intake, and memory digest contracts",
+                [
+                    new("mission.vacation", "Plan vacation intake", "vacation"),
+                    new("mission.non-vacation-commitment", "Plan commitment intake", "family-support"),
+                    new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation")
+                ],
+                _missionOutcomes.ToArray(),
+                _appliedMissionFields.ToArray(),
+                _pendingMissionConfirmations.ToArray(),
+                _highPriorityCommitments.ToArray(),
+                _memoryDigestFacts.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()
@@ -569,8 +650,263 @@ public sealed class HarnessStageCockpitService
             : $"PCH_UI_RUNTIME_INTAKE_{runtime.IntakeCode.ToUpperInvariant()}";
     }
 
+    private void UpsertMissionOutcome(MissionIntakeOutcomeFixture outcome)
+    {
+        var index = _missionOutcomes.FindIndex(existing => string.Equals(existing.RunId, outcome.RunId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _missionOutcomes[index] = outcome;
+        }
+        else
+        {
+            _missionOutcomes.Add(outcome);
+        }
+    }
+
+    private static void UpsertRange<T>(
+        List<T> target,
+        IReadOnlyList<T> source,
+        Func<T, string> keySelector)
+    {
+        foreach (var item in source)
+        {
+            var key = keySelector(item);
+            var index = target.FindIndex(existing => string.Equals(keySelector(existing), key, StringComparison.Ordinal));
+            if (index >= 0)
+            {
+                target[index] = item;
+            }
+            else
+            {
+                target.Add(item);
+            }
+        }
+    }
+
     private sealed record ModelRunScenario(
         string RunId,
         ModelActionPacket Packet,
         ModelActionRunResult Result);
+
+    private static MissionPlannerPacket? CreateMissionPlannerPacket(string runId)
+    {
+        var scenario = runId switch
+        {
+            "mission.vacation" => "vacation",
+            "mission.non-vacation-commitment" => "helping_family",
+            "mission.pending-confirmation" => "vacation",
+            _ => null
+        };
+
+        return scenario is null
+            ? null
+            : new(
+                $"packet-{runId}",
+                scenario,
+                "RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK I know this is a mess and need help planning.",
+                "en-US",
+                ["keep diagnostics sanitized"]);
+    }
+
+    private static MissionPlannerResult CreateMissionPlannerResult(MissionPlannerPacket packet, string runId)
+    {
+        IReadOnlyList<ProviderField> fields = runId switch
+        {
+            "mission.vacation" =>
+            [
+                new ProviderField("/mission/purpose", "vacation", MissionProposalSource.UserStated, ["evidence-user-purpose"], false),
+                new ProviderField("/mission/destination_country", "Japan", MissionProposalSource.UserStated, ["evidence-user-destination"], false),
+                new ProviderField("/mission/start_date", "2026-10-05", MissionProposalSource.UserStated, ["evidence-user-dates"], false),
+                new ProviderField("/mission/end_date", "2026-10-19", MissionProposalSource.UserStated, ["evidence-user-dates"], false)
+            ],
+            "mission.non-vacation-commitment" =>
+            [
+                new ProviderField("/mission/purpose", "helping family", MissionProposalSource.UserStated, ["evidence-user-purpose"], false),
+                new ProviderField("/mission/destination_country", "Poland", MissionProposalSource.UserStated, ["evidence-user-destination"], false)
+            ],
+            "mission.pending-confirmation" =>
+            [
+                new ProviderField("/mission/destination_country", "Japan", MissionProposalSource.UserStated, ["evidence-user-destination"], false),
+                new ProviderField("/mission/pace", "balanced", MissionProposalSource.ModelInferred, ["evidence-model-pace"], true),
+                new ProviderField("/mission/traveler_need", "low cognitive load", MissionProposalSource.ModelInferred, ["evidence-model-need"], true)
+            ],
+            _ => Array.Empty<ProviderField>()
+        };
+
+        IReadOnlyList<ProviderCommitment> commitments = runId == "mission.non-vacation-commitment"
+            ?
+            [
+                new ProviderCommitment(
+                    "commitment.family-anchor",
+                    "family_support",
+                    "Attend family support appointment",
+                    StartsAt: null,
+                    EndsAt: null,
+                    Location: null,
+                    IsIrreversible: false,
+                    RequiresSpend: false,
+                    MissionCommitmentPriority.High,
+                    MissionProposalSource.UserStated,
+                    ["evidence-user-commitment"])
+            ]
+            : Array.Empty<ProviderCommitment>();
+
+        IReadOnlyList<ProviderConstraint> constraints = runId == "mission.pending-confirmation"
+            ?
+            [
+                new ProviderConstraint(
+                    "constraint-low-cognitive-load",
+                    "Cognitive load",
+                    "Keep itinerary easy to process.",
+                    MissionProposalSource.ModelInferred,
+                    IsHard: true,
+                    ["evidence-model-need"])
+            ]
+            : Array.Empty<ProviderConstraint>();
+
+        return new(
+            packet.PacketId,
+            packet.Scenario,
+            fields,
+            commitments,
+            constraints,
+            runId == "mission.pending-confirmation" ? ["Confirm inferred pace.", "Confirm traveler needs."] : [],
+            "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK",
+            ResponseContentLength: 0,
+            "deterministic-mock",
+            "mock-mission-planner",
+            $"mock-{runId}");
+    }
+
+    private static MissionAdapterResult AdaptMissionPlannerResult(MissionPlannerResult planner)
+    {
+        var proposal = new MissionIntakeProposal(
+            $"proposal-{planner.PacketId}",
+            planner.Fields.Select(ToHarnessField).ToArray(),
+            planner.Constraints.Select(ToHarnessConstraint).ToArray(),
+            planner.Commitments.Select(ToHarnessCommitment).ToArray());
+
+        var highPriorityCommitments = planner.Commitments
+            .Where(commitment => commitment.CommitmentPriority is MissionCommitmentPriority.High or MissionCommitmentPriority.Critical)
+            .Select(commitment => new MissionCommitmentFixture(
+                commitment.CommitmentId,
+                commitment.Title,
+                MapCommitmentKind(commitment.CommitmentKind).ToString(),
+                "high",
+                SourceLabel(commitment.AuthoritySource)))
+            .ToArray();
+
+        return new(proposal, highPriorityCommitments);
+    }
+
+    private static HarnessField ToHarnessField(ProviderField field) =>
+        new(field.FieldPath, field.Value, MapSource(field.AuthoritySource), field.EvidenceIds);
+
+    private static HarnessConstraint ToHarnessConstraint(ProviderConstraint constraint) =>
+        new(
+            constraint.ConstraintId,
+            constraint.Label,
+            constraint.Value,
+            MapSource(constraint.AuthoritySource),
+            constraint.IsHard,
+            constraint.EvidenceIds);
+
+    private static HarnessCommitment ToHarnessCommitment(ProviderCommitment commitment) =>
+        new(
+            commitment.CommitmentId,
+            MapCommitmentKind(commitment.CommitmentKind),
+            commitment.Title,
+            commitment.StartsAt,
+            commitment.EndsAt,
+            commitment.Location,
+            commitment.IsIrreversible,
+            commitment.RequiresSpend,
+            commitment.CommitmentPriority is MissionCommitmentPriority.High or MissionCommitmentPriority.Critical
+                ? CommitmentPriority.High
+                : CommitmentPriority.Normal,
+            MapSource(commitment.AuthoritySource),
+            commitment.EvidenceIds);
+
+    private static AuthoritySource MapSource(MissionProposalSource source) =>
+        source is MissionProposalSource.UserStated
+            ? AuthoritySource.User
+            : AuthoritySource.StrongModelInference;
+
+    private static CommitmentKind MapCommitmentKind(string kind)
+    {
+        return kind.Trim().ToLowerInvariant() switch
+        {
+            "fixed_anchor" or "client_meeting" or "memorial_service" or "family_support" => CommitmentKind.FixedAnchor,
+            "travel" => CommitmentKind.Travel,
+            "lodging" => CommitmentKind.Lodging,
+            "meal" => CommitmentKind.Meal,
+            "activity" => CommitmentKind.Activity,
+            "downtime" => CommitmentKind.Downtime,
+            "administrative" => CommitmentKind.Administrative,
+            _ => CommitmentKind.Administrative
+        };
+    }
+
+    private static IReadOnlyList<MissionFieldFixture> ToAppliedFields(IReadOnlyList<MissionAppliedFact> applied)
+    {
+        return applied
+            .Where(fact => fact.FieldPath.StartsWith("/mission/", StringComparison.Ordinal))
+            .Select(fact => new MissionFieldFixture(
+                FieldId(fact.FieldPath),
+                LabelForPath(fact.FieldPath),
+                fact.Value,
+                SourceLabel(fact.Source),
+                "applied"))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<MissionFieldFixture> ToPendingFields(IReadOnlyList<MissionPendingConfirmation> pending)
+    {
+        return pending.Select(item => new MissionFieldFixture(
+                FieldId(item.FieldPath),
+                LabelForPath(item.FieldPath),
+                item.ProposedValue,
+                SourceLabel(item.Source),
+                "pending-confirmation"))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<MemoryDigestFactFixture> ToDigestFacts(StructuredMemoryDigest digest)
+    {
+        return digest.LoadBearingFacts
+            .Select((fact, index) => new MemoryDigestFactFixture(
+                $"memory.fact.{index + 1}",
+                fact,
+                "structured-digest",
+                digest.DigestId))
+            .ToArray();
+    }
+
+    private static string FieldId(string path) => path.Trim('/').Replace('/', '.');
+
+    private static string LabelForPath(string path)
+    {
+        var id = FieldId(path);
+        return id switch
+        {
+            "mission.purpose" => "Purpose",
+            "mission.destination_country" => "Destination country",
+            "mission.start_date" => "Start date",
+            "mission.end_date" => "End date",
+            "mission.pace" => "Pace",
+            "constraints.constraint-flex-day" => "Flexible day",
+            "constraints.constraint-refundable" => "Refundable bookings",
+            _ => id
+        };
+    }
+
+    private static string SourceLabel(AuthoritySource source) =>
+        source is AuthoritySource.User ? "user-stated" : "model-inferred";
+
+    private static string SourceLabel(MissionProposalSource source) =>
+        source is MissionProposalSource.UserStated ? "user-stated" : "model-inferred";
+
+    private sealed record MissionAdapterResult(
+        MissionIntakeProposal Proposal,
+        IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments);
 }
