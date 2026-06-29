@@ -50,8 +50,25 @@ public sealed record SanitizedModelActionEvalRow(
     bool Passed,
     string ExpectedActionName,
     string? ActualActionName,
+    string DecodeOutcomeCode,
+    string IntakeOutcomeCode,
     string? ErrorCode,
     int? ResponseContentLength,
     string? Provider,
     string? Model,
     string? RequestId);
+
+public sealed record ProviderLocalExternalActionProposal(
+    string ProposalId,
+    string PacketId,
+    string ActionKind,
+    IReadOnlyList<string> ArgumentKeys,
+    string Provider,
+    string Model,
+    string? RequestId);
+
+public sealed record ProviderActionBridgeResult(
+    bool IsAccepted,
+    string DecodeOutcomeCode,
+    string IntakeOutcomeCode,
+    ProviderLocalExternalActionProposal? Proposal);

@@ -3,10 +3,12 @@ namespace Pch.Providers.ModelActions;
 public sealed class SanitizedModelActionEvalRunner
 {
     private readonly IModelActionRunner _runner;
+    private readonly ProviderActionBridge _bridge;
 
-    public SanitizedModelActionEvalRunner(IModelActionRunner runner)
+    public SanitizedModelActionEvalRunner(IModelActionRunner runner, ProviderActionBridge? bridge = null)
     {
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
+        _bridge = bridge ?? new ProviderActionBridge();
     }
 
     public async Task<IReadOnlyList<SanitizedModelActionEvalRow>> EvaluateAsync(
@@ -22,12 +24,16 @@ public sealed class SanitizedModelActionEvalRunner
             try
             {
                 var result = await _runner.RunAsync(evalCase.Packet, options, cancellationToken).ConfigureAwait(false);
+                var bridgeResult = _bridge.Bridge(evalCase.Packet, result);
                 rows.Add(new SanitizedModelActionEvalRow(
                     evalCase.Name,
                     evalCase.Packet.PacketId,
-                    string.Equals(evalCase.ExpectedActionName, result.ActionName, StringComparison.Ordinal),
+                    string.Equals(evalCase.ExpectedActionName, result.ActionName, StringComparison.Ordinal) &&
+                        bridgeResult.DecodeOutcomeCode == ProviderActionBridge.DecodeAccepted,
                     evalCase.ExpectedActionName,
                     result.ActionName,
+                    bridgeResult.DecodeOutcomeCode,
+                    bridgeResult.IntakeOutcomeCode,
                     null,
                     result.ResponseContentLength,
                     result.Provider,
@@ -42,6 +48,8 @@ public sealed class SanitizedModelActionEvalRunner
                     false,
                     evalCase.ExpectedActionName,
                     null,
+                    "decode_not_run",
+                    "intake_not_run",
                     ToErrorCode(ex),
                     null,
                     null,

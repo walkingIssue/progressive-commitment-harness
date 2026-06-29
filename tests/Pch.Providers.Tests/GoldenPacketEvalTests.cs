@@ -66,6 +66,8 @@ public sealed class GoldenPacketEvalTests
         {
             Assert.True(row.Passed);
             Assert.Equal("emit_form", row.ActualActionName);
+            Assert.Equal(ProviderActionBridge.DecodeAccepted, row.DecodeOutcomeCode);
+            Assert.Equal(ProviderActionBridge.IntakeNotRunProviderLocalMirror, row.IntakeOutcomeCode);
             Assert.NotNull(row.ResponseContentLength);
             Assert.Equal("mock-action", row.Provider);
             var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -89,6 +91,8 @@ public sealed class GoldenPacketEvalTests
 
         Assert.False(row.Passed);
         Assert.Equal("model_action_runner_error", row.ErrorCode);
+        Assert.Equal("decode_not_run", row.DecodeOutcomeCode);
+        Assert.Equal("intake_not_run", row.IntakeOutcomeCode);
         Assert.Null(row.ActualActionName);
         Assert.Null(row.ResponseContentLength);
     }
