@@ -152,6 +152,36 @@ public sealed class CandidateExpansionTests
     }
 
     [Fact]
+    public async Task EvalRowsRejectMissingResultSlotsWithoutPersistingPartialResultMetadata()
+    {
+        const string contextSentinel = "RAW_CONTEXT_SENTINEL_SHOULD_NOT_PERSIST";
+        var evaluator = new CandidateExpansionEvaluator(new SlotMismatchSource(
+            [
+                CreateExpansionSlot("slot-dining", CandidateCategory.Dining)
+            ]));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new CandidateExpansionEvalCase("missing-slot", CreatePacket(contextSentinel))]));
+
+        Assert.False(row.Passed);
+        Assert.Equal(CandidateExpansionEvaluator.OutcomeSlotMismatch, row.OutcomeCode);
+        Assert.Empty(row.Slots);
+        Assert.Equal(0, row.TotalCandidateCount);
+        Assert.Null(row.ResponseContentLength);
+        Assert.Null(row.Provider);
+        Assert.Null(row.Model);
+        Assert.Null(row.RequestId);
+
+        var serialized = JsonSerializer.Serialize(row, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(contextSentinel, serialized);
+        Assert.DoesNotContain("RESULT_CANDIDATE_NAME_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("RESULT_TAG_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST", serialized);
+        Assert.DoesNotContain("provider-should-not-persist", serialized);
+        Assert.DoesNotContain("request-should-not-persist", serialized);
+    }
+
+    [Fact]
     public async Task EvalRowsUseFixedErrorCodeInsteadOfRawExceptionText()
     {
         const string sentinel = "RAW_EXCEPTION_SHOULD_NOT_PERSIST";

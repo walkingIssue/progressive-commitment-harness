@@ -89,8 +89,24 @@ public sealed class CandidateExpansionEvaluator
                     null,
                     null,
                     null,
-                    null);
+                null);
             }
+        }
+
+        if (resultSlotIds.Count != packetSlots.Count)
+        {
+            return new SanitizedCandidateExpansionEvalRow(
+                evalCase.Name,
+                evalCase.Packet.PacketId,
+                false,
+                OutcomeSlotMismatch,
+                null,
+                [],
+                0,
+                null,
+                null,
+                null,
+                null);
         }
 
         var resultSlotsById = result.Slots.ToDictionary(slot => slot.SlotId, StringComparer.Ordinal);
