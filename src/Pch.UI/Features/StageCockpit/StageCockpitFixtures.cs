@@ -180,15 +180,15 @@ internal sealed class StageCockpitFixtureProvider
                 []),
             Evidence: []),
         AvailabilityPreview: new(
-            EndpointHint: "UI-local deterministic availability preview seam pending canonical harness contract",
+            EndpointHint: "Pch.Harness AvailabilityQuotePreviewApplication with deterministic provider availability preview",
             Runs:
             [
-                new("availability.accepted", "Preview accepted quote", "accepted", "slot-lunch-day-2", "candidate-ramen-lunch", "dining", "availability-preview-accepted", "control-availability-accepted", "Run accepted availability preview"),
-                new("availability.unavailable", "Preview unavailable candidate", "unavailable", "slot-activity-day-2", "candidate-garden-entry", "activity", "availability-preview-unavailable", "control-availability-unavailable", "Run unavailable availability preview"),
-                new("availability.stale-packet", "Preview stale packet", "stale-packet", "slot-transit-day-3", "candidate-rail-pass", "transit", "availability-preview-stale-packet", "control-availability-stale-packet", "Run stale packet availability preview"),
-                new("availability.wrong-slot", "Preview wrong slot", "wrong-slot", "slot-lunch-day-9", "candidate-ramen-lunch", "dining", "availability-preview-wrong-slot", "control-availability-wrong-slot", "Run wrong-slot availability preview"),
-                new("availability.approval-required", "Preview approval required", "approval-required", "slot-dinner-day-4", "candidate-kaiseki-preview", "dining", "availability-preview-approval-required", "control-availability-approval-required", "Run approval-required availability preview"),
-                new("availability.raw-sentinel", "Preview raw absence", "raw-sentinel", "slot-quiet-day-5", "candidate-tea-break", "downtime", "availability-preview-raw-sentinel", "control-availability-raw-sentinel", "Run raw absence availability preview")
+                new("availability.accepted", "Preview accepted quote", "accepted", "slot-20270402-lunch", "candidate-ramen-lunch", "dining", "availability-preview-accepted", "control-availability-accepted", "Run accepted availability preview"),
+                new("availability.unavailable", "Preview unavailable candidate", "unavailable", "slot-20270402-activity", "candidate-garden-entry", "activity", "availability-preview-unavailable", "control-availability-unavailable", "Run unavailable availability preview"),
+                new("availability.stale-packet", "Preview stale packet", "stale-packet", "slot-20270402-transit-start", "candidate-rail-pass", "transit", "availability-preview-stale-packet", "control-availability-stale-packet", "Run stale packet availability preview"),
+                new("availability.wrong-slot", "Preview wrong slot", "wrong-slot", "slot-20270402-breakfast", "candidate-ramen-lunch", "dining", "availability-preview-wrong-slot", "control-availability-wrong-slot", "Run wrong-slot availability preview"),
+                new("availability.approval-required", "Preview approval required", "approval-required", "slot-20270402-dinner", "candidate-kaiseki-preview", "dining", "availability-preview-approval-required", "control-availability-approval-required", "Run approval-required availability preview"),
+                new("availability.raw-sentinel", "Preview raw absence", "raw-sentinel", "slot-20270402-downtime", "candidate-tea-break", "activity", "availability-preview-raw-sentinel", "control-availability-raw-sentinel", "Run raw absence availability preview")
             ],
             Outcomes: [],
             Quotes: [],

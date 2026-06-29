@@ -1047,17 +1047,17 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.AvailabilityPreview.Outcomes,
             outcome => outcome.RunId == "availability.accepted"
                 && outcome.State == "quote-ready"
-                && outcome.SlotId == "slot-lunch-day-2"
+                && outcome.SlotId == "slot-20270402-lunch"
                 && outcome.CandidateId == "candidate-ramen-lunch"
                 && outcome.QuoteCategory == "dining"
-                && outcome.ProviderOutcomeCode == "hold_preparation_preview_ready"
-                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ProviderOutcomeCode == "availability_preview_quote_ready"
+                && outcome.HarnessOutcomeCode == "availability_quote_preview_accepted"
                 && outcome.ApprovalOutcomeCode == "approval_not_required"
                 && outcome.ErrorCode is null);
         Assert.Contains(
             fixture.AvailabilityPreview.Quotes,
             quote => quote.RunId == "availability.accepted"
-                && quote.SlotId == "slot-lunch-day-2"
+                && quote.SlotId == "slot-20270402-lunch"
                 && quote.CandidateId == "candidate-ramen-lunch"
                 && quote.PriceState == "preview_only"
                 && quote.Outcome == "quote_ready");
@@ -1076,8 +1076,10 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.AvailabilityPreview.Outcomes,
             outcome => outcome.RunId == "availability.unavailable"
                 && outcome.State == "unavailable"
-                && outcome.ProviderOutcomeCode == "availability_unavailable"
-                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ProviderOutcomeCode == "availability_preview_unavailable"
+                && outcome.HarnessOutcomeCode == "availability_quote_preview_unavailable"
+                && outcome.Provider == "not_persisted"
+                && outcome.Model == "not_persisted"
                 && outcome.ErrorCode == "PCH_UI_AVAILABILITY_UNAVAILABLE");
         Assert.DoesNotContain(
             fixture.AvailabilityPreview.Quotes,
@@ -1097,8 +1099,8 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.AvailabilityPreview.Outcomes,
             outcome => outcome.RunId == "availability.stale-packet"
                 && outcome.State == "provider-blocked"
-                && outcome.ProviderOutcomeCode == "hold_preparation_packet_id_mismatch"
-                && outcome.HarnessOutcomeCode == "trusted_slot_candidate"
+                && outcome.ProviderOutcomeCode == "availability_preview_packet_mismatch"
+                && outcome.HarnessOutcomeCode == "availability_quote_preview_accepted"
                 && outcome.ErrorCode == "PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH"
                 && outcome.BlockedReason == "Provider preview result did not match the trusted preview packet.");
         Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
@@ -1118,9 +1120,9 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "availability.wrong-slot"
                 && outcome.State == "harness-blocked"
                 && outcome.ProviderOutcomeCode == "not_run"
-                && outcome.HarnessOutcomeCode == "harness_blocked_wrong_slot"
+                && outcome.HarnessOutcomeCode == "candidate_ownership_mismatch"
                 && outcome.ErrorCode == "PCH_UI_AVAILABILITY_WRONG_SLOT"
-                && outcome.BlockedReason == "Selected candidate is not associated with the trusted itinerary slot.");
+                && outcome.BlockedReason == "Availability quote preview candidate is not trusted for the slot.");
         Assert.DoesNotContain(
             fixture.AvailabilityPreview.Quotes,
             quote => quote.RunId == "availability.wrong-slot");
@@ -1139,7 +1141,8 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.AvailabilityPreview.Outcomes,
             outcome => outcome.RunId == "availability.approval-required"
                 && outcome.State == "approval-required"
-                && outcome.ProviderOutcomeCode == "hold_preparation_missing_approval"
+                && outcome.ProviderOutcomeCode == "not_run"
+                && outcome.HarnessOutcomeCode == "approval_required_preview"
                 && outcome.ApprovalOutcomeCode == "approval_required"
                 && outcome.ErrorCode == "PCH_UI_AVAILABILITY_APPROVAL_REQUIRED");
         Assert.DoesNotContain(
@@ -1178,7 +1181,8 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.AvailabilityPreview.Outcomes,
             outcome => outcome.RunId == "availability.raw-sentinel"
                 && outcome.State == "quote-ready"
-                && outcome.ProviderOutcomeCode == "hold_preparation_preview_ready");
+                && outcome.ProviderOutcomeCode == "availability_preview_quote_ready"
+                && outcome.HarnessOutcomeCode == "availability_quote_preview_accepted");
         AssertAvailabilityRawTextAbsent(serialized);
     }
 
@@ -1313,6 +1317,9 @@ public sealed class HarnessStageCockpitServiceTests
     {
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_QUOTE_REFERENCE_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_CANDIDATE_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PROMPT_TEXT_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("APPROVAL_TOKEN_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);

@@ -1,16 +1,20 @@
-using Pch.Providers.Adapters;
-using Pch.Providers.CandidateExpansion;
-using Pch.Providers.HoldPreparation;
+using Pch.Core;
+using Pch.Harness;
+using Pch.Providers.AvailabilityPreview;
 using Pch.Providers.Mock;
 
 namespace Pch.UI.Features.StageCockpit;
 
 internal sealed class AvailabilityPreviewService
 {
-    private const string ProviderName = "mock-availability-preview";
-    private const string ModelName = "mock-availability-deterministic";
+    private const string MetadataNotPersisted = "not_persisted";
+    private static readonly DateOnly PlannerDate = new(2027, 4, 2);
+    private static readonly DateTimeOffset ObservedAt = new(2026, 6, 29, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset RequestedAt = new(2027, 4, 1, 9, 30, 0, TimeSpan.Zero);
 
-    private readonly MockAvailabilityAdapter _availabilityAdapter = new();
+    private readonly AvailabilityQuotePreviewApplication _harnessPreview = new();
+    private readonly ItinerarySlotCompiler _slotCompiler = new();
+    private readonly ItineraryCandidateApplication _candidateApplication = new();
 
     public AvailabilityPreviewResult Run(string runId)
     {
@@ -20,151 +24,214 @@ internal sealed class AvailabilityPreviewService
             return BlockedUnknown(runId);
         }
 
-        if (!string.Equals(scenario.SlotId, scenario.TrustedSlotId, StringComparison.Ordinal))
+        var session = CreateSelectedSession(scenario);
+        var context = _harnessPreview.CurrentContext(session);
+        var request = new AvailabilityQuotePreviewRequest(
+            session.SessionId,
+            scenario.RequestSlotId,
+            scenario.CandidateId,
+            scenario.RequestSlotKind,
+            scenario.CandidateKind,
+            scenario.QuoteKind,
+            context.CompilationFingerprint,
+            context.SnapshotId,
+            RequestedAt);
+
+        var harnessResult = _harnessPreview.Preview(session, request);
+        if (harnessResult.IsBlocked)
         {
-            return HarnessBlocked(scenario);
+            return BlockedFromHarness(scenario, harnessResult);
         }
 
-        return scenario.Kind switch
+        var providerRow = EvaluateProvider(scenario);
+        if (harnessResult.Code == AvailabilityQuotePreviewApplication.PreviewUnavailableCode
+            || providerRow.OutcomeCode == AvailabilityPreviewEvaluator.OutcomeUnavailable)
         {
-            AvailabilityPreviewScenarioKind.Accepted => QuoteReady(scenario),
-            AvailabilityPreviewScenarioKind.Unavailable => Unavailable(scenario),
-            AvailabilityPreviewScenarioKind.StalePacket => ProviderBlocked(scenario),
-            AvailabilityPreviewScenarioKind.ApprovalRequired => ApprovalRequired(scenario),
-            AvailabilityPreviewScenarioKind.RawAbsence => QuoteReady(scenario),
-            _ => HarnessBlocked(scenario)
-        };
+            return Unavailable(scenario, harnessResult, providerRow);
+        }
+
+        if (!providerRow.Passed)
+        {
+            return BlockedFromProvider(scenario, harnessResult, providerRow);
+        }
+
+        return QuoteReady(scenario, harnessResult, providerRow);
     }
 
-    private AvailabilityPreviewResult QuoteReady(AvailabilityPreviewScenario scenario)
+    private TripSession CreateSelectedSession(AvailabilityPreviewScenario scenario)
     {
-        var option = _availabilityAdapter.SearchAsync(new AvailabilitySearchRequest(
-            "Kyoto",
-            new DateOnly(2026, 10, 5),
-            new DateOnly(2026, 10, 6),
-            2,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["slot_id"] = scenario.SlotId,
-                ["candidate_id"] = scenario.CandidateId
-            }))
+        var session = SyntheticTripFactory.CreateSession(2);
+        var compilation = _slotCompiler.Compile(session, new ItineraryCompilationRequest(
+            session.SessionId,
+            PlannerDate,
+            PlannerDate,
+            null,
+            ["ui-availability-preview"]));
+        if (!compilation.IsCompiled)
+        {
+            return session;
+        }
+
+        var trustedSlotId = scenario.TrustedSlotId ?? scenario.RequestSlotId;
+        var trustedSlot = compilation.Days
+            .SelectMany(day => day.Slots)
+            .First(slot => string.Equals(slot.SlotId, trustedSlotId, StringComparison.Ordinal));
+        var candidate = new Candidate(
+            scenario.CandidateId,
+            scenario.CandidateKind,
+            "Availability preview fixture",
+            "Deterministic availability preview candidate.",
+            scenario.EstimatedCost,
+            scenario.Currency,
+            scenario.EvidenceIds,
+            100);
+
+        session.AddItineraryCandidatePool(trustedSlot.SlotId, new CandidatePool(
+            $"pool-{SafePoolId(scenario.RunId)}",
+            "availability-preview",
+            [candidate],
+            [],
+            ObservedAt));
+
+        var selection = _candidateApplication.Apply(session, new ItinerarySlotDecisionRequest(
+            session.SessionId,
+            trustedSlot.SlotId,
+            ItinerarySlotDecisionKind.Selected,
+            trustedSlot.Kind,
+            candidate.CandidateId,
+            candidate.Kind,
+            RequestedAt));
+        if (selection.IsBlocked)
+        {
+            throw new InvalidOperationException("Deterministic availability preview fixture failed to seed a selected candidate.");
+        }
+
+        return session;
+    }
+
+    private static SanitizedAvailabilityPreviewEvalRow EvaluateProvider(AvailabilityPreviewScenario scenario)
+    {
+        var evaluator = new AvailabilityPreviewEvaluator(new MockAvailabilityPreviewAdapter(scenario.ProviderBehavior));
+        var packet = new AvailabilityPreviewPacket(
+            $"availability-preview-{SafePoolId(scenario.RunId)}",
+            [
+                new AvailabilityPreviewCandidate(
+                    scenario.RequestSlotId,
+                    scenario.CandidateId,
+                    scenario.ProviderCategory)
+            ],
+            "en-US",
+            "availability-preview-context-redacted");
+
+        return evaluator.EvaluateAsync([new AvailabilityPreviewEvalCase(scenario.RunId, packet)])
             .GetAwaiter()
             .GetResult()
             .Single();
-        var eval = EvaluateHoldPreparation(scenario, HoldPreparationOperation.Preview, MockHoldPreparationBehavior.Normal);
+    }
 
+    private static AvailabilityPreviewResult QuoteReady(
+        AvailabilityPreviewScenario scenario,
+        AvailabilityQuotePreviewResult harnessResult,
+        SanitizedAvailabilityPreviewEvalRow providerRow)
+    {
+        var preview = harnessResult.Preview!;
         var outcome = new AvailabilityPreviewOutcomeFixture(
             scenario.RunId,
             "quote-ready",
-            scenario.SlotId,
-            scenario.CandidateId,
+            preview.SlotId,
+            preview.CandidateId,
             scenario.QuoteCategory,
-            eval.OutcomeCode,
-            "trusted_slot_candidate",
+            providerRow.OutcomeCode,
+            harnessResult.Code,
             "approval_not_required",
             null,
             null,
-            option.Provider,
-            ModelName,
-            eval.RequestId);
+            providerRow.Provider ?? MetadataNotPersisted,
+            providerRow.Model ?? MetadataNotPersisted,
+            providerRow.RequestId);
 
         var quote = new AvailabilityQuoteFixture(
             $"quote-{scenario.RunId}",
             scenario.RunId,
-            scenario.SlotId,
-            scenario.CandidateId,
+            preview.SlotId,
+            preview.CandidateId,
             scenario.QuoteCategory,
-            option.Provider,
+            providerRow.Provider ?? MetadataNotPersisted,
             "preview_only",
             "quote_ready",
-            option.ExpiresAt.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            "2026-07-01T12:00:00Z");
 
         return new(outcome, [quote]);
     }
 
-    private static AvailabilityPreviewResult Unavailable(AvailabilityPreviewScenario scenario)
+    private static AvailabilityPreviewResult Unavailable(
+        AvailabilityPreviewScenario scenario,
+        AvailabilityQuotePreviewResult harnessResult,
+        SanitizedAvailabilityPreviewEvalRow providerRow)
     {
+        var preview = harnessResult.Preview!;
         var outcome = new AvailabilityPreviewOutcomeFixture(
             scenario.RunId,
             "unavailable",
-            scenario.SlotId,
-            scenario.CandidateId,
+            preview.SlotId,
+            preview.CandidateId,
             scenario.QuoteCategory,
-            "availability_unavailable",
-            "trusted_slot_candidate",
+            providerRow.OutcomeCode,
+            harnessResult.Code,
             "approval_not_required",
             "PCH_UI_AVAILABILITY_UNAVAILABLE",
-            "Deterministic preview found no available option for the selected candidate.",
-            ProviderName,
-            ModelName,
-            $"mock-availability-{scenario.RunId}");
+            harnessResult.Summary,
+            MetadataNotPersisted,
+            MetadataNotPersisted,
+            null);
 
         return new(outcome, []);
     }
 
-    private static AvailabilityPreviewResult ProviderBlocked(AvailabilityPreviewScenario scenario)
+    private static AvailabilityPreviewResult BlockedFromProvider(
+        AvailabilityPreviewScenario scenario,
+        AvailabilityQuotePreviewResult harnessResult,
+        SanitizedAvailabilityPreviewEvalRow providerRow)
     {
-        var eval = EvaluateHoldPreparation(
-            scenario,
-            HoldPreparationOperation.Preview,
-            MockHoldPreparationBehavior.PacketMismatch);
         var outcome = new AvailabilityPreviewOutcomeFixture(
             scenario.RunId,
             "provider-blocked",
-            scenario.SlotId,
+            scenario.RequestSlotId,
             scenario.CandidateId,
             scenario.QuoteCategory,
-            eval.OutcomeCode,
-            "trusted_slot_candidate",
+            providerRow.OutcomeCode,
+            harnessResult.Code,
             "approval_not_required",
-            "PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH",
-            "Provider preview result did not match the trusted preview packet.",
-            eval.Provider ?? ProviderName,
-            eval.Model ?? ModelName,
-            eval.RequestId);
+            ProviderErrorCode(providerRow.OutcomeCode),
+            ProviderBlockedReason(providerRow.OutcomeCode),
+            MetadataNotPersisted,
+            MetadataNotPersisted,
+            null);
 
         return new(outcome, []);
     }
 
-    private static AvailabilityPreviewResult ApprovalRequired(AvailabilityPreviewScenario scenario)
+    private static AvailabilityPreviewResult BlockedFromHarness(
+        AvailabilityPreviewScenario scenario,
+        AvailabilityQuotePreviewResult harnessResult)
     {
-        var eval = EvaluateHoldPreparation(
-            scenario,
-            HoldPreparationOperation.Hold,
-            MockHoldPreparationBehavior.Normal);
+        var isApprovalRequired = string.Equals(
+            harnessResult.Code,
+            AvailabilityQuotePreviewApplication.ApprovalRequiredCode,
+            StringComparison.Ordinal);
         var outcome = new AvailabilityPreviewOutcomeFixture(
             scenario.RunId,
-            "approval-required",
-            scenario.SlotId,
-            scenario.CandidateId,
-            scenario.QuoteCategory,
-            eval.OutcomeCode,
-            "trusted_slot_candidate",
-            "approval_required",
-            "PCH_UI_AVAILABILITY_APPROVAL_REQUIRED",
-            "Preview is quote-ready, but mock hold preparation requires explicit approval before provider handoff.",
-            eval.Provider ?? ProviderName,
-            eval.Model ?? ModelName,
-            eval.RequestId);
-
-        return new(outcome, []);
-    }
-
-    private static AvailabilityPreviewResult HarnessBlocked(AvailabilityPreviewScenario scenario)
-    {
-        var outcome = new AvailabilityPreviewOutcomeFixture(
-            scenario.RunId,
-            "harness-blocked",
-            scenario.SlotId,
+            isApprovalRequired ? "approval-required" : "harness-blocked",
+            scenario.RequestSlotId,
             scenario.CandidateId,
             scenario.QuoteCategory,
             "not_run",
-            "harness_blocked_wrong_slot",
-            "not_run",
-            "PCH_UI_AVAILABILITY_WRONG_SLOT",
-            "Selected candidate is not associated with the trusted itinerary slot.",
-            ProviderName,
-            ModelName,
+            harnessResult.Code,
+            isApprovalRequired ? "approval_required" : "not_run",
+            HarnessErrorCode(harnessResult.Code),
+            harnessResult.Summary,
+            MetadataNotPersisted,
+            MetadataNotPersisted,
             null);
 
         return new(outcome, []);
@@ -183,46 +250,51 @@ internal sealed class AvailabilityPreviewService
             "not_run",
             "PCH_UI_AVAILABILITY_RUN_UNKNOWN",
             "Availability preview scenario is not recognized.",
-            ProviderName,
-            ModelName,
+            MetadataNotPersisted,
+            MetadataNotPersisted,
             null);
 
         return new(outcome, []);
     }
 
-    private static SanitizedHoldPreparationEvalRow EvaluateHoldPreparation(
-        AvailabilityPreviewScenario scenario,
-        HoldPreparationOperation operation,
-        MockHoldPreparationBehavior behavior)
+    private static string ProviderErrorCode(string outcomeCode) => outcomeCode switch
     {
-        var evaluator = new HoldPreparationEvaluator(new MockHoldPreparationAdapter(behavior));
-        var packet = new HoldPreparationPacket(
-            $"availability-preview-{scenario.RunId}",
-            operation,
-            [
-                new SelectedItineraryCandidate(
-                    scenario.SlotId,
-                    scenario.CandidateId,
-                    ToCandidateCategory(scenario.QuoteCategory))
-            ],
-            "en-US",
-            ApprovalToken: null,
-            ContextDigest: "availability-preview-context-redacted");
+        AvailabilityPreviewEvaluator.OutcomePacketMismatch => "PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH",
+        AvailabilityPreviewEvaluator.OutcomeCandidateMismatch => "PCH_UI_AVAILABILITY_PROVIDER_CANDIDATE_MISMATCH",
+        AvailabilityPreviewEvaluator.OutcomeMalformedPacket => "PCH_UI_AVAILABILITY_PROVIDER_MALFORMED_PACKET",
+        AvailabilityPreviewEvaluator.OutcomeMalformedResult => "PCH_UI_AVAILABILITY_PROVIDER_MALFORMED_RESULT",
+        AvailabilityPreviewEvaluator.OutcomeUnsupportedResult => "PCH_UI_AVAILABILITY_PROVIDER_UNSUPPORTED_RESULT",
+        AvailabilityPreviewEvaluator.OutcomeUnsupportedCategory => "PCH_UI_AVAILABILITY_PROVIDER_UNSUPPORTED_CATEGORY",
+        AvailabilityPreviewEvaluator.OutcomeProviderUnavailable => "PCH_UI_AVAILABILITY_PROVIDER_UNAVAILABLE",
+        AvailabilityPreviewEvaluator.OutcomeTimeout => "PCH_UI_AVAILABILITY_PROVIDER_TIMEOUT",
+        _ => "PCH_UI_AVAILABILITY_PROVIDER_BLOCKED"
+    };
 
-        return evaluator.EvaluateAsync([new HoldPreparationEvalCase(scenario.RunId, packet)])
-            .GetAwaiter()
-            .GetResult()
-            .Single();
-    }
+    private static string ProviderBlockedReason(string outcomeCode) => outcomeCode switch
+    {
+        AvailabilityPreviewEvaluator.OutcomePacketMismatch => "Provider preview result did not match the trusted preview packet.",
+        AvailabilityPreviewEvaluator.OutcomeCandidateMismatch => "Provider preview candidate rows did not match the trusted packet.",
+        AvailabilityPreviewEvaluator.OutcomeMalformedPacket => "Provider preview packet failed validation before provider handoff.",
+        AvailabilityPreviewEvaluator.OutcomeMalformedResult => "Provider preview result failed sanitized validation.",
+        AvailabilityPreviewEvaluator.OutcomeUnsupportedResult => "Provider preview returned an unsupported result.",
+        AvailabilityPreviewEvaluator.OutcomeUnsupportedCategory => "Provider preview returned an unsupported category.",
+        AvailabilityPreviewEvaluator.OutcomeProviderUnavailable => "Provider preview adapter was unavailable.",
+        AvailabilityPreviewEvaluator.OutcomeTimeout => "Provider preview adapter timed out.",
+        _ => "Provider preview was blocked by sanitized evaluation."
+    };
 
-    private static CandidateCategory ToCandidateCategory(string quoteCategory) =>
-        quoteCategory switch
-        {
-            "dining" => CandidateCategory.Dining,
-            "activity" => CandidateCategory.Activity,
-            "transit" => CandidateCategory.Transit,
-            _ => CandidateCategory.Downtime
-        };
+    private static string HarnessErrorCode(string harnessCode) => harnessCode switch
+    {
+        AvailabilityQuotePreviewApplication.ApprovalRequiredCode => "PCH_UI_AVAILABILITY_APPROVAL_REQUIRED",
+        AvailabilityQuotePreviewApplication.CandidateOwnershipMismatchCode => "PCH_UI_AVAILABILITY_WRONG_SLOT",
+        AvailabilityQuotePreviewApplication.UnknownSlotCode => "PCH_UI_AVAILABILITY_UNKNOWN_SLOT",
+        AvailabilityQuotePreviewApplication.UnknownCandidateCode => "PCH_UI_AVAILABILITY_UNKNOWN_CANDIDATE",
+        AvailabilityQuotePreviewApplication.StaleCompilationSnapshotCode => "PCH_UI_AVAILABILITY_STALE_COMPILATION",
+        AvailabilityQuotePreviewApplication.UnsupportedQuoteCategoryCode => "PCH_UI_AVAILABILITY_UNSUPPORTED_CATEGORY",
+        _ => "PCH_UI_AVAILABILITY_HARNESS_BLOCKED"
+    };
+
+    private static string SafePoolId(string value) => value.Replace(".", "-", StringComparison.Ordinal);
 }
 
 internal sealed record AvailabilityPreviewResult(
@@ -232,19 +304,101 @@ internal sealed record AvailabilityPreviewResult(
 internal sealed record AvailabilityPreviewScenario(
     string RunId,
     AvailabilityPreviewScenarioKind Kind,
-    string SlotId,
-    string TrustedSlotId,
+    string RequestSlotId,
+    string? TrustedSlotId,
+    ItinerarySlotKind RequestSlotKind,
     string CandidateId,
-    string QuoteCategory)
+    CandidateKind CandidateKind,
+    string QuoteCategory,
+    AvailabilityPreviewCategory ProviderCategory,
+    AvailabilityQuoteKind QuoteKind,
+    MockAvailabilityPreviewBehavior ProviderBehavior,
+    IReadOnlyList<string> EvidenceIds,
+    decimal? EstimatedCost = null,
+    string? Currency = null)
 {
     public static AvailabilityPreviewScenario? For(string runId) => runId switch
     {
-        "availability.accepted" => new(runId, AvailabilityPreviewScenarioKind.Accepted, "slot-lunch-day-2", "slot-lunch-day-2", "candidate-ramen-lunch", "dining"),
-        "availability.unavailable" => new(runId, AvailabilityPreviewScenarioKind.Unavailable, "slot-activity-day-2", "slot-activity-day-2", "candidate-garden-entry", "activity"),
-        "availability.stale-packet" => new(runId, AvailabilityPreviewScenarioKind.StalePacket, "slot-transit-day-3", "slot-transit-day-3", "candidate-rail-pass", "transit"),
-        "availability.wrong-slot" => new(runId, AvailabilityPreviewScenarioKind.WrongSlot, "slot-lunch-day-9", "slot-lunch-day-2", "candidate-ramen-lunch", "dining"),
-        "availability.approval-required" => new(runId, AvailabilityPreviewScenarioKind.ApprovalRequired, "slot-dinner-day-4", "slot-dinner-day-4", "candidate-kaiseki-preview", "dining"),
-        "availability.raw-sentinel" => new(runId, AvailabilityPreviewScenarioKind.RawAbsence, "slot-quiet-day-5", "slot-quiet-day-5", "candidate-tea-break", "downtime"),
+        "availability.accepted" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.Accepted,
+            "slot-20270402-lunch",
+            null,
+            ItinerarySlotKind.Meal,
+            "candidate-ramen-lunch",
+            CandidateKind.Restaurant,
+            "dining",
+            AvailabilityPreviewCategory.Dining,
+            AvailabilityQuoteKind.Availability,
+            MockAvailabilityPreviewBehavior.QuoteReady,
+            ["evidence-fixture-candidates"]),
+        "availability.unavailable" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.Unavailable,
+            "slot-20270402-activity",
+            null,
+            ItinerarySlotKind.Activity,
+            "candidate-garden-entry",
+            CandidateKind.Activity,
+            "activity",
+            AvailabilityPreviewCategory.Activity,
+            AvailabilityQuoteKind.Availability,
+            MockAvailabilityPreviewBehavior.Unavailable,
+            ["evidence-unavailable"]),
+        "availability.stale-packet" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.StalePacket,
+            "slot-20270402-transit-start",
+            null,
+            ItinerarySlotKind.Transit,
+            "candidate-rail-pass",
+            CandidateKind.Transit,
+            "transit",
+            AvailabilityPreviewCategory.Transit,
+            AvailabilityQuoteKind.Availability,
+            MockAvailabilityPreviewBehavior.PacketMismatch,
+            ["evidence-fixture-candidates"]),
+        "availability.wrong-slot" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.WrongSlot,
+            "slot-20270402-breakfast",
+            "slot-20270402-lunch",
+            ItinerarySlotKind.Meal,
+            "candidate-ramen-lunch",
+            CandidateKind.Restaurant,
+            "dining",
+            AvailabilityPreviewCategory.Dining,
+            AvailabilityQuoteKind.Availability,
+            MockAvailabilityPreviewBehavior.QuoteReady,
+            ["evidence-fixture-candidates"]),
+        "availability.approval-required" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.ApprovalRequired,
+            "slot-20270402-dinner",
+            null,
+            ItinerarySlotKind.Meal,
+            "candidate-kaiseki-preview",
+            CandidateKind.Restaurant,
+            "dining",
+            AvailabilityPreviewCategory.Dining,
+            AvailabilityQuoteKind.Quote,
+            MockAvailabilityPreviewBehavior.QuoteReady,
+            ["evidence-fixture-candidates"],
+            180,
+            "USD"),
+        "availability.raw-sentinel" => new(
+            runId,
+            AvailabilityPreviewScenarioKind.RawAbsence,
+            "slot-20270402-downtime",
+            null,
+            ItinerarySlotKind.Downtime,
+            "candidate-tea-break",
+            CandidateKind.Activity,
+            "activity",
+            AvailabilityPreviewCategory.Activity,
+            AvailabilityQuoteKind.Availability,
+            MockAvailabilityPreviewBehavior.QuoteReady,
+            ["evidence-fixture-candidates"]),
         _ => null
     };
 }
