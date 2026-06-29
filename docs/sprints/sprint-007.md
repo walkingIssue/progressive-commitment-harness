@@ -132,3 +132,36 @@ Verification:
 - The UI can run the mission planner runtime path with deterministic mocks and stable outcome markers.
 - No required test uses provider credentials or network.
 - No raw prompt, provider payload, proposal JSON, approval token, credential, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Sprint 007 met the deterministic runtime objective and left the live provider client for Sprint 008.
+
+Delivered:
+
+- Harness `MissionProposalAdapter` accepts provider-shaped mission mirrors, validates size/path/source/kind/priority/evidence limits, applies through `MissionIntakeApplication`, and returns fixed sanitized failures.
+- `ProjectionService` projects bounded memory and pending-confirmation facts into `StagePacket` while preserving core counters.
+- Provider `MissionPlannerRuntimeBridge` and eval rows expose sanitized runtime handoff metadata, reject packet mismatches/malformed output/unsupported mission kinds, and keep rich planner results in memory only.
+- Stage Cockpit mission runtime now uses `MissionPlannerRuntimeBridge -> ProviderMissionProposalMirror -> MissionProposalAdapter.Apply`.
+- UI smoke covers accepted vacation, high-priority family-support commitment, pending confirmation, provider-runtime blocked packet mismatch, adapter-blocked unsupported field, and adapter-blocked unknown commitment kind.
+
+Repairs before merge:
+
+- Preserved core `StagePacket` counters after adding memory facts.
+- Added null/malformed mirror handling in `MissionProposalAdapter`.
+- Added provider mission-kind allowlisting so raw provider mission-kind text cannot persist.
+- Removed UI coercion of unknown provider commitment kinds into `administrative`; unknown kinds now block through harness `invalid_commitment`.
+
+Verification:
+
+- `dotnet test`: 122 tests passed.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator browser smoke on `http://127.0.0.1:5150/`: passed all six mission runtime paths.
+
+Deferred:
+
+- Live OpenAI/OpenRouter mission planner client.
+- Prompt-intake packet builder from a raw user ramble.
+- Versioned mirror schema and durable audit/event storage.
+- Pending-confirmation promotion flow.

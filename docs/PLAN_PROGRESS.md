@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `f5c876f42c204e3eb47c4305d48aa2276e5c9d7c`
+Latest integrated code before this progress update: `fdce541f66baed70ccd83c54b6b5bbdd3f284d42`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, and an authority-checked mission intake application. Stage 4 has its first provider-shaped mission planner DTOs and deterministic planner mocks. Stage 5/6 now have provider-local model-action eval scaffolding, sanitized golden packet eval rows, decode/intake outcome codes, an in-memory provider runtime proposal bridge, and sanitized mission-planner eval rows. The UI now has deterministic server-side model-action and mission-intake loops. The next decisive gap is a real but guarded strong-model mission planner endpoint plus a bounded mission-to-stage packet projection, so later small-model packets consume structured memory instead of raw prompt history.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, and a validated provider-shaped mission proposal adapter. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, and bounded mission memory projection into `StagePacket`. Stage 5/6 now have sanitized model-action and mission-planner eval rows, decode/intake/runtime outcome codes, and in-memory proposal handoffs that avoid persisted raw payloads. The UI now runs deterministic server-side model-action and mission-planner loops through canonical provider runtime plus harness adapter boundaries. The next decisive gap is a guarded live provider planner client plus a real prompt-intake UI path, so a user ramble can flow through the same contracts without making required tests depend on network or credits.
 
 ## Sprint Ledger
 
@@ -48,6 +48,10 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 006 | Stage 4/6 | Provider mission planner bridge | Provider-local mission planner DTOs, deterministic mocks, structured field/constraint/commitment mirrors, and sanitized eval rows aligned to harness mission intake | done |
 | 006 | Stage 5 | Structured memory digest | `StructuredMemoryDigest` bounds load-bearing mission facts, pending confirmations, and trace references for future small-model packets | done |
 | 006 | UI/Stage 9 precursor | Mission intake UI slice | Stage Cockpit runs provider DTOs through a UI adapter into `MissionIntakeApplication`, renders applied facts, pending confirmations, high-priority commitments, and digest facts | done |
+| 007 | Stage 2/5 | Mission memory projection | `StagePacket.LoadBearingFacts` includes bounded memory and pending-confirmation facts while preserving core counters | done |
+| 007 | Stage 4 | Mission proposal adapter | Harness-owned `MissionProposalAdapter` validates provider-shaped mission mirrors, applies through `MissionIntakeApplication`, and blocks malformed/null/unsupported data with fixed codes | done |
+| 007 | Stage 4/6 | Provider mission planner runtime | Provider-local `MissionPlannerRuntimeBridge`, runtime handoff DTOs, mission-kind allowlist, and sanitized runtime eval rows | done |
+| 007 | UI/Stage 9 precursor | Canonical runtime mission planner UI | Stage Cockpit runs deterministic provider planner output through provider runtime handoff -> harness mission proposal adapter -> mission intake/digest with accepted, pending, provider-blocked, adapter-blocked, and unknown-kind blocked paths | done |
 
 ## Sprint 001 Verification
 
@@ -159,18 +163,42 @@ Sprint 006 started Stage 4 and structured memory: a messy or rambling prompt can
 - Coordinator interactive UI smoke on `http://127.0.0.1:5134/`: vacation mission applied purpose/destination/start/end; high-priority family-support commitment applied; pending pace/traveler-need/constraint confirmations remained model-inferred proposals.
 - Raw provider sentinel, raw prompt sentinel, prompt snippet, credential-like text, approval tokens, and provider payloads were absent from rendered UI.
 
-## Sprint 007 Target
+## Sprint 007 Result
 
-Sprint 007 should turn the deterministic mission planner seam into a guarded provider-backed mission planning loop, while keeping required tests offline.
+Sprint 007 replaced the UI-local mission adapter seam with a canonical runtime path and hardened the provider-shaped mission boundary.
 
-- add a harness/application adapter boundary that maps provider mission planner results into `MissionIntakeProposal` with validation, size limits, and sanitized failure codes;
-- add a provider mission planner runner/client path that can use OpenAI/OpenRouter behind key/credit/timeout guards and deterministic mocks by default;
-- add mission digest projection into stage packets so small-model calls see compact mission facts and pending confirmations;
-- update Stage Cockpit with a run-planner path that can use deterministic provider output now and a guarded live provider later, without rendering raw prompts or payloads.
+- `MissionProposalAdapter` validates provider-shaped mission mirrors without referencing `Pch.Providers`, enforces bounds/allowlists, and applies through `MissionIntakeApplication`.
+- Malformed/null mirrors, unsupported field paths, invalid commitments, overlong payloads, and unknown provider commitment kinds block with fixed sanitized codes and no session mutation.
+- `ProjectionService` includes bounded memory and pending-confirmation facts in `StagePacket.LoadBearingFacts` while preserving core counters such as traveler count, selected candidates, and deferred slots.
+- `MissionPlannerRuntimeBridge` keeps rich planner results in memory only, emits sanitized metadata/eval rows, rejects packet mismatches, malformed results, and unsupported mission kinds, and avoids raw mission-kind persistence.
+- Stage Cockpit now runs mission planning through `MissionPlannerRuntimeBridge -> ProviderMissionProposalMirror -> MissionProposalAdapter.Apply`, with deterministic accepted, proposed, provider-blocked, adapter-blocked, and unknown-kind blocked paths.
+
+## Sprint 007 Verification
+
+- `dotnet test`: 122 tests passed across core, providers, harness, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator browser smoke on `http://127.0.0.1:5150/`: clicked mission vacation, non-vacation commitment, pending confirmation, provider packet mismatch, adapter unsupported field, and unknown commitment kind.
+- Smoke verified:
+  - accepted vacation and high-priority commitment paths applied;
+  - pending destination confirmation stayed proposed;
+  - provider packet mismatch blocked before adapter/intake/digest;
+  - unsupported field blocked at adapter;
+  - unknown commitment kind blocked as `invalid_commitment`;
+  - raw prompt, provider payload, packet id, unknown kind/title, unsupported mirror code, unsupported field text/value, proposal JSON, credentials, and approval-token sentinels were absent from rendered UI.
+
+## Sprint 008 Target
+
+Sprint 008 should turn the deterministic runtime mission planner into a guarded prompt-intake vertical slice.
+
+- add a harness-owned prompt-to-planner packet boundary that builds bounded mission planner requests from a raw user ramble plus current structured memory, without persisting raw prompt text by default;
+- add a provider mission planner client for OpenAI/OpenRouter-compatible JSON output, using deterministic mocks for required tests and strict key/credit/timeout/empty/malformed guards for optional live smoke;
+- add a Stage Cockpit prompt-intake panel that can run deterministic provider output now and optionally guarded live provider output later through the same provider runtime and harness adapter path;
+- add sanitized eval/smoke artifacts proving raw prompts, provider payloads, credentials, proposal JSON, approval tokens, and secret-like sentinels are not persisted or rendered.
 
 ## Not Yet Started
 
-- Stage 4 live strong-model planner/expander/auditor beyond guarded mission planner adapter work.
+- Stage 4 live strong-model planner/expander/auditor beyond guarded mission planner adapter/runtime work.
 - Stage 5 true small-model structured generation beyond deterministic/mock runtime action loops.
 - Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
 - Stage 7 real Amadeus availability and pricing adapters.
