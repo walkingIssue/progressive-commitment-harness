@@ -5,8 +5,10 @@ namespace Pch.Harness;
 public sealed class ProjectionService
 {
     private const int MaxCandidatesPerPacket = 6;
-    private const int MaxFactsPerPacket = 8;
+    private const int MaxFactsPerPacket = 12;
     private const int MaxConstraintsPerPacket = 8;
+    private const int MaxMemoryFactsPerPacket = 4;
+    private const int MaxPendingConfirmationsPerPacket = 4;
 
     public StagePacket Project(TripSession session, HarnessStage stage)
     {
@@ -75,9 +77,32 @@ public sealed class ProjectionService
             $"traveler_count: {session.Mission.Travelers.Count}",
             $"selected_candidate_count: {session.SelectedCandidateIds.Count}",
             $"deferred_slot_count: {session.DeferredSlots.Count}",
+            .. MemoryFacts(session),
             .. session.Mission.Commitments
                 .OrderBy(commitment => commitment.StartsAt)
                 .Select(commitment => $"commitment: {commitment.Title}")
+        ];
+    }
+
+    private static IReadOnlyList<string> MemoryFacts(TripSession session)
+    {
+        if (session.MemoryDigest is null)
+        {
+            return [];
+        }
+
+        var pending = session.MemoryDigest.PendingConfirmations
+            .Take(MaxPendingConfirmationsPerPacket)
+            .Select(pending => $"pending_confirmation: {pending.FieldPath} ({pending.ReasonCode})")
+            .ToArray();
+        var factLimit = Math.Max(0, MaxMemoryFactsPerPacket - pending.Length);
+
+        return
+        [
+            .. session.MemoryDigest.LoadBearingFacts
+                .Take(factLimit)
+                .Select(fact => $"memory: {fact}"),
+            .. pending
         ];
     }
 
