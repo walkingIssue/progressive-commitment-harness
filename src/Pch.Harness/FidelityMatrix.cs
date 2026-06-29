@@ -32,7 +32,10 @@ public sealed class FidelityMatrix
 
     public FidelityMatrixResult Build(FidelityMatrixRequest request)
     {
-        if (request is null || request.StagePackets is null || request.ReplayAudit is null)
+        if (request is null
+            || request.StagePackets is null
+            || request.ReplayAudit is null
+            || request.ReplayAudit.Cases is null)
         {
             return InvalidMatrix();
         }
@@ -44,6 +47,11 @@ public sealed class FidelityMatrix
             .Take(Math.Max(0, MaxEntries - request.StagePackets.Count))
             .Select((replayCase, index) => EvaluateReplayCase(replayCase, index + 1));
         var entries = stageEntries.Concat(replayEntries).Take(MaxEntries).ToArray();
+        if (entries.Length == 0)
+        {
+            return InvalidMatrix();
+        }
+
         var accepted = entries.All(entry => entry.Metrics.SchemaValid
             && entry.Metrics.IsReadOnly
             && entry.Metrics.MutationSafe

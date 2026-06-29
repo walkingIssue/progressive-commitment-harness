@@ -177,6 +177,62 @@ public sealed class FidelityMatrixTests
         Assert.Empty(result.Entries);
     }
 
+    [Fact]
+    public void EmptyMatrixInputUsesFixedSanitizedCode()
+    {
+        var audit = new TripRunReplayAuditResult(
+            true,
+            TripRunReplayAudit.AuditCompleteCode,
+            "Trip run replay audit corpus completed.",
+            0,
+            []);
+
+        var result = new FidelityMatrix().Build(new FidelityMatrixRequest([], audit));
+
+        Assert.False(result.IsAccepted);
+        Assert.Equal(FidelityMatrix.InvalidInputCode, result.Code);
+        Assert.Equal("Fidelity matrix request failed validation.", result.Summary);
+        Assert.Equal(0, result.EntryCount);
+        Assert.Equal(FidelityMatrixTotals.Empty, result.Totals);
+        Assert.Empty(result.Entries);
+    }
+
+    [Fact]
+    public void NullNestedCollectionsUseFixedSanitizedCodeWithoutEchoingInput()
+    {
+        const string sentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
+        var nullStages = new FidelityMatrixRequest(
+            null!,
+            new TripRunReplayAuditResult(
+                true,
+                sentinel,
+                sentinel,
+                1,
+                []));
+        var nullCases = new FidelityMatrixRequest(
+            [],
+            new TripRunReplayAuditResult(
+                true,
+                sentinel,
+                sentinel,
+                1,
+                null!));
+
+        var first = new FidelityMatrix().Build(nullStages);
+        var second = new FidelityMatrix().Build(nullCases);
+        var serialized = JsonSerializer.Serialize(new[] { first, second }, JsonOptions);
+
+        Assert.All([first, second], result =>
+        {
+            Assert.False(result.IsAccepted);
+            Assert.Equal(FidelityMatrix.InvalidInputCode, result.Code);
+            Assert.Equal("Fidelity matrix request failed validation.", result.Summary);
+            Assert.Empty(result.Entries);
+        });
+        Assert.DoesNotContain(sentinel, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exception", serialized, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static (int Actions, int Decisions, int Approvals, int ItineraryDecisions) SessionCounts(TripSession session)
     {
         return (
