@@ -2,6 +2,8 @@
 
 Sprint 002 adds a provider-local model action runner for packet-shaped prompts. It does not consume or define core harness contracts; Sprint 003 can map these provider-local outputs into `HarnessAction` after the core contract owner freezes that surface.
 
+All persisted eval/status artifacts follow the shared provider policy in `docs/evals/sanitized-artifacts.md`.
+
 Default evaluation uses deterministic mocks:
 
 - packet-shaped prompt input

@@ -71,13 +71,35 @@ public sealed class MissionPlannerEvaluator
                 : OutcomeUnsupportedMissionKind;
         }
 
+        if (!packetMatches || !kindMatches)
+        {
+            return new SanitizedMissionPlannerEvalRow(
+                evalCase.Name,
+                evalCase.Packet.PacketId,
+                evalCase.Packet.Scenario,
+                false,
+                evalCase.ExpectedMissionKind,
+                packetMatches && kindAllowed ? result.MissionKind : null,
+                outcome,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                null,
+                null,
+                null,
+                null);
+        }
+
         return new SanitizedMissionPlannerEvalRow(
             evalCase.Name,
             evalCase.Packet.PacketId,
             evalCase.Packet.Scenario,
-            packetMatches && kindMatches,
+            true,
             evalCase.ExpectedMissionKind,
-            packetMatches && kindAllowed ? result.MissionKind : null,
+            result.MissionKind,
             outcome,
             null,
             result.Fields.Count(field => field.AuthoritySource == MissionProposalSource.UserStated),

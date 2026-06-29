@@ -2,6 +2,8 @@
 
 Evidence export eval/status rows are sanitized by default. They verify final deterministic trip-plan summary/export readiness without persisting raw provider, prompt, booking, or payment content.
 
+All persisted eval/status artifacts follow the shared provider policy in `docs/evals/sanitized-artifacts.md`.
+
 Persisted accepted rows contain only:
 
 - eval case name and packet id
