@@ -1,0 +1,110 @@
+namespace Pch.UI.Features.StageCockpit;
+
+internal sealed class StageCockpitFixtureProvider
+{
+    public StageCockpitFixture GetFixture() => new(
+        Packet: new(
+            Id: "slot_collection.demo",
+            Name: "Trip intent slot collection",
+            Summary: "Collect the first load-bearing trip constraints without asking the user to author a plan.",
+            State: "Awaiting required slot review",
+            RequiredSlotCount: 4,
+            CompletedSlotCount: 3,
+            AllowedOutputs:
+            [
+                "emit_form",
+                "emit_choice_set",
+                "request_approval",
+                "defer_slot"
+            ],
+            Authority: "User answers can patch trip constraints. Model inferences require confirmation."),
+        GeneratedForm: new(
+            Title: "Generated Form",
+            Fields:
+            [
+                new("tripPurpose", "Trip purpose", "select", "vacation", true,
+                [
+                    new("vacation", "Vacation"),
+                    new("business", "Business"),
+                    new("funeral", "Funeral / family obligation"),
+                    new("family_support", "Helping family"),
+                    new("mixed", "Mixed purpose")
+                ]),
+                new("country", "Country", "text", "Japan", true, []),
+                new("startDate", "Start date", "date", "2026-10-05", true, []),
+                new("endDate", "End date", "date", "2026-10-19", true, []),
+                new("pace", "Pace", "select", "balanced", false,
+                [
+                    new("low_cognitive_load", "Low cognitive load"),
+                    new("balanced", "Balanced"),
+                    new("packed", "Packed")
+                ])
+            ]),
+        ChoiceSet: new(
+            Id: "dinner_strategy.choice_set",
+            Title: "Choice Collapse",
+            SelectedCandidateId: "dinner_mixed",
+            Candidates:
+            [
+                new("dinner_reserved", "Reserve standout dinners", "Best when dining is a core part of the trip and timing can be protected.", "High certainty, higher commitment load"),
+                new("dinner_mixed", "Mix bookings and flexible meals", "Keeps a few high-value reservations while preserving energy and spontaneity.", "Balanced commitment profile"),
+                new("dinner_flexible", "Mostly casual finds", "Lower planning load and fewer commitments, with weaker guarantee for high-demand spots.", "Lowest planning load")
+            ]),
+        Approval: new(
+            Id: "approval.mock_hold",
+            Title: "Approval Gate",
+            Summary: "Holds, bookings, and spend actions require a generated approval request plus a user token before an adapter can execute.",
+            RequiredFor: "Mock itinerary hold",
+            State: "not_approved"),
+        Trace: new(
+            Claims:
+            [
+                new("claim.trip-purpose", "Trip purpose is vacation", "user", "tripPurpose"),
+                new("claim.country", "Destination country is Japan", "user", "country"),
+                new("claim.choice", "Dinner strategy candidate is preserved by ID", "fixture", "dinner_mixed"),
+                new("claim.approval", "No adapter action may run before approval", "policy", "approval.mock_hold")
+            ]));
+}
+
+internal sealed record StageCockpitFixture(
+    StagePacketFixture Packet,
+    GeneratedFormFixture GeneratedForm,
+    ChoiceSetFixture ChoiceSet,
+    ApprovalGateFixture Approval,
+    EvidenceTraceFixture Trace);
+
+internal sealed record StagePacketFixture(
+    string Id,
+    string Name,
+    string Summary,
+    string State,
+    int RequiredSlotCount,
+    int CompletedSlotCount,
+    IReadOnlyList<string> AllowedOutputs,
+    string Authority);
+
+internal sealed record GeneratedFormFixture(string Title, IReadOnlyList<GeneratedFieldFixture> Fields);
+
+internal sealed record GeneratedFieldFixture(
+    string Id,
+    string Label,
+    string Kind,
+    string Value,
+    bool Required,
+    IReadOnlyList<FieldOptionFixture> Options);
+
+internal sealed record FieldOptionFixture(string Value, string Label);
+
+internal sealed record ChoiceSetFixture(
+    string Id,
+    string Title,
+    string SelectedCandidateId,
+    IReadOnlyList<ChoiceCandidateFixture> Candidates);
+
+internal sealed record ChoiceCandidateFixture(string Id, string Title, string Summary, string Tradeoff);
+
+internal sealed record ApprovalGateFixture(string Id, string Title, string Summary, string RequiredFor, string State);
+
+internal sealed record EvidenceTraceFixture(IReadOnlyList<EvidenceClaimFixture> Claims);
+
+internal sealed record EvidenceClaimFixture(string Id, string Text, string Source, string Reference);
