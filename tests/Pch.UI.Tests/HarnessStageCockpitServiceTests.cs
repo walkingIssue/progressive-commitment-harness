@@ -372,7 +372,7 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.accepted"
                 && outcome.State == "applied"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_built"
                 && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
                 && outcome.AdapterOutcomeCode == "adapter_accepted"
                 && outcome.IntakeOutcomeCode == "mission_intake_applied"
@@ -401,7 +401,7 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.pending"
                 && outcome.State == "proposed"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_built"
                 && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
                 && outcome.AdapterOutcomeCode == "adapter_accepted"
                 && outcome.IntakeOutcomeCode == "mission_intake_applied"
@@ -425,7 +425,7 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.provider-blocked"
                 && outcome.State == "blocked"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_built"
                 && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_packet_id_mismatch"
                 && outcome.AdapterOutcomeCode == "not_run"
                 && outcome.IntakeOutcomeCode == "not_run"
@@ -448,7 +448,7 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.adapter-blocked"
                 && outcome.State == "blocked"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_accepted"
+                && outcome.PromptPacketOutcomeCode == "prompt_packet_built"
                 && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
                 && outcome.AdapterOutcomeCode == "unsupported_field_path"
                 && outcome.IntakeOutcomeCode == "not_run"
@@ -480,23 +480,23 @@ public sealed class HarnessStageCockpitServiceTests
             blank.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.blank"
                 && outcome.State == "blocked"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_blank"
+                && outcome.PromptPacketOutcomeCode == "invalid_prompt"
                 && outcome.ProviderRuntimeOutcomeCode == "not_run"
                 && outcome.AdapterOutcomeCode == "not_run"
                 && outcome.IntakeOutcomeCode == "not_run"
                 && outcome.MemoryDigestOutcomeCode == "not_run"
-                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_BLANK");
+                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_INVALID_PROMPT");
         Assert.Contains(
             overlong.PromptIntake.Outcomes,
             outcome => outcome.RunId == "prompt.overlong"
                 && outcome.State == "blocked"
-                && outcome.PromptPacketOutcomeCode == "prompt_packet_overlong"
+                && outcome.PromptPacketOutcomeCode == "prompt_too_long"
                 && outcome.ProviderRuntimeOutcomeCode == "not_run"
                 && outcome.AdapterOutcomeCode == "not_run"
                 && outcome.IntakeOutcomeCode == "not_run"
                 && outcome.MemoryDigestOutcomeCode == "not_run"
-                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_OVERLONG");
-        Assert.DoesNotContain(new string('x', 650), serialized, StringComparison.Ordinal);
+                && outcome.ErrorCode == "PCH_UI_PROMPT_PACKET_TOO_LONG");
+        Assert.DoesNotContain(new string('x', 4_001), serialized, StringComparison.Ordinal);
         AssertPromptRawTextAbsent(serialized);
     }
 

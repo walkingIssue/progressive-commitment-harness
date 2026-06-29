@@ -664,10 +664,10 @@ public sealed class HarnessStageCockpitService
         {
             "prompt.accepted" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Family wants a calm vacation in Japan in October.",
             "prompt.pending" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Maybe Japan in October if the dates and destination make sense.",
-            "prompt.provider-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK This prompt creates a provider packet mismatch fixture.",
-            "prompt.adapter-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Include a private note that should not become a mission field.",
+            "prompt.provider-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Vacation prompt that creates a provider packet mismatch fixture.",
+            "prompt.adapter-blocked" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Vacation prompt with a private note that should not become a mission field.",
             "prompt.blank" => "",
-            "prompt.overlong" => new string('x', 650),
+            "prompt.overlong" => "RAW_USER_PROMPT_SHOULD_NOT_LEAK " + new string('x', 4_001),
             _ => "RAW_USER_PROMPT_SHOULD_NOT_LEAK Unknown prompt fixture."
         };
     }
