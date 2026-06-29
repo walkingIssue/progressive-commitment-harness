@@ -188,19 +188,18 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "mission.vacation"
                 && outcome.State == "applied"
                 && outcome.PlannerOutcomeCode == "planner_mock_accepted"
-                && outcome.IntakeOutcomeCode == "applied"
+                && outcome.IntakeOutcomeCode == "mission_intake_applied"
                 && outcome.MemoryDigestOutcomeCode == "memory_digest_updated"
                 && outcome.TraceOutcome == "mission_intake.applied");
         Assert.Contains(
             fixture.MissionIntake.AppliedFields,
-            field => field.FieldId == "purpose"
+            field => field.FieldId == "mission.purpose"
                 && field.Value == "vacation"
                 && field.Source == "user-stated"
                 && field.State == "applied");
         Assert.Contains(
             fixture.MissionIntake.MemoryDigestFacts,
-            fact => fact.FactId == "memory.destination"
-                && fact.ReferenceId == "destination_country");
+            fact => fact.Text == "destination_country: Japan");
     }
 
     [Fact]
@@ -212,8 +211,8 @@ public sealed class HarnessStageCockpitServiceTests
 
         Assert.Contains(
             fixture.MissionIntake.AppliedFields,
-            field => field.FieldId == "purpose"
-                && field.Value == "family_support"
+            field => field.FieldId == "mission.purpose"
+                && field.Value == "helping family"
                 && field.Source == "user-stated");
         Assert.Contains(
             fixture.MissionIntake.HighPriorityCommitments,
@@ -222,7 +221,7 @@ public sealed class HarnessStageCockpitServiceTests
                 && commitment.Source == "user-stated");
         Assert.Contains(
             fixture.MissionIntake.MemoryDigestFacts,
-            fact => fact.FactId == "memory.commitment.family-anchor");
+            fact => fact.Text == "commitment: Attend family support appointment");
     }
 
     [Fact]
@@ -241,11 +240,11 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.MissionIntake.Outcomes,
             outcome => outcome.RunId == "mission.pending-confirmation"
                 && outcome.State == "proposed"
-                && outcome.IntakeOutcomeCode == "pending_confirmation"
+                && outcome.IntakeOutcomeCode == "mission_intake_applied"
                 && outcome.TraceOutcome == "mission_intake.proposed");
         Assert.Contains(
             fixture.MissionIntake.PendingConfirmations,
-            field => field.FieldId == "pace"
+            field => field.FieldId == "mission.pace"
                 && field.Source == "model-inferred"
                 && field.State == "pending-confirmation");
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
