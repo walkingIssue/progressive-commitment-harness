@@ -77,10 +77,26 @@ public sealed class ProjectionService
             $"traveler_count: {session.Mission.Travelers.Count}",
             $"selected_candidate_count: {session.SelectedCandidateIds.Count}",
             $"deferred_slot_count: {session.DeferredSlots.Count}",
+            .. ItineraryFacts(session),
             .. MemoryFacts(session),
             .. session.Mission.Commitments
                 .OrderBy(commitment => commitment.StartsAt)
                 .Select(commitment => $"commitment: {commitment.Title}")
+        ];
+    }
+
+    private static IReadOnlyList<string> ItineraryFacts(TripSession session)
+    {
+        if (session.LastItineraryCompilation is null)
+        {
+            return [];
+        }
+
+        return
+        [
+            $"itinerary_day_count: {session.LastItineraryCompilation.Days.Count}",
+            $"itinerary_slot_count: {session.LastItineraryCompilation.SlotCount}",
+            $"itinerary_conflict_count: {session.LastItineraryCompilation.ConflictCount}"
         ];
     }
 
