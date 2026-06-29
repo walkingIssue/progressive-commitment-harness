@@ -257,6 +257,10 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.itinerary-day-panel {
+    grid-column: 1 / -1;
+}
+
 .suggestion-list,
 .model-run-list,
 .mission-run-list {
@@ -305,6 +309,16 @@ h1:focus {
     background: #fffaf0;
 }
 
+.mission-run-card[data-itinerary-outcome="applied"] {
+    border-color: #87b49d;
+    background: #f3faf6;
+}
+
+.mission-run-card[data-itinerary-outcome="blocked"] {
+    border-color: #b86969;
+    background: #fff4f4;
+}
+
 .mission-result-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -336,6 +350,45 @@ h1:focus {
 
 .mission-item span {
     min-width: 0;
+}
+
+.itinerary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+    margin-top: 1rem;
+}
+
+.itinerary-grid section,
+.itinerary-list,
+.itinerary-slot-list {
+    display: grid;
+    gap: .5rem;
+}
+
+.itinerary-grid section {
+    border-top: 1px solid var(--pch-line);
+    padding-top: .75rem;
+}
+
+.itinerary-day,
+.candidate-pool,
+.candidate-option,
+.itinerary-slot,
+.itinerary-evidence,
+.itinerary-digest {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .65rem;
+    border: 1px solid var(--pch-line);
+    border-radius: 6px;
+    padding: .55rem .65rem;
+}
+
+.itinerary-day {
+    align-items: stretch;
+    flex-direction: column;
 }
 
 .response-list {

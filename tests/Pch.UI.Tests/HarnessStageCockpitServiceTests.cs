@@ -518,4 +518,114 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ItineraryAcceptedBuildsDaySkeletonAndDigestMarkers()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.accepted");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.accepted"
+                && outcome.State == "applied"
+                && outcome.DayId == "day-2026-10-06"
+                && outcome.SelectedOutcome == "selected"
+                && outcome.DeferredOutcome == "deferred"
+                && outcome.BlockedOutcome == "none");
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Days,
+            day => day.DayId == "day-2026-10-06"
+                && day.State == "accepted"
+                && day.Slots.Any(slot => slot.SlotId == "slot.day-2026-10-06.lunch"
+                    && slot.SlotType == "meal"
+                    && slot.State == "selected"
+                    && slot.SelectedCandidateId == "candidate.lunch.ramen"));
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.DigestFacts,
+            fact => fact.Text == "date_window: 2026-10-05/2026-10-19");
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryCandidatePoolsPreserveCandidateIdsAndEvidence()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.accepted");
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.CandidatePools,
+            pool => pool.PoolId == "pool.day-2026-10-06.lunch"
+                && pool.SlotId == "slot.day-2026-10-06.lunch"
+                && pool.Candidates.Any(candidate => candidate.CandidateId == "candidate.lunch.ramen"
+                    && candidate.Category == "meal"
+                    && candidate.EvidenceIds.Contains("evidence.destination.japan")));
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Evidence,
+            evidence => evidence.EvidenceId == "evidence.digest.low-cognitive-load"
+                && evidence.Outcome == "deferred");
+    }
+
+    [Fact]
+    public void ItineraryFixedCommitmentConflictBlocksWithSanitizedCode()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.conflict");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.conflict"
+                && outcome.State == "blocked"
+                && outcome.DayId == "day-2026-10-06"
+                && outcome.BlockedOutcome == "blocked_conflict"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_FIXED_COMMITMENT_CONFLICT"
+                && outcome.BlockedReason == "Fixed commitment conflicts with the candidate slot.");
+        Assert.Empty(fixture.ItineraryDayPlanner.Days);
+        Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void ItineraryMissingDateWindowBlocksBeforeCandidates()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.missing-date");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.missing-date"
+                && outcome.State == "blocked"
+                && outcome.DayId == ""
+                && outcome.BlockedOutcome == "blocked_date_window"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_MISSING_DATE_WINDOW"
+                && outcome.BlockedReason == "Itinerary day planner requires an applied start and end date.");
+        Assert.Empty(fixture.ItineraryDayPlanner.Days);
+        Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    private static string SerializeItineraryFixture(StageCockpitFixture fixture)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            fixture.ItineraryDayPlanner,
+            fixture.Session
+        });
+    }
+
+    private static void AssertItineraryRawTextAbsent(string serialized)
+    {
+        Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_SENTINEL", serialized, StringComparison.Ordinal);
+    }
 }

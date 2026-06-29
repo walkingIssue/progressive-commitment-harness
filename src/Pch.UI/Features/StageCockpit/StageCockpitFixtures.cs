@@ -125,7 +125,20 @@ internal sealed class StageCockpitFixtureProvider
             AppliedFields: [],
             PendingConfirmations: [],
             HighPriorityCommitments: [],
-            MemoryDigestFacts: []));
+            MemoryDigestFacts: []),
+        ItineraryDayPlanner: new(
+            EndpointHint: "UI-local day planner seam pending harness day compiler and provider candidate expansion",
+            Runs:
+            [
+                new("itinerary.accepted", "Build day skeleton", "accepted"),
+                new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
+                new("itinerary.missing-date", "Check date window", "date-blocked")
+            ],
+            Outcomes: [],
+            Days: [],
+            CandidatePools: [],
+            Evidence: [],
+            DigestFacts: []));
 }
 
 public sealed record StageCockpitFixture(
@@ -138,7 +151,8 @@ public sealed record StageCockpitFixture(
     SuggestedActionPanelFixture SuggestedActions,
     ModelSuggestionRunPanelFixture ModelSuggestionRuns,
     MissionIntakePanelFixture MissionIntake,
-    PromptIntakePanelFixture PromptIntake);
+    PromptIntakePanelFixture PromptIntake,
+    ItineraryDayPlannerPanelFixture ItineraryDayPlanner);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -315,6 +329,59 @@ public sealed record PromptIntakeOutcomeFixture(
     string Provider,
     string Model,
     string? RequestId);
+
+public sealed record ItineraryDayPlannerPanelFixture(
+    string EndpointHint,
+    IReadOnlyList<ItineraryPlannerRunFixture> Runs,
+    IReadOnlyList<ItineraryPlannerOutcomeFixture> Outcomes,
+    IReadOnlyList<ItineraryDayFixture> Days,
+    IReadOnlyList<ItineraryCandidatePoolFixture> CandidatePools,
+    IReadOnlyList<ItineraryEvidenceFixture> Evidence,
+    IReadOnlyList<MemoryDigestFactFixture> DigestFacts);
+
+public sealed record ItineraryPlannerRunFixture(
+    string Id,
+    string Label,
+    string Scenario);
+
+public sealed record ItineraryPlannerOutcomeFixture(
+    string RunId,
+    string State,
+    string DayId,
+    string SelectedOutcome,
+    string DeferredOutcome,
+    string BlockedOutcome,
+    string? ErrorCode,
+    string? BlockedReason);
+
+public sealed record ItineraryDayFixture(
+    string DayId,
+    string Date,
+    string State,
+    IReadOnlyList<ItinerarySlotFixture> Slots);
+
+public sealed record ItinerarySlotFixture(
+    string SlotId,
+    string SlotType,
+    string State,
+    string? CandidatePoolId,
+    string? SelectedCandidateId);
+
+public sealed record ItineraryCandidatePoolFixture(
+    string PoolId,
+    string SlotId,
+    IReadOnlyList<ItineraryCandidateFixture> Candidates);
+
+public sealed record ItineraryCandidateFixture(
+    string CandidateId,
+    string Category,
+    string Title,
+    IReadOnlyList<string> EvidenceIds);
+
+public sealed record ItineraryEvidenceFixture(
+    string EvidenceId,
+    string Source,
+    string Outcome);
 
 public enum SessionResponseState
 {
