@@ -51,6 +51,33 @@ public sealed class ProviderActionBridgeTests
     }
 
     [Fact]
+    public void BridgeRejectsPacketIdMismatchWithoutEchoingIds()
+    {
+        const string sentinel = "RAW_PACKET_ID_SHOULD_NOT_LEAK";
+        var result = new ModelActionRunResult(
+            sentinel,
+            "emit_form",
+            JsonSerializer.SerializeToElement(new { field = "destination" }),
+            "summary",
+            42,
+            "provider",
+            "model",
+            "request-1");
+
+        var bridge = new ProviderActionBridge().Bridge(CreatePacket(), result);
+
+        Assert.False(bridge.IsAccepted);
+        Assert.Equal(ProviderActionBridge.DecodePacketIdMismatch, bridge.DecodeOutcomeCode);
+        Assert.Null(bridge.Proposal);
+        Assert.Null(bridge.RuntimeProposal);
+
+        var serialized = JsonSerializer.Serialize(bridge, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain(sentinel, serialized);
+        Assert.DoesNotContain("packet-bridge", serialized);
+        Assert.DoesNotContain("destination", serialized);
+    }
+
+    [Fact]
     public void DeterministicRuntimeSourceCreatesAcceptedBlockedAndMalformedCases()
     {
         var source = new MockModelActionResultSource();
