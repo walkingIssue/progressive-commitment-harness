@@ -11,6 +11,7 @@ public sealed class TripSession
     private readonly List<ApprovalToken> _approvalTokens = [];
     private readonly List<DeferredSlot> _deferredSlots = [];
     private readonly List<HandoffRequest> _handoffs = [];
+    private readonly List<ItinerarySlotDecision> _itineraryDecisions = [];
     private StructuredMemoryDigest? _memoryDigest;
     private ItineraryCompilationResult? _lastItineraryCompilation;
 
@@ -57,6 +58,8 @@ public sealed class TripSession
     public IReadOnlyList<DeferredSlot> DeferredSlots => _deferredSlots;
 
     public IReadOnlyList<HandoffRequest> Handoffs => _handoffs;
+
+    public IReadOnlyList<ItinerarySlotDecision> ItineraryDecisions => _itineraryDecisions;
 
     public StructuredMemoryDigest? MemoryDigest => _memoryDigest;
 
@@ -114,6 +117,8 @@ public sealed class TripSession
     public void DeferSlot(string slotId, string reason) => _deferredSlots.Add(new(slotId, reason));
 
     public void RecordHandoff(string target, string reason) => _handoffs.Add(new(target, reason));
+
+    public void RecordItineraryDecision(ItinerarySlotDecision decision) => _itineraryDecisions.Add(decision);
 
     public bool HasApprovalToken(string approvalId)
     {
