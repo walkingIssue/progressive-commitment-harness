@@ -119,3 +119,40 @@ Verification:
 - The UI exposes release-readiness/fidelity markers suitable for browser smoke and later CI.
 - Required tests remain offline and deterministic.
 - No raw prompt, provider payload, proposal JSON, credential, approval token, hold reference, exception text, candidate display value, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Sprint 013 completed the first deterministic Stage 6 fidelity bake-off slice.
+
+- Shellby added `FidelityMatrix`, default matrix construction over stage packets and replay audit cases, ownership outcomes, compact metrics, and input validation that rejects null/empty matrix inputs instead of allowing vacuous completion.
+- Kaneki added provider-local fidelity eval packets/results/sources, deterministic `MockFidelityEvalSource`, `FidelityEvaluator`, and sanitized rows for agreed, disagreed, malformed, fallback, timeout, provider-error, and unsupported-claim paths.
+- Sarah added a Stage Cockpit release dashboard that consumes canonical `FidelityMatrix.BuildDefaultMatrix()` plus provider `FidelityEvaluator` rows and renders ownership, replay coverage, fallback/schema/unsupported counts, eval artifacts, release gate state, and raw-absence markers.
+
+Repair gates enforced:
+
+- empty or malformed fidelity matrix inputs return fixed `fidelity_matrix_invalid_input`;
+- malformed trusted eval packets and null source result shapes return fixed `fidelity_eval_schema_invalid` without invoking or trusting provider/source rows;
+- UI no longer renders fixture-only fidelity rows after canonical harness/provider heads are available;
+- blocked release rows remain explicitly `blocked_until_review`.
+
+## Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: passed, 42 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 277 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator in-app browser smoke on `http://127.0.0.1:5169/`: passed.
+
+Browser smoke verified:
+
+- canonical dashboard marker `data-fidelity-dashboard="stage-6-release"`;
+- matrix state `review-required`;
+- release gate `blocked_until_review`;
+- replay coverage `covered_with_review_block`;
+- canonical counts: fallback `9`, schema validity `23`, unsupported claims `1`;
+- row count `19` from canonical `FidelityMatrix` entries;
+- ownership classes `harness-only`, `small-model-candidate`, `strong-model-required`, and `blocked-until-review`;
+- eval artifacts `artifact-fidelity-agreed` and `artifact-fidelity-unsupported-claim`;
+- representative controls: Intake accepted, Posture accepted, ConflictVerify accepted, and Logistics blocked with `PCH_UI_FIDELITY_RELEASE_REVIEW_REQUIRED`;
+- raw prompt/provider payload/approval token/hold reference/candidate display/secret sentinels were absent from rendered UI.
