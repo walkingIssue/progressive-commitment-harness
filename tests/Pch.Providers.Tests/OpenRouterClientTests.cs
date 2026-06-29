@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Pch.Providers.Errors;
@@ -151,6 +152,46 @@ public sealed class OpenRouterClientTests
             cancellation.Token));
     }
 
+    [Fact]
+    public async Task TimeoutDuringCompletionBodyReadMapsToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            CheckCreditsBeforeCompletion = false,
+            Timeout = TimeSpan.FromMilliseconds(1)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new QueueHandler(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new BlockingContent()
+            })),
+            options,
+            () => "unit-test-key");
+
+        await Assert.ThrowsAsync<ProviderUnavailableException>(() => client.CompleteAsync(
+            new ModelCompletionRequest([new ModelMessage(ModelMessageRole.User, "hello")])));
+    }
+
+    [Fact]
+    public async Task TimeoutDuringCreditsBodyReadMapsToProviderUnavailable()
+    {
+        var options = new OpenRouterOptions
+        {
+            BaseUri = new Uri("https://openrouter.test"),
+            Timeout = TimeSpan.FromMilliseconds(1)
+        };
+        var client = new OpenRouterModelCompletionClient(
+            new HttpClient(new QueueHandler(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new BlockingContent()
+            })),
+            options,
+            () => "unit-test-key");
+
+        await Assert.ThrowsAsync<ProviderUnavailableException>(() => client.GetCreditStatusAsync());
+    }
+
     private static OpenRouterModelCompletionClient CreateClient(QueueHandler handler)
     {
         var options = new OpenRouterOptions
@@ -225,6 +266,33 @@ public sealed class OpenRouterClientTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             return Task.FromResult(Json(HttpStatusCode.OK, "{}"));
+        }
+    }
+
+    private sealed class BlockingContent : HttpContent
+    {
+        public BlockingContent()
+        {
+            Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30));
+        }
+
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = -1;
+            return false;
         }
     }
 }

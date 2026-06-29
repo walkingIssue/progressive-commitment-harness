@@ -65,7 +65,7 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
             "application/json");
 
         using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+        var body = await ReadBodyAsync(response, timeout.Token, cancellationToken).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
         if (string.IsNullOrWhiteSpace(body))
@@ -107,7 +107,7 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         AddOptionalHeaders(httpRequest);
 
         using var response = await SendAsync(httpRequest, timeout.Token, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+        var body = await ReadBodyAsync(response, timeout.Token, cancellationToken).ConfigureAwait(false);
 
         EnsureSuccess(response.StatusCode, body);
         if (string.IsNullOrWhiteSpace(body))
@@ -205,6 +205,25 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         catch (HttpRequestException ex)
         {
             throw new ProviderUnavailableException(ProviderName, "OpenRouter request failed before receiving a response.", null, ex);
+        }
+    }
+
+    private static async Task<string> ReadBodyAsync(
+        HttpResponseMessage response,
+        CancellationToken timeoutToken,
+        CancellationToken callerCancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(timeoutToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new ProviderUnavailableException(ProviderName, "OpenRouter request timed out.", null, ex);
         }
     }
 
