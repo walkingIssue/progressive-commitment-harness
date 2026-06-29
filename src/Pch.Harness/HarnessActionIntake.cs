@@ -23,7 +23,7 @@ public sealed class HarnessActionIntake
         var packet = _projectionService.Project(session, session.Stage);
         if (!HarnessAction.KnownKinds.Contains(action.Kind))
         {
-            return Block(session, packet, action.Kind, "unknown_action_kind", "Rejected unknown action kind.");
+            return Block(session, packet, "unknown", "unknown_action_kind", "Rejected unknown action kind.");
         }
 
         if (!packet.AllowedActions.Contains(action.Kind, StringComparer.Ordinal))

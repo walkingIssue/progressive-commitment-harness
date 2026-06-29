@@ -6,6 +6,29 @@ namespace Pch.Harness.Tests;
 
 public sealed class HarnessActionIntakeTests
 {
+    private const string RawUnknownKind = "RAW_PROVIDER_SECRET_KIND_SHOULD_NOT_LEAK";
+
+    private sealed record UnknownHarnessAction(string ActionId)
+        : HarnessAction(ActionId, RawUnknownKind);
+
+    [Fact]
+    public void UnknownActionKindIsSanitizedInBlockedTraceWithoutMutation()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+
+        var result = new HarnessActionIntake().Accept(session, new UnknownHarnessAction("unknown-action"));
+        var trace = Assert.Single(result.Trace);
+
+        Assert.True(result.IsBlocked);
+        Assert.Empty(session.Actions);
+        Assert.DoesNotContain(RawUnknownKind, result.BlockedReason, StringComparison.Ordinal);
+        Assert.DoesNotContain(RawUnknownKind, trace.Kind, StringComparison.Ordinal);
+        Assert.DoesNotContain(RawUnknownKind, trace.Outcome, StringComparison.Ordinal);
+        Assert.DoesNotContain(RawUnknownKind, trace.Summary, StringComparison.Ordinal);
+        Assert.Equal("unknown", trace.Kind);
+        Assert.Equal("unknown_action_kind", trace.Outcome);
+    }
+
     [Fact]
     public void RejectsActionKindThatIsNotAllowedForCurrentStageWithoutMutation()
     {
