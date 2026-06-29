@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "rootDir": ".",
+    "outDir": "../wwwroot/js",
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": [
+    "*.ts"
+  ]
+}
+

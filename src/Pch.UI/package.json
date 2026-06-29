@@ -1,0 +1,13 @@
+{
+  "name": "pch-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ui": "tsc -p ClientApp/tsconfig.json",
+    "watch:ui": "tsc -p ClientApp/tsconfig.json --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
+
