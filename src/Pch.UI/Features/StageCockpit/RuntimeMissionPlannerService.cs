@@ -129,6 +129,7 @@ public sealed class RuntimeMissionPlannerService
             "mission.pending-confirmation" => "vacation",
             "mission.validation-blocked" => "validation_blocked",
             "mission.adapter-blocked" => "vacation",
+            "mission.unknown-commitment-kind" => "helping_family",
             _ => null
         };
 
@@ -174,8 +175,9 @@ public sealed class RuntimeMissionPlannerService
             _ => []
         };
 
-        IReadOnlyList<ProviderCommitment> commitments = runId == "mission.non-vacation-commitment"
-            ?
+        IReadOnlyList<ProviderCommitment> commitments = runId switch
+        {
+            "mission.non-vacation-commitment" =>
             [
                 new ProviderCommitment(
                     "commitment.family-anchor",
@@ -189,8 +191,24 @@ public sealed class RuntimeMissionPlannerService
                     MissionCommitmentPriority.High,
                     MissionProposalSource.UserStated,
                     ["evidence-user-commitment"])
-            ]
-            : [];
+            ],
+            "mission.unknown-commitment-kind" =>
+            [
+                new ProviderCommitment(
+                    "commitment.unknown-kind",
+                    "RAW_UNKNOWN_KIND_SHOULD_NOT_LEAK",
+                    "RAW_UNKNOWN_COMMITMENT_TITLE_SHOULD_NOT_LEAK",
+                    StartsAt: null,
+                    EndsAt: null,
+                    Location: null,
+                    IsIrreversible: false,
+                    RequiresSpend: false,
+                    MissionCommitmentPriority.High,
+                    MissionProposalSource.UserStated,
+                    ["evidence-user-commitment"])
+            ],
+            _ => []
+        };
 
         IReadOnlyList<ProviderConstraint> constraints = runId == "mission.pending-confirmation"
             ?
@@ -271,7 +289,7 @@ public sealed class RuntimeMissionPlannerService
             "activity" => "activity",
             "downtime" => "downtime",
             "administrative" => "administrative",
-            _ => "administrative"
+            _ => "unsupported_commitment_kind"
         };
     }
 

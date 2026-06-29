@@ -325,4 +325,38 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MissionUnknownCommitmentKindBlocksAtAdapterWithoutRawEcho()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.unknown-commitment-kind");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            fixture.MissionIntake,
+            fixture.Session
+        });
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.unknown-commitment-kind"
+                && outcome.State == "blocked"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "invalid_commitment"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.TraceOutcome == "mission_intake.blocked"
+                && outcome.ErrorCode == "PCH_UI_MISSION_ADAPTER_INVALID_COMMITMENT"
+                && outcome.BlockedReason == "Mission proposal commitment failed validation.");
+        Assert.DoesNotContain(
+            fixture.MissionIntake.HighPriorityCommitments,
+            commitment => commitment.CommitmentId == "commitment.unknown-kind");
+        Assert.DoesNotContain("RAW_UNKNOWN_KIND_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_UNKNOWN_COMMITMENT_TITLE_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsupported_commitment_kind", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("commitment.unknown-kind", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
 }
