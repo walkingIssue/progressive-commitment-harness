@@ -187,6 +187,8 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.MissionIntake.Outcomes,
             outcome => outcome.RunId == "mission.vacation"
                 && outcome.State == "applied"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "adapter_accepted"
                 && outcome.PlannerOutcomeCode == "planner_mock_accepted"
                 && outcome.IntakeOutcomeCode == "mission_intake_applied"
                 && outcome.MemoryDigestOutcomeCode == "memory_digest_updated"
@@ -220,6 +222,12 @@ public sealed class HarnessStageCockpitServiceTests
                 && commitment.Priority == "high"
                 && commitment.Source == "user-stated");
         Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.non-vacation-commitment"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "adapter_accepted"
+                && outcome.IntakeOutcomeCode == "mission_intake_applied");
+        Assert.Contains(
             fixture.MissionIntake.MemoryDigestFacts,
             fact => fact.Text == "commitment: Attend family support appointment");
     }
@@ -240,15 +248,115 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.MissionIntake.Outcomes,
             outcome => outcome.RunId == "mission.pending-confirmation"
                 && outcome.State == "proposed"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "adapter_accepted"
                 && outcome.IntakeOutcomeCode == "mission_intake_applied"
                 && outcome.TraceOutcome == "mission_intake.proposed");
         Assert.Contains(
             fixture.MissionIntake.PendingConfirmations,
-            field => field.FieldId == "mission.pace"
+            field => field.FieldId == "mission.destination_country"
                 && field.Source == "model-inferred"
                 && field.State == "pending-confirmation");
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("I know this is a mess", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissionValidationBlockedKeepsSanitizedProviderRuntimeFailure()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.validation-blocked");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            fixture.MissionIntake,
+            fixture.Session
+        });
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.validation-blocked"
+                && outcome.State == "blocked"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_packet_id_mismatch"
+                && outcome.AdapterOutcomeCode == "not_run"
+                && outcome.PlannerOutcomeCode == "planner_mock_accepted"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.TraceOutcome == "mission_intake.blocked"
+                && outcome.ErrorCode == "PCH_UI_MISSION_PROVIDER_PACKET_ID_MISMATCH"
+                && outcome.BlockedReason == "Mission planner runtime blocked a packet/result mismatch.");
+        Assert.DoesNotContain(
+            fixture.MissionIntake.AppliedFields,
+            field => field.FieldId == "mission.purpose" && field.Value == "vacation");
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissionAdapterBlockedKeepsSanitizedAdapterFailure()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.adapter-blocked");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            fixture.MissionIntake,
+            fixture.Session
+        });
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.adapter-blocked"
+                && outcome.State == "blocked"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "unsupported_field_path"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.TraceOutcome == "mission_intake.blocked"
+                && outcome.ErrorCode == "PCH_UI_MISSION_ADAPTER_UNSUPPORTED_FIELD_PATH"
+                && outcome.BlockedReason == "Mission proposal contains an unsupported field path.");
+        Assert.DoesNotContain(
+            fixture.MissionIntake.AppliedFields,
+            field => field.FieldId == "mission.freeform_secret_note");
+        Assert.DoesNotContain("freeform_secret_note", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("do not persist", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MissionUnknownCommitmentKindBlocksAtAdapterWithoutRawEcho()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunMissionIntake("mission.unknown-commitment-kind");
+        var serialized = JsonSerializer.Serialize(new
+        {
+            fixture.MissionIntake,
+            fixture.Session
+        });
+
+        Assert.Contains(
+            fixture.MissionIntake.Outcomes,
+            outcome => outcome.RunId == "mission.unknown-commitment-kind"
+                && outcome.State == "blocked"
+                && outcome.ProviderRuntimeOutcomeCode == "mission_planner_decode_accepted"
+                && outcome.AdapterOutcomeCode == "invalid_commitment"
+                && outcome.IntakeOutcomeCode == "not_run"
+                && outcome.MemoryDigestOutcomeCode == "not_run"
+                && outcome.TraceOutcome == "mission_intake.blocked"
+                && outcome.ErrorCode == "PCH_UI_MISSION_ADAPTER_INVALID_COMMITMENT"
+                && outcome.BlockedReason == "Mission proposal commitment failed validation.");
+        Assert.DoesNotContain(
+            fixture.MissionIntake.HighPriorityCommitments,
+            commitment => commitment.CommitmentId == "commitment.unknown-kind");
+        Assert.DoesNotContain("RAW_UNKNOWN_KIND_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_UNKNOWN_COMMITMENT_TITLE_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("unsupported_commitment_kind", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("commitment.unknown-kind", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
     }
 }

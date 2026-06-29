@@ -95,12 +95,15 @@ internal sealed class StageCockpitFixtureProvider
             ],
             Outcomes: []),
         MissionIntake: new(
-            EndpointHint: "UI-local deterministic seam pending provider mission planner, harness intake, and memory digest contracts",
+            EndpointHint: "Server-side deterministic runtime mission planner through provider DTO adapter, harness intake, and memory digest",
             Runs:
             [
                 new("mission.vacation", "Plan vacation intake", "vacation"),
                 new("mission.non-vacation-commitment", "Plan commitment intake", "family-support"),
-                new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation")
+                new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation"),
+                new("mission.validation-blocked", "Run provider-blocked intake", "validation-blocked"),
+                new("mission.adapter-blocked", "Run adapter-blocked intake", "adapter-blocked"),
+                new("mission.unknown-commitment-kind", "Run unknown-kind intake", "unknown-kind")
             ],
             Outcomes: [],
             AppliedFields: [],
@@ -235,6 +238,8 @@ public sealed record MissionIntakeRunFixture(
 public sealed record MissionIntakeOutcomeFixture(
     string RunId,
     string State,
+    string ProviderRuntimeOutcomeCode,
+    string AdapterOutcomeCode,
     string PlannerOutcomeCode,
     string IntakeOutcomeCode,
     string MemoryDigestOutcomeCode,
