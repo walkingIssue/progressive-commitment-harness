@@ -1,0 +1,14 @@
+{
+  "packetId": "packet-session-1-day-slotcollection",
+  "sessionId": "session-1-day",
+  "stage": "SlotCollection",
+  "currentSubtask": "Find missing dates, commitments, budget, and traveler needs.",
+  "loadBearingFacts": ["purpose: Focused Tokyo stopover", "destination_country: Japan", "day_count: 1"],
+  "candidates": [
+    { "candidateId": "candidate-01", "kind": "Transit", "title": "Fixture option 1", "summary": "Bounded synthetic option 1 for projection tests.", "evidenceIds": ["evidence-fixture-candidates"] }
+  ],
+  "constraints": ["constraint-evidence: candidate evidence=required (hard, HarnessDefault)"],
+  "authorityHints": ["State writes must come through StatePatchProposal."],
+  "allowedActions": ["emit_form", "defer_slot"],
+  "traceRequirements": ["Use null for unknown values, not empty strings."]
+}

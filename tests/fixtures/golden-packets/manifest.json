@@ -1,0 +1,12 @@
+{
+  "packets": [
+    "approval_request_packet",
+    "business_trip_packet",
+    "choice_collapse_packet",
+    "conflict_review_packet",
+    "funeral_downtime_packet",
+    "slot_collection_packet"
+  ],
+  "source": "Pch.Harness.GoldenPacketCorpus",
+  "provider_free": true
+}

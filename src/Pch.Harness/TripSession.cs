@@ -6,6 +6,11 @@ public sealed class TripSession
 {
     private readonly List<CandidatePool> _candidatePools = [];
     private readonly List<HarnessAction> _actions = [];
+    private readonly Dictionary<string, string?> _formValues = new(StringComparer.Ordinal);
+    private readonly List<string> _selectedCandidateIds = [];
+    private readonly List<ApprovalToken> _approvalTokens = [];
+    private readonly List<DeferredSlot> _deferredSlots = [];
+    private readonly List<HandoffRequest> _handoffs = [];
 
     public TripSession(
         string sessionId,
@@ -41,9 +46,92 @@ public sealed class TripSession
 
     public IReadOnlyList<HarnessAction> Actions => _actions;
 
+    public IReadOnlyDictionary<string, string?> FormValues => _formValues;
+
+    public IReadOnlyList<string> SelectedCandidateIds => _selectedCandidateIds;
+
+    public IReadOnlyList<ApprovalToken> ApprovalTokens => _approvalTokens;
+
+    public IReadOnlyList<DeferredSlot> DeferredSlots => _deferredSlots;
+
+    public IReadOnlyList<HandoffRequest> Handoffs => _handoffs;
+
     public void AddCandidatePool(CandidatePool pool) => _candidatePools.Add(pool);
 
     public void RecordAction(HarnessAction action) => _actions.Add(action);
 
+    public void RecordDecision(DecisionRecord decision)
+    {
+        DecisionLedger = new DecisionLedger([.. DecisionLedger.Records, decision]);
+    }
+
     public void MoveTo(HarnessStage stage) => Stage = stage;
+
+    public void ApplyFormResponse(FormResponse response)
+    {
+        foreach (var (key, value) in response.Values.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            _formValues[$"{response.FormId}.{key}"] = value;
+        }
+    }
+
+    public CandidateSelectionResult SelectCandidates(ChoiceSelection selection)
+    {
+        var unknownIds = selection.CandidateIds
+            .Where(candidateId => !IsKnownCandidateId(candidateId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (unknownIds.Length > 0)
+        {
+            return CandidateSelectionResult.Failed(unknownIds);
+        }
+
+        foreach (var candidateId in selection.CandidateIds)
+        {
+            if (!_selectedCandidateIds.Contains(candidateId, StringComparer.Ordinal))
+            {
+                _selectedCandidateIds.Add(candidateId);
+            }
+        }
+
+        return CandidateSelectionResult.Selected(selection.CandidateIds);
+    }
+
+    public void RecordApproval(ApprovalToken token) => _approvalTokens.Add(token);
+
+    public void DeferSlot(string slotId, string reason) => _deferredSlots.Add(new(slotId, reason));
+
+    public void RecordHandoff(string target, string reason) => _handoffs.Add(new(target, reason));
+
+    public bool HasApprovalToken(string approvalId)
+    {
+        return _approvalTokens.Any(token => string.Equals(token.ApprovalId, approvalId, StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(token.Token));
+    }
+
+    private bool IsKnownCandidateId(string candidateId)
+    {
+        return _candidatePools.SelectMany(pool => pool.Candidates)
+            .Any(candidate => string.Equals(candidate.CandidateId, candidateId, StringComparison.Ordinal));
+    }
+}
+
+public sealed record DeferredSlot(string SlotId, string Reason);
+
+public sealed record HandoffRequest(string Target, string Reason);
+
+public sealed record CandidateSelectionResult(
+    bool IsAccepted,
+    IReadOnlyList<string> AcceptedCandidateIds,
+    IReadOnlyList<string> UnknownCandidateIds)
+{
+    public static CandidateSelectionResult Selected(IReadOnlyList<string> candidateIds)
+    {
+        return new(true, candidateIds.Distinct(StringComparer.Ordinal).ToArray(), []);
+    }
+
+    public static CandidateSelectionResult Failed(IReadOnlyList<string> unknownCandidateIds)
+    {
+        return new(false, [], unknownCandidateIds);
+    }
 }

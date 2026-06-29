@@ -38,6 +38,16 @@ public sealed record FormResponse(
     IReadOnlyDictionary<string, string?> Values,
     DateTimeOffset SubmittedAt);
 
+public sealed record ChoiceSelection(
+    string ChoiceSetId,
+    IReadOnlyList<string> CandidateIds,
+    DateTimeOffset SelectedAt);
+
+public sealed record ApprovalToken(
+    string ApprovalId,
+    string Token,
+    DateTimeOffset ApprovedAt);
+
 public sealed record ApprovalRequest(
     string ApprovalId,
     string ActionId,

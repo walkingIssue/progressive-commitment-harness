@@ -11,7 +11,8 @@ public sealed class ApprovalGate
             return ApprovalGateResult.Allowed();
         }
 
-        if (action is RequestApprovalAction { Approval.ApprovalToken: { Length: > 0 } token })
+        if (action is RequestApprovalAction { Approval.ApprovalToken: { } token }
+            && !string.IsNullOrWhiteSpace(token))
         {
             return ApprovalGateResult.Allowed(token);
         }

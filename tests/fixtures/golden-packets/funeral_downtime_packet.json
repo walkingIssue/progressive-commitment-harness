@@ -1,0 +1,14 @@
+{
+  "packetId": "packet-session-7-day-activitiesdowntime",
+  "sessionId": "session-7-day",
+  "stage": "ActivitiesDowntime",
+  "currentSubtask": "Balance activities, downtime, and fixed anchors.",
+  "loadBearingFacts": ["purpose: Japan planning fixture for 7 days", "destination_country: Japan", "deferred_slot_count: 1"],
+  "candidates": [
+    { "candidateId": "candidate-quiet-garden", "kind": "Activity", "title": "Quiet garden downtime", "summary": "Low-friction downtime block near the fixed family anchor.", "evidenceIds": ["evidence-fixture-candidates"] }
+  ],
+  "constraints": ["constraint-pace: pace=balanced (hard, User)"],
+  "authorityHints": ["Every user-visible claim must cite evidence IDs."],
+  "allowedActions": ["emit_choice_set", "propose_search", "state_patch", "defer_slot"],
+  "traceRequirements": ["Preserve candidate IDs."]
+}
