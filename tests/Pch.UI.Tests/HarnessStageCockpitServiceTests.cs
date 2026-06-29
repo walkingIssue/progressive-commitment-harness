@@ -595,6 +595,27 @@ public sealed class HarnessStageCockpitServiceTests
     }
 
     [Fact]
+    public void ItineraryWrongSlotCandidateBlocksThroughCanonicalApplication()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunItineraryDayPlanner("itinerary.select.wrong-slot");
+        var serialized = SerializeItineraryFixture(fixture);
+
+        Assert.Contains(
+            fixture.ItineraryDayPlanner.Outcomes,
+            outcome => outcome.RunId == "itinerary.select.wrong-slot"
+                && outcome.State == "blocked"
+                && outcome.BlockedOutcome == "blocked_candidate_application"
+                && outcome.ErrorCode == "PCH_UI_ITINERARY_CANDIDATE_POOL_MISMATCH"
+                && outcome.BlockedReason == "Itinerary candidate is not associated with the compiled slot.");
+        Assert.Empty(fixture.ItineraryDayPlanner.Days);
+        Assert.Empty(fixture.ItineraryDayPlanner.CandidatePools);
+        Assert.Empty(fixture.ItineraryDayPlanner.Holds);
+        AssertItineraryRawTextAbsent(serialized);
+    }
+
+    [Fact]
     public void ItineraryDeferRunMarksDeferredSlot()
     {
         var service = new HarnessStageCockpitService();
@@ -631,7 +652,7 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "itinerary.hold.approval-required"
                 && outcome.State == "approval-required"
                 && outcome.SelectedOutcome == "selected"
-                && outcome.HoldOutcome == "approval_required"
+                && outcome.HoldOutcome == "hold_preparation_preview_ready"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
                 && outcome.ErrorCode is null);
         Assert.Contains(
@@ -640,7 +661,8 @@ public sealed class HarnessStageCockpitServiceTests
                 && hold.SlotId == "slot-20270402-activity"
                 && hold.CandidateId == "slot-20270402-activity-activity-1"
                 && hold.ApprovalId == "approval-itinerary-hold-activity"
-                && hold.Outcome == "approval_required"
+                && hold.Outcome == "hold_preparation_preview_ready"
+                && hold.Provider == "mock-hold-preparation"
                 && hold.ConfirmationId is null);
         Assert.Contains(
             fixture.Session.Responses,
@@ -661,15 +683,15 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.ItineraryDayPlanner.Outcomes,
             outcome => outcome.RunId == "itinerary.hold.approved"
                 && outcome.State == "applied"
-                && outcome.HoldOutcome == "hold_applied"
+                && outcome.HoldOutcome == "hold_preparation_hold_prepared"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
                 && outcome.ErrorCode is null);
         Assert.Contains(
             fixture.ItineraryDayPlanner.Holds,
             hold => hold.HoldId == "hold-itinerary.hold.approved"
-                && hold.Outcome == "hold_applied"
-                && hold.Provider == "mock-booking"
-                && hold.ConfirmationId == "mock-hold-slot-20270402-activity-activity-1"
+                && hold.Outcome == "hold_preparation_hold_prepared"
+                && hold.Provider == "mock-hold-preparation"
+                && hold.ConfirmationId is null
                 && hold.ErrorCode is null);
         AssertItineraryRawTextAbsent(serialized);
     }
@@ -687,7 +709,7 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "itinerary.hold.missing-approval"
                 && outcome.State == "blocked"
                 && outcome.BlockedOutcome == "blocked_missing_approval"
-                && outcome.HoldOutcome == "missing_approval"
+                && outcome.HoldOutcome == "hold_preparation_missing_approval"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED"
                 && outcome.BlockedReason == "Mock hold requires approval before provider handoff.");
@@ -713,7 +735,7 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "itinerary.hold.provider-mismatch"
                 && outcome.State == "blocked"
                 && outcome.BlockedOutcome == "blocked_provider_mismatch"
-                && outcome.HoldOutcome == "provider_mismatch"
+                && outcome.HoldOutcome == "hold_preparation_packet_id_mismatch"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_HOLD_PROVIDER_MISMATCH"
                 && outcome.BlockedReason == "Mock hold provider response did not match the selected candidate.");
@@ -813,5 +835,8 @@ public sealed class HarnessStageCockpitServiceTests
         Assert.DoesNotContain("An approval token is required before hold, book, or pay can be committed.", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("slot-provider-unknown", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("candidate-provider-unknown", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("mock-hold-slot", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("structured-itinerary-hold-context", serialized, StringComparison.Ordinal);
     }
 }

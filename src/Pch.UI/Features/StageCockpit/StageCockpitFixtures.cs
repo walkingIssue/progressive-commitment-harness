@@ -132,6 +132,7 @@ internal sealed class StageCockpitFixtureProvider
             [
                 new("itinerary.accepted", "Build day skeleton", "accepted"),
                 new("itinerary.select-candidate", "Select lunch candidate", "selection"),
+                new("itinerary.select.wrong-slot", "Check slot-owned candidate", "candidate-mismatch"),
                 new("itinerary.defer-slot", "Defer activity slot", "defer"),
                 new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
                 new("itinerary.missing-date", "Check date window", "date-blocked"),
