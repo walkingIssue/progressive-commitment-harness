@@ -191,7 +191,7 @@ public sealed class OpenRouterModelCompletionClient : IModelCompletionClient, IP
         {
             return await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex)
         {
             throw new ProviderUnavailableException(ProviderName, "OpenRouter request timed out.", null, ex);
         }
