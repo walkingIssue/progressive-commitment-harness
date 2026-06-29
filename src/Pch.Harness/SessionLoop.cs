@@ -53,18 +53,29 @@ public sealed class SessionLoop
 
     public SessionTurnResult Approve(TripSession session, ApprovalToken token)
     {
-        var action = new RequestApprovalAction(
-            $"action-approved-{token.ApprovalId}",
-            new ApprovalRequest(
-                token.ApprovalId,
-                "mock-booking",
-                "Approved irreversible or spend action.",
-                ["booking", "spend"],
-                null,
-                null,
-                token.Token));
+        var pendingAction = _stageMachine.NextSkeletonAction(session);
+        if (session.Stage is not HarnessStage.ApprovalQueue || pendingAction is not RequestApprovalAction pendingApproval)
+        {
+            return SessionTurnResult.Blocked(
+                session.Stage,
+                _projectionService.Project(session, session.Stage),
+                "No pending approval request for the current stage.");
+        }
 
-        var gate = _approvalGate.Evaluate(action);
+        if (!string.Equals(token.ApprovalId, pendingApproval.Approval.ApprovalId, StringComparison.Ordinal))
+        {
+            return SessionTurnResult.Blocked(
+                session.Stage,
+                _projectionService.Project(session, session.Stage),
+                "Approval token does not match the pending approval request.");
+        }
+
+        var gatedAction = pendingApproval with
+        {
+            Approval = pendingApproval.Approval with { ApprovalToken = token.Token }
+        };
+
+        var gate = _approvalGate.Evaluate(gatedAction);
         if (!gate.IsAllowed)
         {
             return SessionTurnResult.Blocked(session.Stage, _projectionService.Project(session, session.Stage), gate.RefusalReason ?? "Approval refused.");

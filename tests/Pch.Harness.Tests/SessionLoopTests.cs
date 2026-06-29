@@ -71,6 +71,36 @@ public sealed class SessionLoopTests
     }
 
     [Fact]
+    public void ApprovalTokenOutsideApprovalStageBlocksAndIsNotRecorded()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        session.MoveTo(HarnessStage.Logistics);
+
+        var result = new SessionLoop().Approve(session, new ApprovalToken("approval-review", "approved-token", FixedNow));
+
+        Assert.True(result.IsBlocked);
+        Assert.Contains("No pending approval request", result.BlockedReason, StringComparison.Ordinal);
+        Assert.Empty(session.ApprovalTokens);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.Equal(HarnessStage.Logistics, session.Stage);
+    }
+
+    [Fact]
+    public void MismatchedApprovalIdBlocksAndIsNotRecorded()
+    {
+        var session = SyntheticTripFactory.CreateSession(7);
+        session.MoveTo(HarnessStage.ApprovalQueue);
+
+        var result = new SessionLoop().Approve(session, new ApprovalToken("other-approval", "approved-token", FixedNow));
+
+        Assert.True(result.IsBlocked);
+        Assert.Contains("does not match", result.BlockedReason, StringComparison.Ordinal);
+        Assert.Empty(session.ApprovalTokens);
+        Assert.Empty(session.DecisionLedger.Records);
+        Assert.Equal(HarnessStage.ApprovalQueue, session.Stage);
+    }
+
+    [Fact]
     public void BlankApprovalTokenBlocksAndIsNotRecorded()
     {
         var session = SyntheticTripFactory.CreateSession(7);
