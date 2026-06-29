@@ -168,6 +168,44 @@
             </div>
         </article>
 
+        <article class="panel model-run-panel">
+            <div class="panel-head">
+                <span>Run Model Suggestion</span>
+                <small>@Fixture.ModelSuggestionRuns.EndpointHint</small>
+            </div>
+            <div class="model-run-list">
+                @foreach (var run in Fixture.ModelSuggestionRuns.Runs)
+                {
+                    var outcome = Fixture.ModelSuggestionRuns.Outcomes.FirstOrDefault(candidate => candidate.RunId == run.Id);
+                    <section class="model-run-card"
+                             data-run-model-id="@run.Id"
+                             data-action-kind="@(outcome?.ActionKind ?? run.ExpectedActionKind)"
+                             data-response-state="@outcome?.State"
+                             data-decode-outcome="@outcome?.DecodeOutcomeCode"
+                             data-intake-outcome="@outcome?.IntakeOutcomeCode"
+                             data-trace-outcome="@outcome?.TraceOutcome"
+                             data-error-code="@outcome?.ErrorCode"
+                             data-blocked-reason="@outcome?.BlockedReason"
+                             data-provider="@outcome?.Provider"
+                             data-model="@outcome?.Model"
+                             data-request-id="@outcome?.RequestId">
+                        <div>
+                            <strong>@run.Label</strong>
+                            <p>@run.ExpectedActionKind</p>
+                            @if (outcome is not null)
+                            {
+                                <small>@outcome.State / @outcome.TraceOutcome</small>
+                            }
+                        </div>
+                        <code>@(outcome?.ErrorCode ?? run.ExpectedActionKind)</code>
+                        <button class="ghost" type="button" @onclick="() => RunModelSuggestion(run.Id)">
+                            Run model
+                        </button>
+                    </section>
+                }
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -250,6 +288,12 @@
     private void ApplySuggestedAction(string suggestionId)
     {
         Fixture = CockpitService.ApplySuggestedAction(suggestionId);
+        LoadFixtureState();
+    }
+
+    private void RunModelSuggestion(string runId)
+    {
+        Fixture = CockpitService.RunModelSuggestion(runId);
         LoadFixtureState();
     }
 

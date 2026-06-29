@@ -100,4 +100,75 @@ public sealed class HarnessStageCockpitServiceTests
             fixture.Session.Responses,
             response => response.Summary.Contains("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void RunModelAcceptedRoutesThroughProviderBridgeDecoderAndIntake()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunModelSuggestion("server-model.accept.defer-slot");
+
+        Assert.Contains(
+            fixture.ModelSuggestionRuns.Outcomes,
+            outcome => outcome.RunId == "server-model.accept.defer-slot"
+                && outcome.State == "accepted"
+                && outcome.ActionKind == "defer_slot"
+                && outcome.DecodeOutcomeCode == "decode_accepted"
+                && outcome.IntakeOutcomeCode == "accepted"
+                && outcome.TraceOutcome == "server_model.accepted"
+                && outcome.Provider == "deterministic-mock"
+                && outcome.Model == "mock-stage-action");
+        Assert.Contains(
+            fixture.Trace.Claims,
+            claim => claim.Text == "deferred_slot_count: 1");
+        Assert.Contains(
+            fixture.Session.Responses,
+            response => response.State == SessionResponseState.Applied
+                && response.Target == "server-model.accept.defer-slot"
+                && response.Summary.Contains("server_model.accepted", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RunModelBlockedRoutesThroughIntakeWithoutMutation()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunModelSuggestion("server-model.block.form-mismatch");
+
+        Assert.DoesNotContain(
+            fixture.Trace.Claims,
+            claim => claim.Text == "deferred_slot_count: 1");
+        Assert.Contains(
+            fixture.ModelSuggestionRuns.Outcomes,
+            outcome => outcome.RunId == "server-model.block.form-mismatch"
+                && outcome.State == "blocked"
+                && outcome.ActionKind == "emit_form"
+                && outcome.DecodeOutcomeCode == "decode_accepted"
+                && outcome.IntakeOutcomeCode == "form_id_mismatch"
+                && outcome.TraceOutcome == "form_id_mismatch"
+                && outcome.ErrorCode == "PCH_UI_INTAKE_FORM_ID_MISMATCH"
+                && outcome.BlockedReason == "Rejected form action that does not match pending form.");
+    }
+
+    [Fact]
+    public void RunModelDecodeFailureUsesSanitizedCodeWithoutRawPayloadEcho()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.RunModelSuggestion("server-model.decode.missing-argument");
+
+        Assert.Contains(
+            fixture.ModelSuggestionRuns.Outcomes,
+            outcome => outcome.RunId == "server-model.decode.missing-argument"
+                && outcome.State == "blocked"
+                && outcome.ActionKind == "defer_slot"
+                && outcome.DecodeOutcomeCode == "decode_accepted"
+                && outcome.IntakeOutcomeCode == "intake_not_run_decode_failed"
+                && outcome.TraceOutcome == "decode.failed"
+                && outcome.ErrorCode == "PCH_UI_DECODE_MISSING_REQUIRED_ARGUMENT"
+                && outcome.BlockedReason == "Action proposal is missing a required argument.");
+        Assert.DoesNotContain(
+            fixture.Session.Responses,
+            response => response.Summary.Contains("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", StringComparison.Ordinal));
+    }
 }
