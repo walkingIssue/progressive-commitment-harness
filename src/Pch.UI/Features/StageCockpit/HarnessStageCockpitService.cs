@@ -13,6 +13,7 @@ public sealed class HarnessStageCockpitService
     private readonly ExternalActionDecoder _externalActionDecoder = new();
     private readonly HarnessActionIntake _actionIntake = new();
     private readonly ProviderActionBridge _providerActionBridge = new();
+    private readonly RuntimeActionApplication _runtimeActionApplication = new();
     private readonly TripSession _session;
     private readonly List<SessionResponseFixture> _responses = [];
     private readonly List<SuggestedActionOutcomeFixture> _suggestionOutcomes = [];
@@ -218,6 +219,7 @@ public sealed class HarnessStageCockpitService
                 "blocked",
                 "unknown",
                 "decode_not_run",
+                "not_run",
                 "intake_not_run",
                 "server_model.blocked",
                 "PCH_UI_MODEL_RUN_UNKNOWN",
@@ -236,6 +238,7 @@ public sealed class HarnessStageCockpitService
                 "blocked",
                 scenario.Result.ActionName,
                 bridge.DecodeOutcomeCode,
+                "not_run",
                 bridge.IntakeOutcomeCode,
                 bridge.DecodeOutcomeCode,
                 $"PCH_UI_BRIDGE_{bridge.DecodeOutcomeCode.ToUpperInvariant()}",
@@ -247,49 +250,36 @@ public sealed class HarnessStageCockpitService
             return Current();
         }
 
-        var decode = _externalActionDecoder.DecodeJson(scenario.RunId, scenario.Result.ActionName, scenario.Result.Arguments.GetRawText());
-        if (!decode.IsDecoded)
-        {
-            AddModelRunOutcome(new(
-                scenario.RunId,
-                "blocked",
-                scenario.Result.ActionName,
-                bridge.DecodeOutcomeCode,
-                "intake_not_run_decode_failed",
-                "decode.failed",
-                $"PCH_UI_DECODE_{decode.Code.ToUpperInvariant()}",
-                decode.Summary,
-                scenario.Result.Provider,
-                scenario.Result.Model,
-                scenario.Result.RequestId));
-            UpsertModelRunResponse(scenario.RunId, SessionResponseState.Blocked, decode.Code, decode.Summary);
-            return Current();
-        }
-
-        var decodedAction = decode.Action!;
-        _lastTurn = _actionIntake.Accept(_session, decodedAction);
-        var trace = _lastTurn.Trace.FirstOrDefault();
-        var traceOutcome = trace?.Outcome ?? (_lastTurn.IsBlocked ? "blocked" : "accepted");
-        var state = _lastTurn.IsBlocked ? "blocked" : "accepted";
+        var runtimeProposal = bridge.RuntimeProposal!;
+        var externalProposal = new ExternalActionProposal(
+            runtimeProposal.ActionId,
+            runtimeProposal.Kind,
+            runtimeProposal.Arguments.Clone());
+        var runtime = _runtimeActionApplication.Apply(_session, externalProposal);
+        _lastTurn = null;
+        var trace = runtime.Trace.FirstOrDefault();
+        var traceOutcome = trace?.Outcome ?? (runtime.IsBlocked ? "blocked" : "accepted");
+        var state = runtime.IsBlocked ? "blocked" : "accepted";
 
         AddModelRunOutcome(new(
             scenario.RunId,
             state,
-            decodedAction.Kind,
+            runtimeProposal.Kind,
             bridge.DecodeOutcomeCode,
-            traceOutcome,
-            _lastTurn.IsBlocked ? traceOutcome : "server_model.accepted",
-            _lastTurn.IsBlocked ? $"PCH_UI_INTAKE_{traceOutcome.ToUpperInvariant()}" : null,
-            _lastTurn.IsBlocked ? _lastTurn.BlockedReason ?? trace?.Summary ?? "Harness intake blocked the model suggestion." : null,
+            runtime.DecodeCode,
+            runtime.IntakeCode,
+            runtime.IsBlocked ? traceOutcome : "server_model.accepted",
+            runtime.IsBlocked ? RuntimeErrorCode(runtime) : null,
+            runtime.IsBlocked ? runtime.Summary : null,
             scenario.Result.Provider,
             scenario.Result.Model,
             scenario.Result.RequestId));
 
         UpsertModelRunResponse(
             scenario.RunId,
-            _lastTurn.IsBlocked ? SessionResponseState.Blocked : SessionResponseState.Applied,
-            _lastTurn.IsBlocked ? traceOutcome : "server_model.accepted",
-            _lastTurn.IsBlocked ? _lastTurn.BlockedReason ?? "Harness intake blocked the model suggestion." : $"Harness intake accepted model action {decodedAction.Kind}.");
+            runtime.IsBlocked ? SessionResponseState.Blocked : SessionResponseState.Applied,
+            runtime.IsBlocked ? runtime.IntakeCode : "server_model.accepted",
+            runtime.IsBlocked ? runtime.Summary : $"Runtime accepted model action {runtimeProposal.Kind}.");
 
         return Current();
     }
@@ -391,7 +381,7 @@ public sealed class HarnessStageCockpitService
                 _suggestions,
                 _suggestionOutcomes.ToArray()),
             ModelSuggestionRuns: new(
-                "Server-side deterministic mock provider through provider bridge, decoder, and harness intake",
+                "Server-side deterministic mock provider through provider bridge and runtime application",
                 [
                     new("server-model.accept.defer-slot", "Run accepted model suggestion", HarnessAction.DeferSlotKind),
                     new("server-model.block.form-mismatch", "Run blocked model suggestion", HarnessAction.EmitFormKind),
@@ -570,6 +560,13 @@ public sealed class HarnessStageCockpitService
             $"{code}: {summary}",
             runId,
             null));
+    }
+
+    private static string RuntimeErrorCode(RuntimeActionApplicationResult runtime)
+    {
+        return runtime.IntakeCode == "not_run"
+            ? $"PCH_UI_RUNTIME_DECODE_{runtime.DecodeCode.ToUpperInvariant()}"
+            : $"PCH_UI_RUNTIME_INTAKE_{runtime.IntakeCode.ToUpperInvariant()}";
     }
 
     private sealed record ModelRunScenario(

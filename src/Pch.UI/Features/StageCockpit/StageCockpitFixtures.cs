@@ -86,7 +86,7 @@ internal sealed class StageCockpitFixtureProvider
             ],
             Outcomes: []),
         ModelSuggestionRuns: new(
-            EndpointHint: "Server-side deterministic mock provider through provider bridge, decoder, and harness intake",
+            EndpointHint: "Server-side deterministic mock provider through provider bridge and runtime application",
             Runs:
             [
                 new("server-model.accept.defer-slot", "Run accepted model suggestion", "defer_slot"),
@@ -194,8 +194,9 @@ public sealed record ModelSuggestionRunOutcomeFixture(
     string RunId,
     string State,
     string ActionKind,
-    string DecodeOutcomeCode,
-    string IntakeOutcomeCode,
+    string BridgeOutcomeCode,
+    string RuntimeDecodeOutcomeCode,
+    string RuntimeIntakeOutcomeCode,
     string TraceOutcome,
     string? ErrorCode,
     string? BlockedReason,

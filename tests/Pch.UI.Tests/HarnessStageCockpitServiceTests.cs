@@ -113,8 +113,9 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "server-model.accept.defer-slot"
                 && outcome.State == "accepted"
                 && outcome.ActionKind == "defer_slot"
-                && outcome.DecodeOutcomeCode == "decode_accepted"
-                && outcome.IntakeOutcomeCode == "accepted"
+                && outcome.BridgeOutcomeCode == "decode_accepted"
+                && outcome.RuntimeDecodeOutcomeCode == "decoded"
+                && outcome.RuntimeIntakeOutcomeCode == "accepted"
                 && outcome.TraceOutcome == "server_model.accepted"
                 && outcome.Provider == "deterministic-mock"
                 && outcome.Model == "mock-stage-action");
@@ -143,10 +144,11 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "server-model.block.form-mismatch"
                 && outcome.State == "blocked"
                 && outcome.ActionKind == "emit_form"
-                && outcome.DecodeOutcomeCode == "decode_accepted"
-                && outcome.IntakeOutcomeCode == "form_id_mismatch"
+                && outcome.BridgeOutcomeCode == "decode_accepted"
+                && outcome.RuntimeDecodeOutcomeCode == "decoded"
+                && outcome.RuntimeIntakeOutcomeCode == "form_id_mismatch"
                 && outcome.TraceOutcome == "form_id_mismatch"
-                && outcome.ErrorCode == "PCH_UI_INTAKE_FORM_ID_MISMATCH"
+                && outcome.ErrorCode == "PCH_UI_RUNTIME_INTAKE_FORM_ID_MISMATCH"
                 && outcome.BlockedReason == "Rejected form action that does not match pending form.");
     }
 
@@ -162,10 +164,11 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "server-model.decode.missing-argument"
                 && outcome.State == "blocked"
                 && outcome.ActionKind == "defer_slot"
-                && outcome.DecodeOutcomeCode == "decode_accepted"
-                && outcome.IntakeOutcomeCode == "intake_not_run_decode_failed"
-                && outcome.TraceOutcome == "decode.failed"
-                && outcome.ErrorCode == "PCH_UI_DECODE_MISSING_REQUIRED_ARGUMENT"
+                && outcome.BridgeOutcomeCode == "decode_accepted"
+                && outcome.RuntimeDecodeOutcomeCode == "missing_required_argument"
+                && outcome.RuntimeIntakeOutcomeCode == "not_run"
+                && outcome.TraceOutcome == "missing_required_argument"
+                && outcome.ErrorCode == "PCH_UI_RUNTIME_DECODE_MISSING_REQUIRED_ARGUMENT"
                 && outcome.BlockedReason == "Action proposal is missing a required argument.");
         Assert.DoesNotContain(
             fixture.Session.Responses,
