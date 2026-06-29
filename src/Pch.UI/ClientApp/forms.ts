@@ -58,3 +58,14 @@ export function markRequiredSummary(rootSelector: string, summarySelector: strin
   summary.dataset.requiredCount = requiredCount.toString();
   summary.textContent = `${requiredCount} required ${noun}`;
 }
+
+export function responseStateCounts(rootSelector: string): Record<string, number> {
+  const root = document.querySelector(rootSelector);
+  const counts: Record<string, number> = {};
+  root?.querySelectorAll<HTMLElement>("[data-response-state]").forEach((element) => {
+    const state = element.dataset.responseState ?? "unknown";
+    counts[state] = (counts[state] ?? 0) + 1;
+  });
+
+  return counts;
+}

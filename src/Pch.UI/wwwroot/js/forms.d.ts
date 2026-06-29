@@ -10,3 +10,4 @@ export declare function clearDraft(stageId: string): void;
 export declare function focusFirstField(rootSelector: string): boolean;
 export declare function requiredFieldCount(rootSelector: string): number;
 export declare function markRequiredSummary(rootSelector: string, summarySelector: string): void;
+export declare function responseStateCounts(rootSelector: string): Record<string, number>;

@@ -54,26 +54,38 @@ internal sealed class StageCockpitFixtureProvider
             Id: "approval.mock_hold",
             Title: "Approval Gate",
             Summary: "Holds, bookings, and spend actions require a generated approval request plus a user token before an adapter can execute.",
-            RequiredFor: "Mock itinerary hold",
+            RequiredFor: "Fixture itinerary hold",
             State: "not_approved"),
         Trace: new(
+            Label: "claim-ledger fixture",
             Claims:
             [
                 new("claim.trip-purpose", "Trip purpose is vacation", "user", "tripPurpose"),
                 new("claim.country", "Destination country is Japan", "user", "country"),
                 new("claim.choice", "Dinner strategy candidate is preserved by ID", "fixture", "dinner_mixed"),
                 new("claim.approval", "No adapter action may run before approval", "policy", "approval.mock_hold")
+            ]),
+        Session: new(
+            Id: "session.fixture.trip-intent",
+            EndpointHint: "UI-local seam pending Shellby integration",
+            Responses:
+            [
+                new("response.pending.country", SessionResponseState.Pending, "Pending", "Country field update is staged for session apply.", "country", null),
+                new("response.applied.pace", SessionResponseState.Applied, "Applied", "Pace preference accepted into the local session fixture.", "pace", null),
+                new("response.rejected.date-window", SessionResponseState.Rejected, "Rejected", "Date window change rejected because it would invert start and end dates.", "endDate", null),
+                new("response.approval.hold", SessionResponseState.ApprovalRequired, "Approval required", "Fixture itinerary hold requires explicit user approval before any adapter action.", "approval.mock_hold", "approval.mock_hold")
             ]));
 }
 
-internal sealed record StageCockpitFixture(
+public sealed record StageCockpitFixture(
     StagePacketFixture Packet,
     GeneratedFormFixture GeneratedForm,
     ChoiceSetFixture ChoiceSet,
     ApprovalGateFixture Approval,
-    EvidenceTraceFixture Trace);
+    EvidenceTraceFixture Trace,
+    StageSessionFixture Session);
 
-internal sealed record StagePacketFixture(
+public sealed record StagePacketFixture(
     string Id,
     string Name,
     string Summary,
@@ -83,9 +95,9 @@ internal sealed record StagePacketFixture(
     IReadOnlyList<string> AllowedOutputs,
     string Authority);
 
-internal sealed record GeneratedFormFixture(string Title, IReadOnlyList<GeneratedFieldFixture> Fields);
+public sealed record GeneratedFormFixture(string Title, IReadOnlyList<GeneratedFieldFixture> Fields);
 
-internal sealed record GeneratedFieldFixture(
+public sealed record GeneratedFieldFixture(
     string Id,
     string Label,
     string Kind,
@@ -93,18 +105,39 @@ internal sealed record GeneratedFieldFixture(
     bool Required,
     IReadOnlyList<FieldOptionFixture> Options);
 
-internal sealed record FieldOptionFixture(string Value, string Label);
+public sealed record FieldOptionFixture(string Value, string Label);
 
-internal sealed record ChoiceSetFixture(
+public sealed record ChoiceSetFixture(
     string Id,
     string Title,
     string SelectedCandidateId,
     IReadOnlyList<ChoiceCandidateFixture> Candidates);
 
-internal sealed record ChoiceCandidateFixture(string Id, string Title, string Summary, string Tradeoff);
+public sealed record ChoiceCandidateFixture(string Id, string Title, string Summary, string Tradeoff);
 
-internal sealed record ApprovalGateFixture(string Id, string Title, string Summary, string RequiredFor, string State);
+public sealed record ApprovalGateFixture(string Id, string Title, string Summary, string RequiredFor, string State);
 
-internal sealed record EvidenceTraceFixture(IReadOnlyList<EvidenceClaimFixture> Claims);
+public sealed record EvidenceTraceFixture(string Label, IReadOnlyList<EvidenceClaimFixture> Claims);
 
-internal sealed record EvidenceClaimFixture(string Id, string Text, string Source, string Reference);
+public sealed record EvidenceClaimFixture(string Id, string Text, string Source, string Reference);
+
+public sealed record StageSessionFixture(
+    string Id,
+    string EndpointHint,
+    IReadOnlyList<SessionResponseFixture> Responses);
+
+public sealed record SessionResponseFixture(
+    string Id,
+    SessionResponseState State,
+    string Label,
+    string Summary,
+    string Target,
+    string? ApprovalId);
+
+public enum SessionResponseState
+{
+    Pending,
+    Applied,
+    Rejected,
+    ApprovalRequired
+}

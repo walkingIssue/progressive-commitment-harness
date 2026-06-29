@@ -234,6 +234,51 @@ h1:focus {
     box-shadow: inset 0 0 0 1px var(--pch-accent);
 }
 
+.session-panel {
+    grid-column: 1 / -1;
+}
+
+.response-list {
+    display: grid;
+    gap: .75rem;
+}
+
+.response-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(10rem, auto);
+    gap: .75rem;
+    align-items: center;
+    border: 1px solid var(--pch-line);
+    border-radius: 8px;
+    padding: .85rem;
+}
+
+.response-card p {
+    color: var(--pch-muted);
+    margin: .25rem 0 0;
+}
+
+.response-card[data-response-state="Applied"] {
+    border-color: #87b49d;
+    background: #f3faf6;
+}
+
+.response-card[data-response-state="Rejected"] {
+    border-color: #d9a4a4;
+    background: #fff7f7;
+}
+
+.response-card[data-response-state="ApprovalRequired"] {
+    border-color: #d4ba72;
+    background: #fffaf0;
+}
+
+.response-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+}
+
 .ghost,
 .approve {
     border: 1px solid var(--pch-accent);
@@ -242,6 +287,11 @@ h1:focus {
     color: var(--pch-accent-strong);
     font-weight: 700;
     padding: .4rem .7rem;
+}
+
+.ghost.danger {
+    border-color: #9d3f3f;
+    color: #7e2525;
 }
 
 .approve {
@@ -299,7 +349,12 @@ h1:focus {
     .stage-hero,
     .stage-workspace,
     .field-grid,
+    .response-card,
     .trace-list li {
         grid-template-columns: 1fr;
+    }
+
+    .response-actions {
+        justify-content: flex-start;
     }
 }

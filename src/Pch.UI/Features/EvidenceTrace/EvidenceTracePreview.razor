@@ -1,0 +1,27 @@
+@namespace Pch.UI.Features.EvidenceTrace
+@using Pch.UI.Features.StageCockpit
+
+<article class="panel trace-panel">
+    <div class="panel-head">
+        <span>Evidence Trace Preview</span>
+        <small>@Trace.Label</small>
+    </div>
+    <ol class="trace-list">
+        @foreach (var claim in Claims)
+        {
+            <li data-claim-id="@claim.Id" data-claim-source="@claim.Source">
+                <strong>@claim.Text</strong>
+                <span>@claim.Source / @claim.Reference</span>
+                <code>@claim.Id</code>
+            </li>
+        }
+    </ol>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public EvidenceTraceFixture Trace { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EvidenceClaimFixture> Claims { get; set; } = [];
+}
