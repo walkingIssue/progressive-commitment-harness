@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-29
 
-Latest integrated code before this progress update: `b20ca29b47ca840e1108eeab0ed5a232eff653c5`
+Latest integrated code before this progress update: `792fc576dfac867bc1136964004c3dd9657a5860`
 
-Overall position: Stage 2/3 now have a deterministic provider-free session loop and golden packet corpus. The UI has a publishable interaction seam but is not yet wired to real harness endpoints. Stage 5/6 have provider-local model-action eval scaffolding, but no true live small-model bake-off has run yet.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, and a server-backed UI session path. Stage 5/6 have provider-local model-action eval scaffolding, sanitized golden packet eval rows, and a guarded Qwen smoke result that currently blocks on empty provider content. The next decisive gap is the safe bridge from provider-local action JSON into harness-owned `HarnessAction` intake.
 
 ## Sprint Ledger
 
@@ -32,6 +32,11 @@ Overall position: Stage 2/3 now have a deterministic provider-free session loop 
 | 002 | Stage 3 | Session loop | Deterministic `SessionLoop`, form response handling, candidate selection, defer/handoff recording, explicit blocked results, and approval-token matching against pending approval requests | done for provider-free loop |
 | 002 | UI feasibility gate | Interaction seam | Stage Cockpit response seam with pending/applied/rejected/approval-required states, approval/evidence components, preserved candidate/approval ids, and UI smoke markers | done as UI-local seam |
 | 002 | Stage 5/6 groundwork | Model-action runner | Provider-local model action runner/evaluator, strict JSON action parsing, deterministic mock, sanitized diagnostics, and no raw model response exposure | groundwork done |
+| 003 | Stage 2/3 | Harness action intake | `HarnessActionIntake` validates known kind, allowed stage actions, pending form/approval IDs, approval gates, no partial mutation on block, and sanitized unknown action traces | done |
+| 003 | Stage 3/UI gate | Server-backed UI session | Stage Cockpit uses scoped `Pch.Harness` session service for form, choice, approval, blocked state, IDs, and trace projection | done |
+| 003 | Stage 5/6 | Golden packet eval rows | Provider golden packet loader and sanitized eval rows avoid raw prompt/model payload persistence; legacy evaluator now stores coarse error codes | done for deterministic eval path |
+| 003 | Stage 5 live smoke | Qwen hosted smoke | OpenRouter key and credit guard passed, but `qwen/qwen3-14b` returned empty content; no fallback provider used | blocked by provider output |
+| 003 | Stage 9 precursor | UI E2E invariant | Interactive Blazor smoke proved Request approval -> Apply form produces blocked response and does not advance out of approval queue | done |
 
 ## Sprint 001 Verification
 
@@ -61,20 +66,42 @@ Sprint 002 turned the fixture skeleton into a deterministic session loop while p
   - disallowed model action errors no longer echo untrusted model output;
   - approval tokens must match a pending approval request in an approval-bearing stage.
 
-## Sprint 003 Target
+## Sprint 003 Result
 
-Sprint 003 should create the first deterministic end-to-end UI run over real harness session services, then run the first small-model action smoke/eval where credits and provider health allow.
+Sprint 003 created the first deterministic UI run over real harness session services and hardened the action/eval boundaries:
 
-- wire the Stage Cockpit to server-side `Pch.Harness` session services instead of UI-only response fixtures;
-- freeze the harness action intake boundary enough for provider output mapping;
-- run a credit-guarded OpenRouter `qwen/qwen3-14b` smoke/eval against golden packets, with mock-only tests as the default path;
-- keep all booking/spend/irreversible behavior approval-gated.
+- Stage Cockpit now uses a scoped server-side `Pch.Harness` session service for form, choice, approval, blocked, and trace behavior.
+- `HarnessActionIntake` is the harness-owned boundary for externally proposed actions.
+- Blocked action intake does not mutate session state, and unknown action kinds are sanitized before trace persistence.
+- Provider eval rows are sanitized and do not persist packet prompt text, raw model output, raw exception messages, or secrets.
+- The optional OpenRouter `qwen/qwen3-14b` smoke was safely blocked when the provider returned empty content after key and credit guard.
+- The UI test and interactive smoke prove Apply form cannot advance out of `ApprovalQueue`; it renders `data-blocked-reason="Cannot apply form while pending harness action is request_approval."`
+
+## Sprint 003 Verification
+
+- `dotnet test`: 59 tests passed across core, harness, providers, and UI.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Coordinator interactive UI smoke: passed on `http://127.0.0.1:5119/`.
+- Repair gates enforced:
+  - unknown model/provider action kind strings do not persist into replay traces;
+  - legacy and sanitized provider eval paths avoid raw exception/message payload persistence;
+  - UI apply-form cannot bypass approval stage.
+
+## Sprint 004 Target
+
+Sprint 004 should connect the provider-local model action runner to the harness-owned action intake without giving the small model mutation authority.
+
+- define a harness-owned external action proposal/decoder boundary for provider JSON arguments;
+- map provider-local action results into that proposal shape with sanitized failures;
+- add a UI "model suggested action" step that uses deterministic mocks by default and sends accepted proposals through `HarnessActionIntake`;
+- keep live Qwen smoke optional, credit-guarded, and blocked rather than falling back when provider output is unusable.
 
 ## Not Yet Started
 
 - Stage 4 strong-model planner/expander/auditor.
-- Stage 5 true small-model structured generation beyond provider-local scaffolding.
-- Stage 6 fidelity bake-off with ownership matrix beyond initial scaffolding.
+- Stage 5 true small-model structured generation beyond provider-local scaffolding/action bridge.
+- Stage 6 fidelity bake-off with ownership matrix beyond initial sanitized eval rows.
 - Stage 7 real Amadeus availability and pricing adapters.
 - Stage 8 day compiler and dependency propagation.
 - Stage 9 true end-to-end UI run.

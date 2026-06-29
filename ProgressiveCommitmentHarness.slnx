@@ -9,5 +9,6 @@
     <Project Path="tests/Pch.Core.Tests/Pch.Core.Tests.csproj" />
     <Project Path="tests/Pch.Harness.Tests/Pch.Harness.Tests.csproj" />
     <Project Path="tests/Pch.Providers.Tests/Pch.Providers.Tests.csproj" />
+    <Project Path="tests/Pch.UI.Tests/Pch.UI.Tests.csproj" />
   </Folder>
 </Solution>

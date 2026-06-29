@@ -130,3 +130,20 @@ Verification:
 - Golden packet eval can run with mocks.
 - Optional Qwen smoke is either completed safely or blocked with a clear provider/credit reason.
 - Production quality bar remains satisfied.
+
+## Outcome
+
+Status: completed.
+
+- Shellby added `HarnessActionIntake`, stage-aware action validation, replayable `SessionTraceEvent` output, and sanitized unknown-action trace handling.
+- Sarah wired Stage Cockpit to a scoped server-side `Pch.Harness` session service and added a UI test plus interactive smoke for the approval-bypass repair.
+- Kaneki added golden packet eval loading, sanitized eval rows, and repaired legacy eval errors so raw exception text is not persisted.
+- Collin added `tests/Pch.UI.Tests` to the solution so root `dotnet test` covers the UI invariant.
+
+## Verification Result
+
+- `dotnet test`: passed, 59 tests.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- `npm run build:ui`: passed.
+- Interactive UI smoke: passed. `Request approval stage` followed by `Apply form` produced one blocked response with `data-blocked-reason="Cannot apply form while pending harness action is request_approval."`
+- Optional OpenRouter Qwen smoke: blocked after key and credit guard because `qwen/qwen3-14b` returned empty content; no fallback provider used.
