@@ -35,6 +35,7 @@ public sealed class HarnessStageCockpitService
     private readonly List<ItineraryCandidatePoolFixture> _itineraryCandidatePools = [];
     private readonly List<ItineraryEvidenceFixture> _itineraryEvidence = [];
     private readonly List<MemoryDigestFactFixture> _itineraryDigestFacts = [];
+    private readonly List<ItineraryHoldFixture> _itineraryHolds = [];
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -388,16 +389,30 @@ public sealed class HarnessStageCockpitService
         UpsertRange(_itineraryCandidatePools, result.CandidatePools, pool => pool.PoolId);
         UpsertRange(_itineraryEvidence, result.Evidence, evidence => evidence.EvidenceId);
         UpsertRange(_itineraryDigestFacts, result.DigestFacts, fact => fact.FactId);
+        UpsertRange(_itineraryHolds, result.Holds, hold => hold.HoldId);
 
         UpsertResponse(new(
             $"response.{result.Outcome.State}.itinerary.{runId}",
-            result.Outcome.State == "blocked" ? SessionResponseState.Blocked : SessionResponseState.Applied,
-            result.Outcome.State == "blocked" ? "Blocked" : "Applied",
-            result.Outcome.State == "blocked"
-                ? result.Outcome.BlockedReason ?? "Itinerary day planner was blocked."
-                : "Itinerary day planner applied a deterministic day skeleton.",
+            result.Outcome.State switch
+            {
+                "blocked" => SessionResponseState.Blocked,
+                "approval-required" => SessionResponseState.ApprovalRequired,
+                _ => SessionResponseState.Applied
+            },
+            result.Outcome.State switch
+            {
+                "blocked" => "Blocked",
+                "approval-required" => "Approval required",
+                _ => "Applied"
+            },
+            result.Outcome.State switch
+            {
+                "blocked" => result.Outcome.BlockedReason ?? "Itinerary day planner was blocked.",
+                "approval-required" => "Mock hold is waiting for an approval token.",
+                _ => "Itinerary day planner applied a deterministic day skeleton."
+            },
             runId,
-            null));
+            result.Outcome.ApprovalId));
 
         return Current();
     }
@@ -540,15 +555,22 @@ public sealed class HarnessStageCockpitService
                 "Harness itinerary slot compiler through deterministic provider candidate expansion",
                 [
                     new("itinerary.accepted", "Build day skeleton", "accepted"),
+                    new("itinerary.select-candidate", "Select lunch candidate", "selection"),
+                    new("itinerary.defer-slot", "Defer activity slot", "defer"),
                     new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
                     new("itinerary.missing-date", "Check date window", "date-blocked"),
-                    new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked")
+                    new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked"),
+                    new("itinerary.hold.approval-required", "Request mock hold approval", "hold-approval-required"),
+                    new("itinerary.hold.approved", "Run approved mock hold", "hold-approved"),
+                    new("itinerary.hold.missing-approval", "Run hold without approval", "hold-missing-approval"),
+                    new("itinerary.hold.provider-mismatch", "Run mismatched hold", "hold-provider-mismatch")
                 ],
                 _itineraryOutcomes.ToArray(),
                 _itineraryDays.ToArray(),
                 _itineraryCandidatePools.ToArray(),
                 _itineraryEvidence.ToArray(),
-                _itineraryDigestFacts.ToArray()));
+                _itineraryDigestFacts.ToArray(),
+                _itineraryHolds.ToArray()));
     }
 
     private EmitFormAction ResolveFormAction()

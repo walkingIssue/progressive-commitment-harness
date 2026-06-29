@@ -131,15 +131,22 @@ internal sealed class StageCockpitFixtureProvider
             Runs:
             [
                 new("itinerary.accepted", "Build day skeleton", "accepted"),
+                new("itinerary.select-candidate", "Select lunch candidate", "selection"),
+                new("itinerary.defer-slot", "Defer activity slot", "defer"),
                 new("itinerary.conflict", "Check fixed conflict", "conflict-blocked"),
                 new("itinerary.missing-date", "Check date window", "date-blocked"),
-                new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked")
+                new("itinerary.provider-mismatch", "Check provider slots", "provider-blocked"),
+                new("itinerary.hold.approval-required", "Request mock hold approval", "hold-approval-required"),
+                new("itinerary.hold.approved", "Run approved mock hold", "hold-approved"),
+                new("itinerary.hold.missing-approval", "Run hold without approval", "hold-missing-approval"),
+                new("itinerary.hold.provider-mismatch", "Run mismatched hold", "hold-provider-mismatch")
             ],
             Outcomes: [],
             Days: [],
             CandidatePools: [],
             Evidence: [],
-            DigestFacts: []));
+            DigestFacts: [],
+            Holds: []));
 }
 
 public sealed record StageCockpitFixture(
@@ -338,7 +345,8 @@ public sealed record ItineraryDayPlannerPanelFixture(
     IReadOnlyList<ItineraryDayFixture> Days,
     IReadOnlyList<ItineraryCandidatePoolFixture> CandidatePools,
     IReadOnlyList<ItineraryEvidenceFixture> Evidence,
-    IReadOnlyList<MemoryDigestFactFixture> DigestFacts);
+    IReadOnlyList<MemoryDigestFactFixture> DigestFacts,
+    IReadOnlyList<ItineraryHoldFixture> Holds);
 
 public sealed record ItineraryPlannerRunFixture(
     string Id,
@@ -352,6 +360,8 @@ public sealed record ItineraryPlannerOutcomeFixture(
     string SelectedOutcome,
     string DeferredOutcome,
     string BlockedOutcome,
+    string HoldOutcome,
+    string? ApprovalId,
     string? ErrorCode,
     string? BlockedReason);
 
@@ -383,6 +393,16 @@ public sealed record ItineraryEvidenceFixture(
     string EvidenceId,
     string Source,
     string Outcome);
+
+public sealed record ItineraryHoldFixture(
+    string HoldId,
+    string SlotId,
+    string CandidateId,
+    string ApprovalId,
+    string Outcome,
+    string Provider,
+    string? ConfirmationId,
+    string? ErrorCode);
 
 public enum SessionResponseState
 {

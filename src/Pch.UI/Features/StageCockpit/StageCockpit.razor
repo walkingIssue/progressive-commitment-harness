@@ -431,6 +431,8 @@
                              data-selected-outcome="@outcome?.SelectedOutcome"
                              data-deferred-outcome="@outcome?.DeferredOutcome"
                              data-blocked-outcome="@outcome?.BlockedOutcome"
+                             data-hold-outcome="@outcome?.HoldOutcome"
+                             data-approval-id="@outcome?.ApprovalId"
                              data-error-code="@outcome?.ErrorCode"
                              data-blocked-reason="@outcome?.BlockedReason">
                         <div>
@@ -512,6 +514,26 @@
                                  data-evidence-outcome="@evidence.Outcome">
                                 <span>@evidence.EvidenceId</span>
                                 <code>@evidence.Outcome</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Mock Holds</strong>
+                    <div class="itinerary-list">
+                        @foreach (var hold in Fixture.ItineraryDayPlanner.Holds)
+                        {
+                            <div class="itinerary-hold"
+                                 data-itinerary-hold-id="@hold.HoldId"
+                                 data-slot-id="@hold.SlotId"
+                                 data-candidate-id="@hold.CandidateId"
+                                 data-approval-id="@hold.ApprovalId"
+                                 data-hold-outcome="@hold.Outcome"
+                                 data-provider="@hold.Provider"
+                                 data-confirmation-id="@hold.ConfirmationId"
+                                 data-error-code="@hold.ErrorCode">
+                                <span>@hold.Outcome</span>
+                                <code>@hold.ApprovalId</code>
                             </div>
                         }
                     </div>
