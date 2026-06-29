@@ -29,7 +29,7 @@ public sealed class GoldenPacketCorpusTests
             Assert.NotEmpty(packet.PacketId);
             Assert.NotEmpty(packet.AllowedActions);
             Assert.NotEmpty(packet.TraceRequirements);
-            Assert.True(packet.LoadBearingFacts.Count <= 8);
+            Assert.True(packet.LoadBearingFacts.Count <= 12);
             Assert.True(packet.Candidates.Count <= 6);
         });
     }

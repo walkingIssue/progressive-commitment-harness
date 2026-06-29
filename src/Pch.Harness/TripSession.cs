@@ -11,6 +11,7 @@ public sealed class TripSession
     private readonly List<ApprovalToken> _approvalTokens = [];
     private readonly List<DeferredSlot> _deferredSlots = [];
     private readonly List<HandoffRequest> _handoffs = [];
+    private StructuredMemoryDigest? _memoryDigest;
 
     public TripSession(
         string sessionId,
@@ -56,6 +57,8 @@ public sealed class TripSession
 
     public IReadOnlyList<HandoffRequest> Handoffs => _handoffs;
 
+    public StructuredMemoryDigest? MemoryDigest => _memoryDigest;
+
     public void AddCandidatePool(CandidatePool pool) => _candidatePools.Add(pool);
 
     public void RecordAction(HarnessAction action) => _actions.Add(action);
@@ -68,6 +71,8 @@ public sealed class TripSession
     public void MoveTo(HarnessStage stage) => Stage = stage;
 
     public void ReplaceMission(TripMission mission) => Mission = mission;
+
+    public void ReplaceMemoryDigest(StructuredMemoryDigest digest) => _memoryDigest = digest;
 
     public void ApplyFormResponse(FormResponse response)
     {

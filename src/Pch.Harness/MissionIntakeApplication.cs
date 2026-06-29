@@ -121,6 +121,7 @@ public sealed class MissionIntakeApplication
         session.ReplaceMission(mission);
 
         var digest = BuildDigest(session, appliedFacts, pending, traceReferences);
+        session.ReplaceMemoryDigest(digest);
         return new MissionIntakeResult(
             IsApplied: true,
             Code: "mission_intake_applied",
