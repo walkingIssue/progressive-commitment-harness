@@ -835,15 +835,19 @@ public sealed class HarnessStageCockpitServiceTests
                 && outcome.DeferredCount == 1
                 && outcome.HoldOutcomeCode == "hold_preparation_hold_prepared"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.SnapshotOutcomeCode == "complete"
+                && outcome.EvidenceExportOutcomeCode == "evidence_export_ready"
                 && outcome.EvidencePacketId == "evidence-packet-e2e-happy-path"
                 && outcome.ExportPacketId == "export-packet-e2e-happy-path"
-                && outcome.ErrorCode is null);
+                && outcome.ErrorCode is null
+                && outcome.Provider == "mock-evidence-export"
+                && outcome.Model == "mock-evidence-export-deterministic");
         Assert.Contains(
             fixture.EndToEndTripRuns.Evidence,
             evidence => evidence.EvidenceId == "evidence-e2e-happy-path-hold"
                 && evidence.ExportPacketId == "export-packet-e2e-happy-path"
-                && evidence.Outcome == "hold_preparation_hold_prepared"
-                && evidence.ReferenceId == "approval-itinerary-hold-activity");
+                && evidence.Outcome == "evidence_export_ready"
+                && evidence.ReferenceId == "evidence-e2e-happy-path-hold");
         AssertEndToEndRawTextAbsent(serialized);
     }
 
@@ -866,6 +870,8 @@ public sealed class HarnessStageCockpitServiceTests
                 && outcome.DeferredCount == 0
                 && outcome.HoldOutcomeCode == "not_run"
                 && outcome.ApprovalId is null
+                && outcome.SnapshotOutcomeCode == "pending_confirmation"
+                && outcome.EvidenceExportOutcomeCode == "not_run"
                 && outcome.ErrorCode is null);
         AssertEndToEndRawTextAbsent(serialized);
     }
@@ -884,6 +890,8 @@ public sealed class HarnessStageCockpitServiceTests
                 && outcome.State == "blocked"
                 && outcome.ItineraryOutcomeCode == "blocked_candidate_expansion"
                 && outcome.HoldOutcomeCode == "not_run"
+                && outcome.SnapshotOutcomeCode == "blocked_candidate"
+                && outcome.EvidenceExportOutcomeCode == "not_run"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_CANDIDATE_SLOT_MISMATCH"
                 && outcome.BlockedReason == "Candidate expansion returned an invalid compiled slot.");
         AssertEndToEndRawTextAbsent(serialized);
@@ -905,6 +913,8 @@ public sealed class HarnessStageCockpitServiceTests
                 && outcome.State == "blocked"
                 && outcome.ItineraryOutcomeCode == "blocked_candidate_application"
                 && outcome.HoldOutcomeCode == "not_run"
+                && outcome.SnapshotOutcomeCode == "blocked_candidate"
+                && outcome.EvidenceExportOutcomeCode == "not_run"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_CANDIDATE_POOL_MISMATCH"
                 && outcome.BlockedReason == "Itinerary candidate is not associated with the compiled slot.");
         AssertEndToEndRawTextAbsent(serialized);
@@ -926,6 +936,8 @@ public sealed class HarnessStageCockpitServiceTests
                 && outcome.SelectedCount == 1
                 && outcome.HoldOutcomeCode == "hold_preparation_missing_approval"
                 && outcome.ApprovalId == "approval-itinerary-hold-activity"
+                && outcome.SnapshotOutcomeCode == "hold_prep_required"
+                && outcome.EvidenceExportOutcomeCode == "not_run"
                 && outcome.ErrorCode == "PCH_UI_ITINERARY_HOLD_APPROVAL_REQUIRED"
                 && outcome.BlockedReason == "Mock hold requires approval before provider handoff.");
         AssertEndToEndRawTextAbsent(serialized);
@@ -944,12 +956,14 @@ public sealed class HarnessStageCockpitServiceTests
             outcome => outcome.RunId == "e2e.raw-sentinel"
                 && outcome.EvidencePacketId == "evidence-packet-e2e-raw-sentinel"
                 && outcome.ExportPacketId == "export-packet-e2e-raw-sentinel"
+                && outcome.SnapshotOutcomeCode == "complete"
+                && outcome.EvidenceExportOutcomeCode == "evidence_export_ready"
                 && outcome.TraceOutcome == "end_to_end.applied");
         Assert.Contains(
             fixture.EndToEndTripRuns.Evidence,
             evidence => evidence.EvidenceId == "evidence-e2e-raw-sentinel-prompt"
                 && evidence.ExportPacketId == "export-packet-e2e-raw-sentinel"
-                && evidence.Outcome == "mission_intake_applied");
+                && evidence.Outcome == "evidence_export_ready");
         AssertEndToEndRawTextAbsent(serialized);
     }
 
@@ -965,7 +979,10 @@ public sealed class HarnessStageCockpitServiceTests
     private static void AssertEndToEndRawTextAbsent(string serialized)
     {
         Assert.DoesNotContain("RAW_END_TO_END_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("ui-e2e-approval-token-not-rendered", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("hold-reference", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PLAN_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_EVIDENCE_ID_SHOULD_NOT_PERSIST", serialized, StringComparison.Ordinal);
         AssertItineraryRawTextAbsent(serialized);
     }
 

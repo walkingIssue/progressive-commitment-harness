@@ -1,11 +1,16 @@
 using Pch.Core;
 using Pch.Harness;
+using Pch.Providers.EvidenceExport;
+using Pch.Providers.Mock;
+using ExportEvidenceKind = Pch.Providers.EvidenceExport.EvidenceKind;
 
 namespace Pch.UI.Features.StageCockpit;
 
 public sealed class EndToEndTripRunService
 {
     private const string RawPromptSentinel = "RAW_END_TO_END_PROMPT_SHOULD_NOT_LEAK";
+    private const string ApprovalId = "approval-itinerary-hold-activity";
+    private const string ApprovalTokenValue = "ui-e2e-approval-token-not-rendered";
     private static readonly string[] KnownRunIds =
     [
         "e2e.happy-path",
@@ -18,6 +23,9 @@ public sealed class EndToEndTripRunService
 
     private readonly RuntimeMissionPlannerService _missionPlannerService = new();
     private readonly ItineraryDayPlannerService _itineraryDayPlannerService = new();
+    private readonly TripRunSnapshotBuilder _snapshotBuilder = new();
+    private readonly ItinerarySlotCompiler _slotCompiler = new();
+    private readonly EvidenceExportEvaluator _evidenceExportEvaluator = new(new MockEvidenceExportProvider());
 
     public EndToEndTripRunResult Run(string runId)
     {
@@ -26,6 +34,8 @@ public sealed class EndToEndTripRunService
             return Blocked(
                 runId,
                 "not_run",
+                "not_run",
+                TripRunSnapshotBuilder.BlockedCompilerCode,
                 "not_run",
                 "PCH_UI_E2E_UNKNOWN_SCENARIO",
                 "End-to-end trip run scenario is not recognized.");
@@ -36,69 +46,78 @@ public sealed class EndToEndTripRunService
         var mission = _missionPlannerService.RunPrompt(session, promptRunId, PromptForRun(runId));
         if (mission.State == "blocked")
         {
-            return FromMissionBlocked(runId, mission);
+            var snapshot = _snapshotBuilder.Build(session);
+            return FromMissionBlocked(runId, mission, snapshot);
         }
 
         return runId switch
         {
-            "e2e.happy-path" => HappyPath(session, runId, mission),
-            "e2e.pending-confirmation" => PendingConfirmation(runId, mission),
+            "e2e.happy-path" => CompletePath(session, runId, mission),
+            "e2e.pending-confirmation" => PendingConfirmation(session, runId, mission),
             "e2e.provider-mismatch" => ItineraryBlocked(session, runId, mission, "itinerary.provider-mismatch"),
             "e2e.wrong-slot" => ItineraryBlocked(session, runId, mission, "itinerary.select.wrong-slot"),
             "e2e.missing-approval" => MissingApproval(session, runId, mission),
-            "e2e.raw-sentinel" => RawSentinelPath(session, runId, mission),
+            "e2e.raw-sentinel" => CompletePath(session, runId, mission),
             _ => Blocked(
                 runId,
                 mission.IntakeOutcomeCode,
+                "not_run",
+                TripRunSnapshotBuilder.BlockedCompilerCode,
                 "not_run",
                 "PCH_UI_E2E_UNKNOWN_SCENARIO",
                 "End-to-end trip run scenario is not recognized.")
         };
     }
 
-    private EndToEndTripRunResult HappyPath(
+    private EndToEndTripRunResult CompletePath(
         TripSession session,
         string runId,
         PromptIntakePlannerResult mission)
     {
         var itinerary = _itineraryDayPlannerService.Run(session, "itinerary.accepted");
+        var deferred = _itineraryDayPlannerService.Run(session, "itinerary.defer-slot");
         var hold = _itineraryDayPlannerService.Run(session, "itinerary.hold.approved");
+        session.RecordApproval(new ApprovalToken(ApprovalId, ApprovalTokenValue, DateTimeOffset.UtcNow));
 
-        return Accepted(
+        var snapshot = _snapshotBuilder.Build(session);
+        var export = ExportIfComplete(runId, snapshot);
+
+        return FromSnapshot(
             runId,
+            "applied",
             mission,
-            itinerary,
+            "itinerary_day_compiled",
             hold.Outcome.HoldOutcome,
             hold.Outcome.ApprovalId,
-            SelectedCount(itinerary, hold),
-            DeferredCount(itinerary));
+            null,
+            null,
+            snapshot,
+            export,
+            fallbackSelectedCount: SelectedCount(itinerary, hold),
+            fallbackDeferredCount: DeferredCount(deferred));
     }
 
-    private static EndToEndTripRunResult PendingConfirmation(
+    private EndToEndTripRunResult PendingConfirmation(
+        TripSession session,
         string runId,
         PromptIntakePlannerResult mission)
     {
-        var outcome = new EndToEndTripRunOutcomeFixture(
+        CompileForSnapshot(session);
+        var snapshot = _snapshotBuilder.Build(session);
+
+        return FromSnapshot(
             runId,
             "proposed",
-            mission.PromptPacketOutcomeCode,
-            mission.IntakeOutcomeCode,
+            mission,
             "itinerary_not_run_pending_confirmation",
-            mission.MemoryDigestOutcomeCode,
-            "end_to_end.pending_confirmation",
-            0,
-            0,
             "not_run",
-            null,
-            EvidencePacketId(runId),
-            ExportPacketId(runId),
-            null,
-            null,
-            mission.Provider,
-            mission.Model,
-            mission.RequestId);
-
-        return new(outcome, BuildEvidence(outcome));
+            approvalId: null,
+            errorCode: null,
+            blockedReason: null,
+            snapshot,
+            export: null,
+            fallbackSelectedCount: 0,
+            fallbackDeferredCount: 0);
     }
 
     private EndToEndTripRunResult ItineraryBlocked(
@@ -108,27 +127,21 @@ public sealed class EndToEndTripRunService
         string itineraryRunId)
     {
         var itinerary = _itineraryDayPlannerService.Run(session, itineraryRunId);
-        var outcome = new EndToEndTripRunOutcomeFixture(
+        var snapshot = _snapshotBuilder.Build(session);
+
+        return FromSnapshot(
             runId,
             "blocked",
-            mission.PromptPacketOutcomeCode,
-            mission.IntakeOutcomeCode,
+            mission,
             itinerary.Outcome.BlockedOutcome,
             "not_run",
-            "end_to_end.blocked",
-            0,
-            0,
-            "not_run",
             itinerary.Outcome.ApprovalId,
-            EvidencePacketId(runId),
-            ExportPacketId(runId),
             itinerary.Outcome.ErrorCode,
             itinerary.Outcome.BlockedReason,
-            mission.Provider,
-            mission.Model,
-            mission.RequestId);
-
-        return new(outcome, BuildEvidence(outcome));
+            snapshot,
+            export: null,
+            fallbackSelectedCount: 0,
+            fallbackDeferredCount: 0);
     }
 
     private EndToEndTripRunResult MissingApproval(
@@ -137,109 +150,97 @@ public sealed class EndToEndTripRunService
         PromptIntakePlannerResult mission)
     {
         var itinerary = _itineraryDayPlannerService.Run(session, "itinerary.hold.missing-approval");
-        var outcome = new EndToEndTripRunOutcomeFixture(
+        var snapshot = _snapshotBuilder.Build(session);
+
+        return FromSnapshot(
             runId,
             "blocked",
-            mission.PromptPacketOutcomeCode,
-            mission.IntakeOutcomeCode,
+            mission,
             itinerary.Outcome.BlockedOutcome,
-            "not_run",
-            "end_to_end.blocked",
-            itinerary.Outcome.SelectedOutcome == "selected" ? 1 : 0,
-            0,
             itinerary.Outcome.HoldOutcome,
             itinerary.Outcome.ApprovalId,
-            EvidencePacketId(runId),
-            ExportPacketId(runId),
             itinerary.Outcome.ErrorCode,
             itinerary.Outcome.BlockedReason,
-            mission.Provider,
-            mission.Model,
-            mission.RequestId);
-
-        return new(outcome, BuildEvidence(outcome));
+            snapshot,
+            export: null,
+            fallbackSelectedCount: itinerary.Outcome.SelectedOutcome == "selected" ? 1 : 0,
+            fallbackDeferredCount: 0);
     }
 
-    private EndToEndTripRunResult RawSentinelPath(
-        TripSession session,
+    private EndToEndTripRunResult FromSnapshot(
         string runId,
-        PromptIntakePlannerResult mission)
-    {
-        var itinerary = _itineraryDayPlannerService.Run(session, "itinerary.accepted");
-
-        return Accepted(
-            runId,
-            mission,
-            itinerary,
-            "none",
-            null,
-            SelectedCount(itinerary),
-            DeferredCount(itinerary));
-    }
-
-    private static EndToEndTripRunResult Accepted(
-        string runId,
+        string state,
         PromptIntakePlannerResult mission,
-        ItineraryDayPlannerResult itinerary,
+        string itineraryOutcome,
         string holdOutcome,
         string? approvalId,
-        int selectedCount,
-        int deferredCount)
+        string? errorCode,
+        string? blockedReason,
+        TripRunSnapshotResult snapshot,
+        SanitizedEvidenceExportEvalRow? export,
+        int fallbackSelectedCount,
+        int fallbackDeferredCount)
     {
+        var selectedCount = export?.SelectedCandidateCount ?? fallbackSelectedCount;
+        var deferredCount = export?.DeferredCandidateCount ?? fallbackDeferredCount;
+        var evidenceExportOutcome = export?.OutcomeCode ?? "not_run";
+        var provider = export?.Provider ?? mission.Provider;
+        var model = export?.Model ?? mission.Model;
+        var requestId = export?.RequestId ?? mission.RequestId;
+        var finalErrorCode = errorCode ?? ExportErrorCode(export);
+        var finalBlockedReason = blockedReason ?? ExportBlockedReason(export);
+
         var outcome = new EndToEndTripRunOutcomeFixture(
             runId,
-            "applied",
+            state,
             mission.PromptPacketOutcomeCode,
             mission.IntakeOutcomeCode,
-            "itinerary_day_compiled",
+            itineraryOutcome,
             mission.MemoryDigestOutcomeCode,
-            "end_to_end.applied",
+            state == "blocked" ? "end_to_end.blocked" : state == "proposed" ? "end_to_end.pending_confirmation" : "end_to_end.applied",
             selectedCount,
             deferredCount,
             holdOutcome,
             approvalId,
+            snapshot.Code,
+            evidenceExportOutcome,
             EvidencePacketId(runId),
             ExportPacketId(runId),
-            null,
-            null,
-            mission.Provider,
-            mission.Model,
-            mission.RequestId);
+            finalErrorCode,
+            finalBlockedReason,
+            provider,
+            model,
+            requestId);
 
-        return new(outcome, BuildEvidence(outcome, itinerary));
+        return new(outcome, BuildEvidence(outcome, export));
     }
 
-    private static EndToEndTripRunResult FromMissionBlocked(
+    private EndToEndTripRunResult FromMissionBlocked(
         string runId,
-        PromptIntakePlannerResult mission)
+        PromptIntakePlannerResult mission,
+        TripRunSnapshotResult snapshot)
     {
-        var outcome = new EndToEndTripRunOutcomeFixture(
+        return FromSnapshot(
             runId,
             "blocked",
-            mission.PromptPacketOutcomeCode,
-            mission.IntakeOutcomeCode,
+            mission,
             "not_run",
-            mission.MemoryDigestOutcomeCode,
-            "end_to_end.blocked",
-            0,
-            0,
             "not_run",
-            null,
-            EvidencePacketId(runId),
-            ExportPacketId(runId),
+            approvalId: null,
             mission.ErrorCode,
             mission.BlockedReason,
-            mission.Provider,
-            mission.Model,
-            mission.RequestId);
-
-        return new(outcome, BuildEvidence(outcome));
+            snapshot,
+            export: null,
+            fallbackSelectedCount: 0,
+            fallbackDeferredCount: 0);
     }
 
     private static EndToEndTripRunResult Blocked(
         string runId,
         string missionOutcome,
         string itineraryOutcome,
+        string snapshotOutcome,
+        string evidenceExportOutcome,
         string errorCode,
         string blockedReason)
     {
@@ -255,6 +256,8 @@ public sealed class EndToEndTripRunService
             0,
             "not_run",
             null,
+            snapshotOutcome,
+            evidenceExportOutcome,
             EvidencePacketId(runId),
             ExportPacketId(runId),
             errorCode,
@@ -263,17 +266,86 @@ public sealed class EndToEndTripRunService
             "mock-trip-run",
             null);
 
-        return new(outcome, BuildEvidence(outcome));
+        return new(outcome, BuildEvidence(outcome, export: null));
+    }
+
+    private SanitizedEvidenceExportEvalRow? ExportIfComplete(string runId, TripRunSnapshotResult snapshot)
+    {
+        if (!snapshot.IsComplete)
+        {
+            return null;
+        }
+
+        var packet = CreateEvidenceExportPacket(runId, snapshot.Snapshot);
+        return _evidenceExportEvaluator
+            .EvaluateAsync(
+                [new EvidenceExportEvalCase(runId, packet)],
+                new EvidenceExportOptions("mock-evidence-export-deterministic"))
+            .GetAwaiter()
+            .GetResult()
+            .Single();
+    }
+
+    private static EvidenceExportPacket CreateEvidenceExportPacket(string runId, TripRunSnapshot snapshot)
+    {
+        var selected = snapshot.ItineraryDecisions
+            .Where(decision => string.Equals(decision.Kind, ItinerarySlotDecisionKind.Selected.ToString(), StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(decision.CandidateId))
+            .ToArray();
+        var deferredCount = snapshot.ItineraryDecisions.Count(decision =>
+            string.Equals(decision.Kind, ItinerarySlotDecisionKind.Deferred.ToString(), StringComparison.Ordinal));
+        var preparedHoldCount = snapshot.MockHold.IsReadyForMockHold ? 1 : 0;
+        var suffix = RunSuffix(runId);
+        var holdEvidenceId = $"evidence-{suffix}-hold";
+
+        return new(
+            EvidencePacketId(runId),
+            new TripPlanEvidenceSummary(
+                ExportPacketId(runId),
+                snapshot.Itinerary.DayCount,
+                selected.Length,
+                deferredCount,
+                preparedHoldCount,
+                EvidenceCount: 3),
+            [
+                new($"evidence-{suffix}-prompt", ExportEvidenceKind.MissionField, snapshot.Mission.MissionId),
+                new($"evidence-{suffix}-itinerary", ExportEvidenceKind.Candidate, snapshot.SnapshotId),
+                new(holdEvidenceId, ExportEvidenceKind.Hold, ApprovalId)
+            ],
+            selected.Select(decision => new TripPlanHoldOutcome(
+                    decision.SlotId,
+                    decision.CandidateId!,
+                    snapshot.MockHold.IsReadyForMockHold ? HoldOutcomeKind.HoldPrepared : HoldOutcomeKind.Previewed,
+                    holdEvidenceId))
+                .ToArray(),
+            "en-US",
+            "structured-trip-run-snapshot");
+    }
+
+    private void CompileForSnapshot(TripSession session)
+    {
+        _slotCompiler.Compile(session, new ItineraryCompilationRequest(
+            session.SessionId,
+            null,
+            null,
+            null,
+            ["ui-end-to-end-trip-run"]));
     }
 
     private static IReadOnlyList<EndToEndTripEvidenceFixture> BuildEvidence(
         EndToEndTripRunOutcomeFixture outcome,
-        ItineraryDayPlannerResult? itinerary = null)
+        SanitizedEvidenceExportEvalRow? export)
     {
-        var itineraryReference = itinerary?.Outcome.DayId;
-        if (string.IsNullOrWhiteSpace(itineraryReference))
+        if (export?.Passed == true)
         {
-            itineraryReference = outcome.ItineraryOutcomeCode;
+            return export.EvidenceIds
+                .Select(evidenceId => new EndToEndTripEvidenceFixture(
+                    evidenceId,
+                    outcome.ExportPacketId,
+                    outcome.RunId,
+                    export.OutcomeCode,
+                    evidenceId))
+                .ToArray();
         }
 
         return
@@ -289,7 +361,7 @@ public sealed class EndToEndTripRunService
                 outcome.ExportPacketId,
                 outcome.RunId,
                 outcome.ItineraryOutcomeCode,
-                itineraryReference),
+                outcome.SnapshotOutcomeCode),
             new(
                 $"evidence-{RunSuffix(outcome.RunId)}-hold",
                 outcome.ExportPacketId,
@@ -298,6 +370,16 @@ public sealed class EndToEndTripRunService
                 outcome.ApprovalId ?? "approval-not-required")
         ];
     }
+
+    private static string? ExportErrorCode(SanitizedEvidenceExportEvalRow? export) =>
+        export is { Passed: false }
+            ? $"PCH_UI_EVIDENCE_EXPORT_{export.OutcomeCode.ToUpperInvariant()}"
+            : null;
+
+    private static string? ExportBlockedReason(SanitizedEvidenceExportEvalRow? export) =>
+        export is { Passed: false }
+            ? "Evidence export provider response did not match the canonical trip snapshot."
+            : null;
 
     private static int SelectedCount(params ItineraryDayPlannerResult[] results) =>
         results.Count(result => result.Outcome.SelectedOutcome == "selected");

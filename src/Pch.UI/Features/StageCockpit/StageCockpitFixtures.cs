@@ -442,6 +442,8 @@ public sealed record EndToEndTripRunOutcomeFixture(
     int DeferredCount,
     string HoldOutcomeCode,
     string? ApprovalId,
+    string SnapshotOutcomeCode,
+    string EvidenceExportOutcomeCode,
     string EvidencePacketId,
     string ExportPacketId,
     string? ErrorCode,
