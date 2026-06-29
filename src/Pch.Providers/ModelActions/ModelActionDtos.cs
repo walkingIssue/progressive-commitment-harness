@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Pch.Providers.ModelActions;
 
@@ -67,8 +68,14 @@ public sealed record ProviderLocalExternalActionProposal(
     string Model,
     string? RequestId);
 
+public sealed record ProviderRuntimeActionProposal(
+    string ActionId,
+    string Kind,
+    JsonElement Arguments);
+
 public sealed record ProviderActionBridgeResult(
     bool IsAccepted,
     string DecodeOutcomeCode,
     string IntakeOutcomeCode,
+    [property: JsonIgnore] ProviderRuntimeActionProposal? RuntimeProposal,
     ProviderLocalExternalActionProposal? Proposal);
