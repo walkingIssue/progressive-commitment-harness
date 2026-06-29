@@ -1,9 +1,6 @@
 using Pch.Core;
 using Pch.Harness;
 using Pch.Providers.MissionPlanning;
-using HarnessCommitment = Pch.Harness.CommitmentProposal;
-using HarnessConstraint = Pch.Harness.ConstraintProposal;
-using HarnessField = Pch.Harness.MissionFieldProposal;
 using ProviderCommitment = Pch.Providers.MissionPlanning.MissionCommitmentProposal;
 using ProviderConstraint = Pch.Providers.MissionPlanning.MissionConstraintProposal;
 using ProviderField = Pch.Providers.MissionPlanning.MissionFieldProposal;
@@ -15,7 +12,8 @@ public sealed class RuntimeMissionPlannerService
     private const string RawPromptSentinel = "RAW_RAMBLING_PROMPT_SHOULD_NOT_LEAK";
     private const string RawProviderSentinel = "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK";
     private const string RawPacketSentinel = "RAW_PACKET_ID_SHOULD_NOT_LEAK";
-    private readonly MissionIntakeApplication _missionIntakeApplication = new();
+    private readonly MissionPlannerRuntimeBridge _runtimeBridge = new();
+    private readonly MissionProposalAdapter _missionProposalAdapter = new();
 
     public RuntimeMissionPlannerResult Run(TripSession session, string runId)
     {
@@ -33,27 +31,51 @@ public sealed class RuntimeMissionPlannerService
         }
 
         var planner = CreateMissionPlannerResult(packet, runId);
-        var adapter = AdaptMissionPlannerResult(packet, planner);
-        if (adapter.IsBlocked)
+        var handoff = _runtimeBridge.Bridge(packet, planner);
+        if (!handoff.IsAccepted || handoff.RuntimeProposal is null)
         {
             return Blocked(
                 runId,
-                "provider_runtime_accepted",
-                adapter.Code,
+                handoff.DecodeOutcomeCode,
+                "not_run",
                 "planner_mock_accepted",
-                adapter.ErrorCode ?? "PCH_UI_MISSION_ADAPTER_BLOCKED",
-                adapter.BlockedReason ?? "Mission planner output was blocked by adapter validation.",
+                ProviderRuntimeErrorCode(handoff.DecodeOutcomeCode),
+                ProviderRuntimeBlockedReason(handoff.DecodeOutcomeCode),
                 planner);
         }
 
-        var intake = _missionIntakeApplication.Apply(session, adapter.Proposal!);
+        var mirror = ToProviderMissionProposalMirror(handoff.RuntimeProposal);
+        var adapter = _missionProposalAdapter.Apply(session, mirror);
+        if (!adapter.IsAccepted || adapter.IntakeResult is null)
+        {
+            return new(
+                runId,
+                "blocked",
+                handoff.DecodeOutcomeCode,
+                adapter.Code,
+                "planner_mock_accepted",
+                "not_run",
+                "not_run",
+                "mission_intake.blocked",
+                AdapterErrorCode(adapter.Code),
+                adapter.Summary,
+                planner.Provider,
+                planner.Model,
+                planner.RequestId,
+                [],
+                [],
+                [],
+                ToDigestFacts(adapter.Digest));
+        }
+
+        var intake = adapter.IntakeResult;
         var state = intake.PendingConfirmations.Count > 0 ? "proposed" : "applied";
 
         return new(
             runId,
             state,
-            "provider_runtime_accepted",
-            adapter.Code,
+            handoff.DecodeOutcomeCode,
+            "adapter_accepted",
             "planner_mock_accepted",
             intake.Code,
             "memory_digest_updated",
@@ -65,7 +87,7 @@ public sealed class RuntimeMissionPlannerService
             planner.RequestId,
             ToAppliedFields(intake.AppliedFacts),
             ToPendingFields(intake.PendingConfirmations),
-            adapter.HighPriorityCommitments,
+            ToHighPriorityCommitments(handoff.RuntimeProposal.Result.Commitments),
             ToDigestFacts(intake.Digest));
     }
 
@@ -106,6 +128,7 @@ public sealed class RuntimeMissionPlannerService
             "mission.non-vacation-commitment" => "helping_family",
             "mission.pending-confirmation" => "vacation",
             "mission.validation-blocked" => "validation_blocked",
+            "mission.adapter-blocked" => "vacation",
             _ => null
         };
 
@@ -137,13 +160,16 @@ public sealed class RuntimeMissionPlannerService
             ],
             "mission.pending-confirmation" =>
             [
-                new ProviderField("/mission/destination_country", "Japan", MissionProposalSource.UserStated, ["evidence-user-destination"], false),
-                new ProviderField("/mission/pace", "balanced", MissionProposalSource.ModelInferred, ["evidence-model-pace"], true),
-                new ProviderField("/mission/traveler_need", "low cognitive load", MissionProposalSource.ModelInferred, ["evidence-model-need"], true)
+                new ProviderField("/mission/destination_country", "Japan", MissionProposalSource.ModelInferred, ["evidence-model-destination"], true),
+                new ProviderField("/mission/start_date", "2026-10-05", MissionProposalSource.ModelInferred, ["evidence-model-dates"], true)
             ],
             "mission.validation-blocked" =>
             [
                 new ProviderField("/mission/purpose", "vacation", MissionProposalSource.UserStated, ["evidence-user-purpose"], false)
+            ],
+            "mission.adapter-blocked" =>
+            [
+                new ProviderField("/mission/freeform_secret_note", "do not persist", MissionProposalSource.UserStated, ["evidence-user-purpose"], false)
             ],
             _ => []
         };
@@ -194,51 +220,29 @@ public sealed class RuntimeMissionPlannerService
             $"mock-{runId}");
     }
 
-    private static MissionAdapterResult AdaptMissionPlannerResult(MissionPlannerPacket packet, MissionPlannerResult planner)
-    {
-        if (!string.Equals(packet.PacketId, planner.PacketId, StringComparison.Ordinal))
-        {
-            return MissionAdapterResult.Blocked(
-                "adapter_packet_id_mismatch",
-                "PCH_UI_MISSION_ADAPTER_PACKET_ID_MISMATCH",
-                "Mission planner result did not match the runtime packet.");
-        }
+    private static ProviderMissionProposalMirror ToProviderMissionProposalMirror(ProviderRuntimeMissionIntakeProposal runtimeProposal) =>
+        new(
+            runtimeProposal.ProposalId,
+            runtimeProposal.Result.Fields.Select(ToMirrorField).ToArray(),
+            runtimeProposal.Result.Constraints.Select(ToMirrorConstraint).ToArray(),
+            runtimeProposal.Result.Commitments.Select(ToMirrorCommitment).ToArray());
 
-        var proposal = new MissionIntakeProposal(
-            $"proposal-{planner.PacketId}",
-            planner.Fields.Select(ToHarnessField).ToArray(),
-            planner.Constraints.Select(ToHarnessConstraint).ToArray(),
-            planner.Commitments.Select(ToHarnessCommitment).ToArray());
+    private static ProviderMissionFieldMirror ToMirrorField(ProviderField field) =>
+        new(field.FieldPath, field.Value, SourceCode(field.AuthoritySource), field.EvidenceIds);
 
-        var highPriorityCommitments = planner.Commitments
-            .Where(commitment => commitment.CommitmentPriority is MissionCommitmentPriority.High or MissionCommitmentPriority.Critical)
-            .Select(commitment => new MissionCommitmentFixture(
-                commitment.CommitmentId,
-                commitment.Title,
-                MapCommitmentKind(commitment.CommitmentKind).ToString(),
-                "high",
-                SourceLabel(commitment.AuthoritySource)))
-            .ToArray();
-
-        return MissionAdapterResult.Accepted(proposal, highPriorityCommitments);
-    }
-
-    private static HarnessField ToHarnessField(ProviderField field) =>
-        new(field.FieldPath, field.Value, MapSource(field.AuthoritySource), field.EvidenceIds);
-
-    private static HarnessConstraint ToHarnessConstraint(ProviderConstraint constraint) =>
+    private static ProviderConstraintMirror ToMirrorConstraint(ProviderConstraint constraint) =>
         new(
             constraint.ConstraintId,
             constraint.Label,
             constraint.Value,
-            MapSource(constraint.AuthoritySource),
+            SourceCode(constraint.AuthoritySource),
             constraint.IsHard,
             constraint.EvidenceIds);
 
-    private static HarnessCommitment ToHarnessCommitment(ProviderCommitment commitment) =>
+    private static ProviderCommitmentMirror ToMirrorCommitment(ProviderCommitment commitment) =>
         new(
             commitment.CommitmentId,
-            MapCommitmentKind(commitment.CommitmentKind),
+            MapCommitmentKindCode(commitment.CommitmentKind),
             commitment.Title,
             commitment.StartsAt,
             commitment.EndsAt,
@@ -246,30 +250,72 @@ public sealed class RuntimeMissionPlannerService
             commitment.IsIrreversible,
             commitment.RequiresSpend,
             commitment.CommitmentPriority is MissionCommitmentPriority.High or MissionCommitmentPriority.Critical
-                ? CommitmentPriority.High
-                : CommitmentPriority.Normal,
-            MapSource(commitment.AuthoritySource),
+                ? "high"
+                : "normal",
+            SourceCode(commitment.AuthoritySource),
             commitment.EvidenceIds);
 
-    private static AuthoritySource MapSource(MissionProposalSource source) =>
+    private static string SourceCode(MissionProposalSource source) =>
         source is MissionProposalSource.UserStated
-            ? AuthoritySource.User
-            : AuthoritySource.StrongModelInference;
+            ? "user"
+            : "strong_model_inference";
 
-    private static CommitmentKind MapCommitmentKind(string kind)
+    private static string MapCommitmentKindCode(string kind)
     {
         return kind.Trim().ToLowerInvariant() switch
         {
-            "fixed_anchor" or "client_meeting" or "memorial_service" or "family_support" => CommitmentKind.FixedAnchor,
-            "travel" => CommitmentKind.Travel,
-            "lodging" => CommitmentKind.Lodging,
-            "meal" => CommitmentKind.Meal,
-            "activity" => CommitmentKind.Activity,
-            "downtime" => CommitmentKind.Downtime,
-            "administrative" => CommitmentKind.Administrative,
-            _ => CommitmentKind.Administrative
+            "fixed_anchor" or "client_meeting" or "memorial_service" or "family_support" => "fixed_anchor",
+            "travel" => "travel",
+            "lodging" => "lodging",
+            "meal" => "meal",
+            "activity" => "activity",
+            "downtime" => "downtime",
+            "administrative" => "administrative",
+            _ => "administrative"
         };
     }
+
+    private static IReadOnlyList<MissionCommitmentFixture> ToHighPriorityCommitments(IReadOnlyList<ProviderCommitment> commitments)
+    {
+        return commitments
+            .Where(commitment => commitment.CommitmentPriority is MissionCommitmentPriority.High or MissionCommitmentPriority.Critical)
+            .Select(commitment => new MissionCommitmentFixture(
+                commitment.CommitmentId,
+                commitment.Title,
+                MapCommitmentKindCode(commitment.CommitmentKind),
+                "high",
+                SourceLabel(commitment.AuthoritySource)))
+            .ToArray();
+    }
+
+    private static string ProviderRuntimeErrorCode(string decodeOutcomeCode) =>
+        decodeOutcomeCode switch
+        {
+            MissionPlannerRuntimeBridge.DecodePacketIdMismatch => "PCH_UI_MISSION_PROVIDER_PACKET_ID_MISMATCH",
+            MissionPlannerRuntimeBridge.DecodeMalformedResult => "PCH_UI_MISSION_PROVIDER_MALFORMED_RESULT",
+            MissionPlannerRuntimeBridge.DecodeUnsupportedMissionKind => "PCH_UI_MISSION_PROVIDER_UNSUPPORTED_KIND",
+            _ => "PCH_UI_MISSION_PROVIDER_RUNTIME_BLOCKED"
+        };
+
+    private static string ProviderRuntimeBlockedReason(string decodeOutcomeCode) =>
+        decodeOutcomeCode switch
+        {
+            MissionPlannerRuntimeBridge.DecodePacketIdMismatch => "Mission planner runtime blocked a packet/result mismatch.",
+            MissionPlannerRuntimeBridge.DecodeMalformedResult => "Mission planner runtime blocked malformed output.",
+            MissionPlannerRuntimeBridge.DecodeUnsupportedMissionKind => "Mission planner runtime blocked an unsupported mission kind.",
+            _ => "Mission planner runtime blocked the provider result."
+        };
+
+    private static string AdapterErrorCode(string adapterCode) =>
+        adapterCode switch
+        {
+            "unsupported_field_path" => "PCH_UI_MISSION_ADAPTER_UNSUPPORTED_FIELD_PATH",
+            "too_many_items" => "PCH_UI_MISSION_ADAPTER_TOO_MANY_ITEMS",
+            "invalid_field" => "PCH_UI_MISSION_ADAPTER_INVALID_FIELD",
+            "invalid_constraint" => "PCH_UI_MISSION_ADAPTER_INVALID_CONSTRAINT",
+            "invalid_commitment" => "PCH_UI_MISSION_ADAPTER_INVALID_COMMITMENT",
+            _ => "PCH_UI_MISSION_ADAPTER_BLOCKED"
+        };
 
     private static IReadOnlyList<MissionFieldFixture> ToAppliedFields(IReadOnlyList<MissionAppliedFact> applied)
     {
@@ -331,22 +377,6 @@ public sealed class RuntimeMissionPlannerService
     private static string SourceLabel(MissionProposalSource source) =>
         source is MissionProposalSource.UserStated ? "user-stated" : "model-inferred";
 
-    private sealed record MissionAdapterResult(
-        bool IsBlocked,
-        string Code,
-        MissionIntakeProposal? Proposal,
-        IReadOnlyList<MissionCommitmentFixture> HighPriorityCommitments,
-        string? ErrorCode,
-        string? BlockedReason)
-    {
-        public static MissionAdapterResult Accepted(
-            MissionIntakeProposal proposal,
-            IReadOnlyList<MissionCommitmentFixture> highPriorityCommitments) =>
-            new(false, "adapter_accepted", proposal, highPriorityCommitments, null, null);
-
-        public static MissionAdapterResult Blocked(string code, string errorCode, string blockedReason) =>
-            new(true, code, null, [], errorCode, blockedReason);
-    }
 }
 
 public sealed record RuntimeMissionPlannerResult(

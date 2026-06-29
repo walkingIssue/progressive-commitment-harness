@@ -101,7 +101,8 @@ internal sealed class StageCockpitFixtureProvider
                 new("mission.vacation", "Plan vacation intake", "vacation"),
                 new("mission.non-vacation-commitment", "Plan commitment intake", "family-support"),
                 new("mission.pending-confirmation", "Plan confirmation intake", "pending-confirmation"),
-                new("mission.validation-blocked", "Run validation-blocked intake", "validation-blocked")
+                new("mission.validation-blocked", "Run provider-blocked intake", "validation-blocked"),
+                new("mission.adapter-blocked", "Run adapter-blocked intake", "adapter-blocked")
             ],
             Outcomes: [],
             AppliedFields: [],
