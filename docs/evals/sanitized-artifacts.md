@@ -25,4 +25,6 @@ The shared provider test fixture `SanitizedEvalArtifactAssert` serializes eval/s
 
 Fidelity eval artifacts follow this same policy for Stage 6 bake-off rows: accepted rows may persist trusted candidate ids plus allowlisted decision enums/counts, while rejected rows omit source and candidate details entirely.
 
+Availability preview artifacts also follow this policy: quote-ready rows may persist trusted packet candidate ids/categories, allowlisted status enums, safe counts, and accepted provider metadata, while blocked/error rows omit provider metadata, quote references, fare refs, and result candidate details.
+
 Optional live smoke paths remain skipped or blocked by default. A live smoke must be key and health/credit guarded where applicable, use strict timeout/error handling, and must not fall back to another paid provider when blocked.
