@@ -147,6 +147,177 @@ public sealed class FidelityEvaluatorTests
     }
 
     [Fact]
+    public async Task EmptyTrustedCandidateSetIsSchemaInvalidWithoutInvokingSources()
+    {
+        var source = new CountingFidelityEvalSource(FidelityEvalSourceKind.SmallModel);
+        var evaluator = new FidelityEvaluator(
+            [
+                source,
+                new MockFidelityEvalSource(FidelityEvalSourceKind.StrongModel),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.HarnessOnly)
+            ]);
+        var packet = CreatePacket() with
+        {
+            Candidates = [],
+            PromptDigest = $"{RawPrompt} {Credential}",
+            ContextDigest = $"{RawProviderPayload} {ApprovalToken} {HoldReference}"
+        };
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("empty-candidates", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        Assert.Equal(0, source.CallCount);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task DuplicateTrustedCandidateIdsAreSchemaInvalid()
+    {
+        var packet = CreatePacket() with
+        {
+            Candidates =
+            [
+                new FidelityTrustedCandidate("candidate-dining", FidelityCandidateCategory.Dining),
+                new FidelityTrustedCandidate("candidate-dining", FidelityCandidateCategory.Activity)
+            ],
+            PromptDigest = RawPrompt,
+            ContextDigest = RawProviderPayload
+        };
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("duplicate-candidates", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task NullPacketIsSchemaInvalid()
+    {
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("null-packet", null!)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task NullEvalCaseIsSchemaInvalid()
+    {
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync([null!]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task NullTrustedCandidateCollectionIsSchemaInvalid()
+    {
+        var packet = CreatePacket() with
+        {
+            Candidates = null!,
+            PromptDigest = RawPrompt,
+            ContextDigest = RawProviderPayload
+        };
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("null-candidate-collection", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task NullTrustedCandidateRecordIsSchemaInvalid()
+    {
+        var packet = CreatePacket() with
+        {
+            Candidates = [null!],
+            PromptDigest = RawPrompt,
+            ContextDigest = RawProviderPayload
+        };
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("null-candidate-record", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task BlankTrustedCandidateIdIsSchemaInvalid()
+    {
+        var packet = CreatePacket() with
+        {
+            Candidates = [new FidelityTrustedCandidate("   ", FidelityCandidateCategory.Dining)],
+            PromptDigest = RawPrompt,
+            ContextDigest = RawProviderPayload
+        };
+        var evaluator = new FidelityEvaluator(CreateMockSources());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("blank-candidate-id", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task NullSourceResultIsSchemaInvalidWithoutProviderMetadata()
+    {
+        var evaluator = new FidelityEvaluator(
+            [
+                new NullResultFidelityEvalSource(FidelityEvalSourceKind.SmallModel),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.StrongModel),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.HarnessOnly)
+            ]);
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("null-source-result", CreatePacket())]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task NullSourceResultCollectionsAreSchemaInvalid(
+        bool nullCandidates,
+        bool nullClaims)
+    {
+        var packet = CreatePacket();
+        var result = CreateResult(packet, FidelityEvalSourceKind.SmallModel) with
+        {
+            Candidates = nullCandidates ? null! : CreateResult(packet, FidelityEvalSourceKind.SmallModel).Candidates,
+            ClaimCodes = nullClaims ? null! : CreateResult(packet, FidelityEvalSourceKind.SmallModel).ClaimCodes,
+            Provider = Credential,
+            Model = CandidateDisplayValue,
+            RequestId = ApprovalToken
+        };
+        var evaluator = new FidelityEvaluator(
+            [
+                new StaticFidelityEvalSource(FidelityEvalSourceKind.SmallModel, result),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.StrongModel),
+                new MockFidelityEvalSource(FidelityEvalSourceKind.HarnessOnly)
+            ]);
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new FidelityEvalCase("null-result-collection", packet)]));
+
+        AssertSchemaInvalidRejectedRow(row);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
     public async Task PacketMismatchDoesNotPersistRawProviderPacketId()
     {
         var packet = CreatePacket();
@@ -332,5 +503,28 @@ public sealed class FidelityEvaluatorTests
             CallCount++;
             return Task.FromResult(CreateResult(packet, SourceKind));
         }
+    }
+
+    private static void AssertSchemaInvalidRejectedRow(SanitizedFidelityEvalRow row)
+    {
+        Assert.False(row.Passed);
+        Assert.Equal(FidelityEvaluator.OutcomeSchemaInvalid, row.OutcomeCode);
+        Assert.Null(row.ErrorCode);
+        Assert.Empty(row.Sources);
+        Assert.Empty(row.Candidates);
+        Assert.Equal(0, row.CandidateCount);
+        Assert.Equal(0, row.AgreementCount);
+        Assert.Equal(0, row.DisagreementCount);
+    }
+
+    private sealed class NullResultFidelityEvalSource(FidelityEvalSourceKind sourceKind) : IFidelityEvalSource
+    {
+        public FidelityEvalSourceKind SourceKind { get; } = sourceKind;
+
+        public Task<FidelityEvalSourceResult> EvaluateAsync(
+            FidelityEvalPacket packet,
+            FidelityEvalOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<FidelityEvalSourceResult>(null!);
     }
 }

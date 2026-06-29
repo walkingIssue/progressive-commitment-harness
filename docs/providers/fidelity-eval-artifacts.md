@@ -8,6 +8,8 @@ Sprint 013 adds provider-local fidelity eval DTOs and deterministic sources for 
 
 The evaluator requires one source for each kind. Results are compared against trusted packet candidate ids, and accepted rows derive persisted candidate ids/categories from the packet. Provider output contributes only allowlisted decision enums and source-level counts after validation.
 
+Trusted packet candidate ids must be nonblank and unique. Empty, duplicate, or malformed trusted candidate sets are rejected as fixed `fidelity_eval_schema_invalid` rows before any source is invoked.
+
 Mock behaviors cover:
 
 - schema-valid comparison output

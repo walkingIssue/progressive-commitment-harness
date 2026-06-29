@@ -55,6 +55,13 @@ public sealed class FidelityEvaluator
         var rows = new List<SanitizedFidelityEvalRow>(cases.Count);
         foreach (var evalCase in cases)
         {
+            var malformedPacketRow = ValidateEvalCase(evalCase);
+            if (malformedPacketRow is not null)
+            {
+                rows.Add(malformedPacketRow);
+                continue;
+            }
+
             var results = new List<FidelityEvalSourceResult>(_sources.Count);
             var blockedRow = default(SanitizedFidelityEvalRow);
             foreach (var source in _sources)
@@ -87,11 +94,42 @@ public sealed class FidelityEvaluator
         return rows;
     }
 
+    private static SanitizedFidelityEvalRow? ValidateEvalCase(FidelityEvalCase? evalCase)
+    {
+        if (evalCase?.Packet is null)
+        {
+            return Rejected(evalCase?.Name ?? string.Empty, evalCase?.Packet?.PacketId ?? string.Empty, OutcomeSchemaInvalid);
+        }
+
+        if (evalCase.Packet.Candidates is null || evalCase.Packet.Candidates.Count == 0)
+        {
+            return Rejected(evalCase.Name, evalCase.Packet.PacketId, OutcomeSchemaInvalid);
+        }
+
+        var candidateIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var candidate in evalCase.Packet.Candidates)
+        {
+            if (candidate is null ||
+                string.IsNullOrWhiteSpace(candidate.CandidateId) ||
+                !candidateIds.Add(candidate.CandidateId))
+            {
+                return Rejected(evalCase.Name, evalCase.Packet.PacketId, OutcomeSchemaInvalid);
+            }
+        }
+
+        return null;
+    }
+
     private static SanitizedFidelityEvalRow? ValidateResult(
         FidelityEvalCase evalCase,
         FidelityEvalSourceKind expectedSourceKind,
-        FidelityEvalSourceResult result)
+        FidelityEvalSourceResult? result)
     {
+        if (result is null)
+        {
+            return Rejected(evalCase.Name, evalCase.Packet.PacketId, OutcomeSchemaInvalid);
+        }
+
         if (result.SourceKind != expectedSourceKind)
         {
             return Rejected(evalCase.Name, evalCase.Packet.PacketId, OutcomeSchemaInvalid);
