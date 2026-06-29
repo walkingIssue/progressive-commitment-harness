@@ -1033,6 +1033,127 @@ public sealed class HarnessStageCockpitServiceTests
         });
     }
 
+    [Fact]
+    public void FidelityReleaseDashboardShowsStableGateAndArtifactMarkers()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var fixture = service.Current();
+        var dashboard = fixture.FidelityReleaseDashboard;
+        var serialized = SerializeFidelityFixture(fixture);
+
+        Assert.Equal("review-required", dashboard.MatrixState);
+        Assert.Equal("blocked_until_review", dashboard.ReleaseGateState);
+        Assert.Equal("covered_with_review_block", dashboard.ReplayCoverageState);
+        Assert.Equal(3, dashboard.FallbackCount);
+        Assert.Equal(7, dashboard.SchemaValidityCount);
+        Assert.Equal(1, dashboard.UnsupportedClaimCount);
+        Assert.Equal("verified", dashboard.RawAbsenceState);
+        Assert.Contains(
+            dashboard.EvalArtifacts,
+            artifact => artifact.ArtifactId == "artifact-release-claims"
+                && artifact.Outcome == "unsupported_claim_blocked"
+                && artifact.SchemaValidityState == "review-required"
+                && artifact.UnsupportedClaimCount == 1
+                && artifact.RawAbsenceState == "verified"
+                && artifact.ErrorCode == "PCH_UI_FIDELITY_UNSUPPORTED_CLAIM_REVIEW");
+        AssertFidelityRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public void FidelityReleaseDashboardCoversRequiredOwnershipRows()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var rows = service.Current().FidelityReleaseDashboard.OwnershipRows;
+
+        Assert.Contains(rows, row => row.Ownership == "harness-only"
+            && row.StageId == "stage-1-slot-collection"
+            && row.MatrixState == "owned"
+            && row.ReleaseGateState == "pass");
+        Assert.Contains(rows, row => row.Ownership == "small-model-candidate"
+            && row.StageId == "stage-3-mission-planning"
+            && row.FallbackCount == 1
+            && row.SchemaValidityCount == 3);
+        Assert.Contains(rows, row => row.Ownership == "strong-model-required"
+            && row.StageId == "stage-5-hold-prep"
+            && row.ReleaseGateState == "approval_gated");
+        Assert.Contains(rows, row => row.Ownership == "blocked-until-review"
+            && row.StageId == "stage-6-fidelity-review"
+            && row.UnsupportedClaimCount == 1
+            && row.ReleaseGateState == "blocked_until_review"
+            && row.BlockedReason == "Unsupported claim requires release-owner review.");
+    }
+
+    [Fact]
+    public void FidelityReleaseDashboardControlsAreKeyboardAccessible()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var rows = service.Current().FidelityReleaseDashboard.OwnershipRows;
+
+        Assert.Equal(4, rows.Count);
+        Assert.Equal(rows.Count, rows.Select(row => row.ControlId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(rows.Count, rows.Select(row => row.MarkerId).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(rows, row =>
+        {
+            Assert.StartsWith("control-fidelity-stage-", row.ControlId, StringComparison.Ordinal);
+            Assert.StartsWith("release-fidelity-stage-", row.MarkerId, StringComparison.Ordinal);
+            Assert.Contains("fidelity row", row.ControlAriaLabel, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    [Fact]
+    public void FidelityReleaseCheckRecordsPassAndBlockedReviewOutcomes()
+    {
+        var service = new HarnessStageCockpitService();
+
+        var accepted = service.RunFidelityReleaseCheck("fidelity.stage.slot-collection");
+        var blocked = service.RunFidelityReleaseCheck("fidelity.stage.stage6-review");
+        var serialized = SerializeFidelityFixture(blocked);
+
+        Assert.Contains(
+            accepted.FidelityReleaseDashboard.CheckOutcomes,
+            outcome => outcome.RowId == "fidelity.stage.slot-collection"
+                && outcome.State == "accepted"
+                && outcome.ReleaseGateState == "pass"
+                && outcome.ErrorCode is null);
+        Assert.Equal("fidelity.stage.stage6-review", blocked.FidelityReleaseDashboard.LastCheckedRowId);
+        Assert.Contains(
+            blocked.FidelityReleaseDashboard.CheckOutcomes,
+            outcome => outcome.RowId == "fidelity.stage.stage6-review"
+                && outcome.State == "blocked"
+                && outcome.ReleaseGateState == "blocked_until_review"
+                && outcome.ErrorCode == "PCH_UI_FIDELITY_RELEASE_REVIEW_REQUIRED"
+                && outcome.BlockedReason == "Unsupported claim requires release-owner review.");
+        Assert.Contains(
+            blocked.Session.Responses,
+            response => response.State == SessionResponseState.Blocked
+                && response.Target == "fidelity.stage.stage6-review");
+        AssertFidelityRawTextAbsent(serialized);
+    }
+
+    private static string SerializeFidelityFixture(StageCockpitFixture fixture)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            fixture.FidelityReleaseDashboard,
+            fixture.Session
+        });
+    }
+
+    private static void AssertFidelityRawTextAbsent(string serialized)
+    {
+        Assert.DoesNotContain("RAW_FIDELITY_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("proposal JSON", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("credential", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("approval-token", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hold-reference", serialized, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SECRET_SENTINEL", serialized, StringComparison.Ordinal);
+    }
+
     private static string SerializeEndToEndFixture(StageCockpitFixture fixture)
     {
         return JsonSerializer.Serialize(new

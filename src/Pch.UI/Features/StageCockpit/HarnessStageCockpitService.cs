@@ -39,6 +39,8 @@ public sealed class HarnessStageCockpitService
     private readonly List<ItineraryHoldFixture> _itineraryHolds = [];
     private readonly List<EndToEndTripRunOutcomeFixture> _endToEndOutcomes = [];
     private readonly List<EndToEndTripEvidenceFixture> _endToEndEvidence = [];
+    private readonly List<FidelityReleaseCheckOutcomeFixture> _fidelityCheckOutcomes = [];
+    private string? _lastFidelityCheckedRowId;
     private readonly IReadOnlyList<SuggestedActionFixture> _suggestions =
     [
         new(
@@ -452,6 +454,41 @@ public sealed class HarnessStageCockpitService
         return Current();
     }
 
+    public StageCockpitFixture RunFidelityReleaseCheck(string rowId)
+    {
+        var row = BuildFidelityOwnershipRows().FirstOrDefault(candidate =>
+            string.Equals(candidate.RowId, rowId, StringComparison.Ordinal));
+        if (row is null)
+        {
+            UpsertFidelityCheckOutcome(new(
+                rowId,
+                "blocked",
+                "blocked_unknown_row",
+                "PCH_UI_FIDELITY_ROW_UNKNOWN",
+                "Fidelity ownership row is not recognized."));
+            _lastFidelityCheckedRowId = rowId;
+            return Current();
+        }
+
+        var isBlocked = string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal);
+        UpsertFidelityCheckOutcome(new(
+            row.RowId,
+            isBlocked ? "blocked" : "accepted",
+            row.ReleaseGateState,
+            isBlocked ? "PCH_UI_FIDELITY_RELEASE_REVIEW_REQUIRED" : null,
+            isBlocked ? row.BlockedReason ?? "Fidelity row requires release-owner review." : null));
+        _lastFidelityCheckedRowId = row.RowId;
+        UpsertResponse(new(
+            $"response.{(isBlocked ? "blocked" : "applied")}.fidelity.{row.RowId}",
+            isBlocked ? SessionResponseState.Blocked : SessionResponseState.Applied,
+            isBlocked ? "Blocked" : "Applied",
+            isBlocked ? row.BlockedReason ?? "Fidelity row requires release-owner review." : $"Fidelity row {row.StageId} passed deterministic release checks.",
+            row.RowId,
+            null));
+
+        return Current();
+    }
+
     public StageCockpitFixture RequestApprovalStage()
     {
         _session.MoveTo(HarnessStage.ApprovalQueue);
@@ -613,7 +650,8 @@ public sealed class HarnessStageCockpitService
                 endToEndRuns,
                 _endToEndOutcomes.ToArray(),
                 BuildEndToEndReleaseSummary(endToEndRuns),
-                _endToEndEvidence.ToArray()));
+                _endToEndEvidence.ToArray()),
+            FidelityReleaseDashboard: BuildFidelityReleaseDashboard());
     }
 
     private EmitFormAction ResolveFormAction()
@@ -861,6 +899,19 @@ public sealed class HarnessStageCockpitService
         }
     }
 
+    private void UpsertFidelityCheckOutcome(FidelityReleaseCheckOutcomeFixture outcome)
+    {
+        var index = _fidelityCheckOutcomes.FindIndex(existing => string.Equals(existing.RowId, outcome.RowId, StringComparison.Ordinal));
+        if (index >= 0)
+        {
+            _fidelityCheckOutcomes[index] = outcome;
+        }
+        else
+        {
+            _fidelityCheckOutcomes.Add(outcome);
+        }
+    }
+
     private static IReadOnlyList<EndToEndTripRunFixture> BuildEndToEndRuns() =>
     [
         new("e2e.happy-path", "Run happy path", "happy-path", "release-smoke-e2e-happy-path", "control-e2e-happy-path", "Run happy path end-to-end trip smoke"),
@@ -931,6 +982,41 @@ public sealed class HarnessStageCockpitService
         "e2e.pending-confirmation" => "proposed",
         _ => "blocked"
     };
+
+    private FidelityReleaseDashboardPanelFixture BuildFidelityReleaseDashboard()
+    {
+        var rows = BuildFidelityOwnershipRows();
+        var artifacts = BuildFidelityEvalArtifacts();
+        return new(
+            "UI-local deterministic release fidelity matrix pending canonical Stage 6 contracts",
+            rows.Any(row => string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal)) ? "review-required" : "ready",
+            rows.Any(row => string.Equals(row.ReleaseGateState, "blocked_until_review", StringComparison.Ordinal)) ? "blocked_until_review" : "pass",
+            rows.Any(row => string.Equals(row.ReplayCoverageState, "review-needed", StringComparison.Ordinal)) ? "covered_with_review_block" : "covered",
+            rows.Sum(row => row.FallbackCount),
+            rows.Sum(row => row.SchemaValidityCount),
+            rows.Sum(row => row.UnsupportedClaimCount),
+            artifacts.All(artifact => string.Equals(artifact.RawAbsenceState, "verified", StringComparison.Ordinal)) ? "verified" : "review-required",
+            rows,
+            artifacts,
+            _fidelityCheckOutcomes.ToArray(),
+            _lastFidelityCheckedRowId);
+    }
+
+    private static IReadOnlyList<FidelityOwnershipRowFixture> BuildFidelityOwnershipRows() =>
+    [
+        new("fidelity.stage.slot-collection", "stage-1-slot-collection", "Slot collection", "harness-only", "owned", "covered", 0, 2, 0, "pass", "verified", null, "release-fidelity-stage-slot-collection", "control-fidelity-stage-slot-collection", "Check slot collection fidelity row"),
+        new("fidelity.stage.mission-planning", "stage-3-mission-planning", "Mission planning", "small-model-candidate", "candidate", "covered", 1, 3, 0, "pass", "verified", null, "release-fidelity-stage-mission-planning", "control-fidelity-stage-mission-planning", "Check mission planning fidelity row"),
+        new("fidelity.stage.hold-prep", "stage-5-hold-prep", "Hold preparation", "strong-model-required", "gated", "covered", 1, 2, 0, "approval_gated", "verified", null, "release-fidelity-stage-hold-prep", "control-fidelity-stage-hold-prep", "Check hold preparation fidelity row"),
+        new("fidelity.stage.stage6-review", "stage-6-fidelity-review", "Stage 6 release review", "blocked-until-review", "blocked", "review-needed", 1, 0, 1, "blocked_until_review", "verified", "Unsupported claim requires release-owner review.", "release-fidelity-stage-stage6-review", "control-fidelity-stage-stage6-review", "Check Stage 6 release review fidelity row")
+    ];
+
+    private static IReadOnlyList<FidelityEvalArtifactFixture> BuildFidelityEvalArtifacts() =>
+    [
+        new("artifact-mission-runtime", "Mission planner runtime", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
+        new("artifact-candidate-expansion", "Candidate expansion", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
+        new("artifact-hold-preparation", "Hold preparation", "deterministic-mock", "approval_gated", "valid", 1, 0, "verified", null),
+        new("artifact-release-claims", "Release claim audit", "deterministic-audit", "unsupported_claim_blocked", "review-required", 0, 1, "verified", "PCH_UI_FIDELITY_UNSUPPORTED_CLAIM_REVIEW")
+    ];
 
     private static void UpsertRange<T>(
         List<T> target,

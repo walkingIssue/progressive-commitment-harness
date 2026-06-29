@@ -178,7 +178,32 @@ internal sealed class StageCockpitFixtureProvider
                 0,
                 "raw_absence_pending",
                 []),
-            Evidence: []));
+            Evidence: []),
+        FidelityReleaseDashboard: new(
+            EndpointHint: "UI-local deterministic release fidelity matrix pending canonical Stage 6 contracts",
+            MatrixState: "review-required",
+            ReleaseGateState: "blocked_until_review",
+            ReplayCoverageState: "covered_with_review_block",
+            FallbackCount: 3,
+            SchemaValidityCount: 7,
+            UnsupportedClaimCount: 1,
+            RawAbsenceState: "verified",
+            OwnershipRows:
+            [
+                new("fidelity.stage.slot-collection", "stage-1-slot-collection", "Slot collection", "harness-only", "owned", "covered", 0, 2, 0, "pass", "verified", null, "release-fidelity-stage-slot-collection", "control-fidelity-stage-slot-collection", "Check slot collection fidelity row"),
+                new("fidelity.stage.mission-planning", "stage-3-mission-planning", "Mission planning", "small-model-candidate", "candidate", "covered", 1, 3, 0, "pass", "verified", null, "release-fidelity-stage-mission-planning", "control-fidelity-stage-mission-planning", "Check mission planning fidelity row"),
+                new("fidelity.stage.hold-prep", "stage-5-hold-prep", "Hold preparation", "strong-model-required", "gated", "covered", 1, 2, 0, "approval_gated", "verified", null, "release-fidelity-stage-hold-prep", "control-fidelity-stage-hold-prep", "Check hold preparation fidelity row"),
+                new("fidelity.stage.stage6-review", "stage-6-fidelity-review", "Stage 6 release review", "blocked-until-review", "blocked", "review-needed", 1, 0, 1, "blocked_until_review", "verified", "Unsupported claim requires release-owner review.", "release-fidelity-stage-stage6-review", "control-fidelity-stage-stage6-review", "Check Stage 6 release review fidelity row")
+            ],
+            EvalArtifacts:
+            [
+                new("artifact-mission-runtime", "Mission planner runtime", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
+                new("artifact-candidate-expansion", "Candidate expansion", "deterministic-mock", "schema_valid", "valid", 2, 0, "verified", null),
+                new("artifact-hold-preparation", "Hold preparation", "deterministic-mock", "approval_gated", "valid", 1, 0, "verified", null),
+                new("artifact-release-claims", "Release claim audit", "deterministic-audit", "unsupported_claim_blocked", "review-required", 0, 1, "verified", "PCH_UI_FIDELITY_UNSUPPORTED_CLAIM_REVIEW")
+            ],
+            CheckOutcomes: [],
+            LastCheckedRowId: null));
 }
 
 public sealed record StageCockpitFixture(
@@ -193,7 +218,8 @@ public sealed record StageCockpitFixture(
     MissionIntakePanelFixture MissionIntake,
     PromptIntakePanelFixture PromptIntake,
     ItineraryDayPlannerPanelFixture ItineraryDayPlanner,
-    EndToEndTripRunPanelFixture EndToEndTripRuns);
+    EndToEndTripRunPanelFixture EndToEndTripRuns,
+    FidelityReleaseDashboardPanelFixture FidelityReleaseDashboard);
 
 public sealed record StagePacketFixture(
     string Id,
@@ -508,6 +534,55 @@ public sealed record EndToEndReleaseSmokePathFixture(
     string MarkerId,
     string ControlId,
     string ControlAriaLabel,
+    string? ErrorCode,
+    string? BlockedReason);
+
+public sealed record FidelityReleaseDashboardPanelFixture(
+    string EndpointHint,
+    string MatrixState,
+    string ReleaseGateState,
+    string ReplayCoverageState,
+    int FallbackCount,
+    int SchemaValidityCount,
+    int UnsupportedClaimCount,
+    string RawAbsenceState,
+    IReadOnlyList<FidelityOwnershipRowFixture> OwnershipRows,
+    IReadOnlyList<FidelityEvalArtifactFixture> EvalArtifacts,
+    IReadOnlyList<FidelityReleaseCheckOutcomeFixture> CheckOutcomes,
+    string? LastCheckedRowId);
+
+public sealed record FidelityOwnershipRowFixture(
+    string RowId,
+    string StageId,
+    string StageLabel,
+    string Ownership,
+    string MatrixState,
+    string ReplayCoverageState,
+    int FallbackCount,
+    int SchemaValidityCount,
+    int UnsupportedClaimCount,
+    string ReleaseGateState,
+    string RawAbsenceState,
+    string? BlockedReason,
+    string MarkerId,
+    string ControlId,
+    string ControlAriaLabel);
+
+public sealed record FidelityEvalArtifactFixture(
+    string ArtifactId,
+    string Label,
+    string Provider,
+    string Outcome,
+    string SchemaValidityState,
+    int SchemaValidCount,
+    int UnsupportedClaimCount,
+    string RawAbsenceState,
+    string? ErrorCode);
+
+public sealed record FidelityReleaseCheckOutcomeFixture(
+    string RowId,
+    string State,
+    string ReleaseGateState,
     string? ErrorCode,
     string? BlockedReason);
 
