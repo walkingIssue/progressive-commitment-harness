@@ -132,3 +132,34 @@ Verification:
 - The UI can render slot skeletons, candidate pools, selected/deferred/blocked outcomes, and digest/evidence markers.
 - No required test uses provider credentials, network, booking APIs, or live search.
 - No raw prompt, provider payload, proposal JSON, credential, approval token, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Status: done.
+
+Worker heads:
+
+- Shellby: `6e0016c13678acfbaa78f5fd1d857c9e18ac86af`
+- Kaneki: `3335d377d19f600fb53d170f936fdb906b16a59a`
+- Sarah: `6960e4210f1f3c06605ba042b88ccf57ee117b8d`
+
+Coordinator merges:
+
+- `e59f9d1` - harness itinerary slot compiler
+- `9273351` - provider candidate expansion bridge
+- `6a20aca` - UI itinerary day planner
+
+Completed:
+
+- Harness-owned `ItinerarySlotCompiler` with bounded day plans, slot kinds, conflicts, missing-date blocks, invalid fixed-commitment window blocks, and projection facts.
+- Provider-local candidate expansion packets/results, deterministic candidate source, exact trusted slot-set validation, and sanitized eval rows.
+- Stage Cockpit itinerary day planner through canonical compiler plus deterministic provider candidate expansion, including accepted, fixed-conflict, missing-date, and provider-slot-mismatch runs.
+
+Verification:
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: 23 tests passed.
+- `dotnet test`: 180 tests passed.
+- `dotnet build`: passed, 0 warnings, 0 errors.
+- Coordinator browser smoke on `http://127.0.0.1:5158/`: accepted, fixed-conflict, missing-date, provider-slot-mismatch, candidate/digest markers, and raw sentinel absence passed.
