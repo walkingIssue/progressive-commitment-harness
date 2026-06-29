@@ -142,19 +142,32 @@ public sealed record SessionTurnResult(
     HarnessAction? NextAction,
     DecisionRecord? Decision,
     bool IsBlocked,
-    string? BlockedReason)
+    string? BlockedReason,
+    IReadOnlyList<SessionTraceEvent> Trace)
 {
     public static SessionTurnResult Continued(
         HarnessStage stage,
         StagePacket packet,
         HarnessAction nextAction,
-        DecisionRecord? decision = null)
+        DecisionRecord? decision = null,
+        IReadOnlyList<SessionTraceEvent>? trace = null)
     {
-        return new(stage, packet, nextAction, decision, false, null);
+        return new(stage, packet, nextAction, decision, false, null, trace ?? []);
     }
 
-    public static SessionTurnResult Blocked(HarnessStage stage, StagePacket packet, string reason)
+    public static SessionTurnResult Blocked(
+        HarnessStage stage,
+        StagePacket packet,
+        string reason,
+        IReadOnlyList<SessionTraceEvent>? trace = null)
     {
-        return new(stage, packet, null, null, true, reason);
+        return new(stage, packet, null, null, true, reason, trace ?? []);
     }
 }
+
+public sealed record SessionTraceEvent(
+    string EventId,
+    string Stage,
+    string Kind,
+    string Outcome,
+    string Summary);
