@@ -35,11 +35,16 @@ public sealed class ProviderActionBridge
             result.Provider,
             result.Model,
             result.RequestId);
+        var runtimeProposal = new ProviderRuntimeActionProposal(
+            proposal.ProposalId,
+            result.ActionName,
+            result.Arguments.Clone());
 
         return new ProviderActionBridgeResult(
             true,
             DecodeAccepted,
             IntakeNotRunProviderLocalMirror,
+            runtimeProposal,
             proposal);
     }
 
@@ -48,5 +53,6 @@ public sealed class ProviderActionBridge
             false,
             decodeOutcomeCode,
             IntakeNotRunProviderLocalMirror,
+            null,
             null);
 }

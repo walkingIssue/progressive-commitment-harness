@@ -24,10 +24,11 @@ Production-readiness notes:
 - The runner rejects action names outside the packet's allowed action list before any harness commit side effect is possible.
 - Booking/hold/pay actions still require separate approval-token checks in commit adapters.
 - Provider-local bridge proposals persist action kind and argument key names only; they do not persist raw argument values or raw model payload text.
+- Runtime proposals mirror harness `ExternalActionProposal` with `ActionId`, `Kind`, and in-memory JSON `Arguments`. That raw argument JSON is ignored by JSON serialization and is intended only for immediate handoff to the harness/application layer.
 
 Sprint 003 assumptions for mapping into `HarnessAction`:
 
 - `action` maps to a future harness-owned action discriminator.
 - `arguments` remain provider-local JSON until the harness owns typed argument schemas.
 - Packet action definitions should become the bridge between harness-owned stage contracts and provider-local response schemas.
-- The current provider bridge mirrors the expected external proposal shape because no harness-owned external proposal DTO/decoder is present on the Sprint 004 base.
+- The current provider runtime proposal mirrors the harness `ExternalActionProposal` shape available on the Sprint 005 base without adding a provider-to-harness project reference.
