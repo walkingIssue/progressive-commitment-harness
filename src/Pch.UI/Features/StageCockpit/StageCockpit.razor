@@ -695,6 +695,112 @@
             </div>
         </article>
 
+        <article class="panel fidelity-release-panel"
+                 data-fidelity-dashboard="stage-6-release"
+                 data-fidelity-matrix-state="@Fixture.FidelityReleaseDashboard.MatrixState"
+                 data-release-gate-state="@Fixture.FidelityReleaseDashboard.ReleaseGateState"
+                 data-replay-coverage-state="@Fixture.FidelityReleaseDashboard.ReplayCoverageState"
+                 data-fallback-count="@Fixture.FidelityReleaseDashboard.FallbackCount"
+                 data-schema-validity-count="@Fixture.FidelityReleaseDashboard.SchemaValidityCount"
+                 data-unsupported-claim-count="@Fixture.FidelityReleaseDashboard.UnsupportedClaimCount"
+                 data-raw-absence-state="@Fixture.FidelityReleaseDashboard.RawAbsenceState"
+                 data-last-checked-row-id="@Fixture.FidelityReleaseDashboard.LastCheckedRowId"
+                 aria-labelledby="fidelity-release-title">
+            <div class="panel-head">
+                <span id="fidelity-release-title">Release Fidelity</span>
+                <small>@Fixture.FidelityReleaseDashboard.EndpointHint</small>
+            </div>
+            <section class="release-summary"
+                     role="status"
+                     aria-live="polite"
+                     data-fidelity-summary="stage-6"
+                     data-fidelity-matrix-state="@Fixture.FidelityReleaseDashboard.MatrixState"
+                     data-release-gate-state="@Fixture.FidelityReleaseDashboard.ReleaseGateState"
+                     data-fallback-count="@Fixture.FidelityReleaseDashboard.FallbackCount"
+                     data-schema-validity-count="@Fixture.FidelityReleaseDashboard.SchemaValidityCount"
+                     data-unsupported-claim-count="@Fixture.FidelityReleaseDashboard.UnsupportedClaimCount"
+                     data-raw-absence-state="@Fixture.FidelityReleaseDashboard.RawAbsenceState">
+                <div>
+                    <strong>Gate</strong>
+                    <span>@Fixture.FidelityReleaseDashboard.ReleaseGateState</span>
+                </div>
+                <dl>
+                    <div>
+                        <dt>Matrix</dt>
+                        <dd>@Fixture.FidelityReleaseDashboard.MatrixState</dd>
+                    </div>
+                    <div>
+                        <dt>Replay</dt>
+                        <dd>@Fixture.FidelityReleaseDashboard.ReplayCoverageState</dd>
+                    </div>
+                    <div>
+                        <dt>Claims</dt>
+                        <dd>@Fixture.FidelityReleaseDashboard.UnsupportedClaimCount</dd>
+                    </div>
+                </dl>
+            </section>
+            <div class="fidelity-grid">
+                <section>
+                    <strong>Ownership Matrix</strong>
+                    <div class="fidelity-list">
+                        @foreach (var row in Fixture.FidelityReleaseDashboard.OwnershipRows)
+                        {
+                            var outcome = Fixture.FidelityReleaseDashboard.CheckOutcomes.FirstOrDefault(candidate => candidate.RowId == row.RowId);
+                            <div class="fidelity-row"
+                                 id="@row.MarkerId"
+                                 data-fidelity-row-id="@row.RowId"
+                                 data-stage-id="@row.StageId"
+                                 data-stage-ownership="@row.Ownership"
+                                 data-fidelity-matrix-state="@row.MatrixState"
+                                 data-replay-coverage-state="@row.ReplayCoverageState"
+                                 data-fallback-count="@row.FallbackCount"
+                                 data-schema-validity-count="@row.SchemaValidityCount"
+                                 data-unsupported-claim-count="@row.UnsupportedClaimCount"
+                                 data-release-gate-state="@row.ReleaseGateState"
+                                 data-raw-absence-state="@row.RawAbsenceState"
+                                 data-blocked-reason="@row.BlockedReason"
+                                 data-fidelity-check-state="@outcome?.State"
+                                 data-error-code="@outcome?.ErrorCode">
+                                <div>
+                                    <span>@row.StageLabel</span>
+                                    <code>@row.Ownership</code>
+                                </div>
+                                <button id="@row.ControlId"
+                                        class="ghost"
+                                        type="button"
+                                        aria-label="@row.ControlAriaLabel"
+                                        aria-controls="@row.MarkerId"
+                                        data-fidelity-control-id="@row.ControlId"
+                                        @onclick="() => RunFidelityReleaseCheck(row.RowId)">
+                                    Check row
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </section>
+                <section>
+                    <strong>Eval Artifacts</strong>
+                    <div class="fidelity-list">
+                        @foreach (var artifact in Fixture.FidelityReleaseDashboard.EvalArtifacts)
+                        {
+                            <div class="fidelity-artifact"
+                                 data-eval-artifact-id="@artifact.ArtifactId"
+                                 data-provider="@artifact.Provider"
+                                 data-eval-artifact-status="@artifact.Outcome"
+                                 data-schema-validity-state="@artifact.SchemaValidityState"
+                                 data-schema-validity-count="@artifact.SchemaValidCount"
+                                 data-unsupported-claim-count="@artifact.UnsupportedClaimCount"
+                                 data-raw-absence-state="@artifact.RawAbsenceState"
+                                 data-error-code="@artifact.ErrorCode">
+                                <span>@artifact.Label</span>
+                                <code>@artifact.Outcome</code>
+                            </div>
+                        }
+                    </div>
+                </section>
+            </div>
+        </article>
+
         <ApprovalGate Approval="Fixture.Approval"
                       Response="ApprovalResponse"
                       ApprovalToken="@ApprovalToken"
@@ -807,6 +913,12 @@
     private void RunEndToEndTrip(string runId)
     {
         Fixture = CockpitService.RunEndToEndTrip(runId);
+        LoadFixtureState();
+    }
+
+    private void RunFidelityReleaseCheck(string rowId)
+    {
+        Fixture = CockpitService.RunFidelityReleaseCheck(rowId);
         LoadFixtureState();
     }
 

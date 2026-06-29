@@ -265,6 +265,10 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.fidelity-release-panel {
+    grid-column: 1 / -1;
+}
+
 .suggestion-list,
 .model-run-list,
 .mission-run-list {
@@ -377,6 +381,54 @@ h1:focus {
 .release-path span {
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+.fidelity-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr);
+    gap: .85rem;
+    margin-top: 1rem;
+}
+
+.fidelity-grid section,
+.fidelity-list {
+    display: grid;
+    gap: .5rem;
+}
+
+.fidelity-grid section {
+    border-top: 1px solid var(--pch-line);
+    padding-top: .75rem;
+}
+
+.fidelity-row,
+.fidelity-artifact {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .65rem;
+    border: 1px solid var(--pch-line);
+    border-radius: 6px;
+    padding: .6rem .7rem;
+    background: #fff;
+}
+
+.fidelity-row div {
+    display: grid;
+    gap: .2rem;
+    min-width: 0;
+}
+
+.fidelity-row span,
+.fidelity-artifact span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fidelity-row[data-release-gate-state="blocked_until_review"],
+.fidelity-artifact[data-schema-validity-state="review-required"] {
+    border-color: #d4ba72;
+    background: #fffaf0;
 }
 
 .mission-result-grid {
