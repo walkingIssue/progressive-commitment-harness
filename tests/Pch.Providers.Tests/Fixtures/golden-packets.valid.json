@@ -1,0 +1,62 @@
+{
+  "cases": [
+    {
+      "name": "ask-for-destination",
+      "expectedActionName": "emit_form",
+      "packet": {
+        "packetId": "packet-golden-001",
+        "stage": "stage-ask",
+        "goal": "Collect missing destination details.",
+        "instructions": [
+          "Ask only for missing fields.",
+          "Do not book or hold inventory."
+        ],
+        "inputs": {
+          "trip": {
+            "destination": "Lisbon",
+            "travelers": 2
+          }
+        },
+        "allowedActions": [
+          {
+            "name": "emit_form",
+            "description": "Ask the user for structured fields."
+          },
+          {
+            "name": "summarize",
+            "description": "Summarize the packet state."
+          }
+        ]
+      }
+    },
+    {
+      "name": "ask-for-budget",
+      "expectedActionName": "emit_form",
+      "packet": {
+        "packetId": "packet-golden-002",
+        "stage": "stage-ask",
+        "goal": "Collect missing budget details.",
+        "instructions": [
+          "Ask for budget range.",
+          "Avoid commitment actions."
+        ],
+        "inputs": {
+          "trip": {
+            "destination": "Porto",
+            "travelers": 1
+          }
+        },
+        "allowedActions": [
+          {
+            "name": "emit_form",
+            "description": "Ask the user for structured fields."
+          },
+          {
+            "name": "summarize",
+            "description": "Summarize the packet state."
+          }
+        ]
+      }
+    }
+  ]
+}

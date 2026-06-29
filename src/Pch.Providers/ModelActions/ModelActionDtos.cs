@@ -41,3 +41,17 @@ public sealed record ModelActionEvalResult(
     string ExpectedActionName,
     string? ActualActionName,
     string? Error);
+
+public sealed record GoldenPacketEvalDocument(IReadOnlyList<ModelActionEvalCase> Cases);
+
+public sealed record SanitizedModelActionEvalRow(
+    string Name,
+    string PacketId,
+    bool Passed,
+    string ExpectedActionName,
+    string? ActualActionName,
+    string? ErrorCode,
+    int? ResponseContentLength,
+    string? Provider,
+    string? Model,
+    string? RequestId);

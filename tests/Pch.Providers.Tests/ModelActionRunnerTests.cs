@@ -95,8 +95,24 @@ public sealed class ModelActionRunnerTests
 
         Assert.False(result.Passed);
         Assert.Null(result.ActualActionName);
-        Assert.Equal("Model action response selected an action outside the allowed set.", result.Error);
+        Assert.Equal("model_action_runner_error", result.Error);
         Assert.DoesNotContain("book_without_approval", result.Error);
+    }
+
+    [Fact]
+    public async Task EvaluatorDoesNotPersistRawExceptionText()
+    {
+        const string sentinel = "SECRET_PROMPT_SENTINEL raw model payload should not persist";
+        var evaluator = new ModelActionEvaluator(new ThrowingActionRunner(new InvalidOperationException(sentinel)));
+
+        var result = Assert.Single(await evaluator.EvaluateAsync(
+            [new ModelActionEvalCase("sentinel", CreatePacket(), "emit_form")]));
+
+        var serialized = JsonSerializer.Serialize(result, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.False(result.Passed);
+        Assert.Equal("unexpected_error", result.Error);
+        Assert.DoesNotContain(sentinel, result.Error);
+        Assert.DoesNotContain(sentinel, serialized);
     }
 
     private static ModelActionPacket CreatePacket()
@@ -132,5 +148,14 @@ public sealed class ModelActionRunnerTests
             LastRequest = request;
             return Task.FromResult(new ModelCompletionResponse("test-model", Content, "test-provider", RequestId: "request-1"));
         }
+    }
+
+    private sealed class ThrowingActionRunner(Exception exception) : IModelActionRunner
+    {
+        public Task<ModelActionRunResult> RunAsync(
+            ModelActionPacket packet,
+            ModelActionRunnerOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ModelActionRunResult>(exception);
     }
 }
