@@ -4,6 +4,8 @@ namespace Pch.Providers.AvailabilityPreview;
 
 public sealed class AvailabilityPreviewEvaluator
 {
+    public const string RejectedRowName = "availability_preview_rejected";
+    public const string RejectedRowPacketId = "availability_preview_packet_redacted";
     public const string OutcomeQuoteReady = "availability_preview_quote_ready";
     public const string OutcomeUnavailable = "availability_preview_unavailable";
     public const string OutcomePacketMismatch = "availability_preview_packet_mismatch";
@@ -213,8 +215,8 @@ public sealed class AvailabilityPreviewEvaluator
         string outcomeCode,
         string? errorCode = null) =>
         new(
-            name,
-            packetId,
+            RejectedRowName,
+            RejectedRowPacketId,
             false,
             outcomeCode,
             errorCode,

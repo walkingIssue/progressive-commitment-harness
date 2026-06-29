@@ -19,7 +19,7 @@ Persisted `quote_ready` rows contain only:
 - candidate, quote-ready, and unavailable counts
 - provider/model/request metadata and response length
 
-`unavailable` rows may keep trusted packet-derived candidate rows and counts, but omit provider/model/request metadata and response length. Blocked/error rows contain fixed codes and zero counts only; they omit candidate rows, provider metadata, response length, provider-returned ids, quote refs, and payload values.
+`unavailable` rows may keep trusted packet-derived candidate rows and counts, but omit provider/model/request metadata and response length. Blocked/error rows contain fixed codes, fixed row name/packet id placeholders, and zero counts only; they omit candidate rows, provider metadata, response length, provider-returned ids, quote refs, eval case labels, packet ids, and payload values.
 
 Fixed outcomes:
 

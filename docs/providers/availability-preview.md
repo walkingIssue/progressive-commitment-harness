@@ -4,6 +4,8 @@ Sprint 014 adds provider-local availability/quote preview DTOs, evaluator rows, 
 
 The packet owns the trusted slot/candidate/category boundary. Accepted rows derive persisted slot ids, candidate ids, and categories from `AvailabilityPreviewPacket.Candidates` only after exact validation against the adapter result. Provider quote amounts, currencies, expiry times, fare references, booking references, raw payloads, and candidate display values are never persisted in eval/status rows.
 
+Accepted quote-ready rows may keep safe eval labels and packet ids. Rejected/error rows always replace row name and packet id with fixed sanitized placeholders so malformed packets, stale packets, and exception paths cannot echo prompt-derived or provider-derived text.
+
 Mock behaviors cover:
 
 - quote-ready preview

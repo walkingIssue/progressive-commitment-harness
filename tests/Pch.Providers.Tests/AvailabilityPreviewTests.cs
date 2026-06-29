@@ -65,6 +65,8 @@ public sealed class AvailabilityPreviewTests
             [new AvailabilityPreviewEvalCase("quote-ready", CreatePacket())]));
 
         Assert.True(row.Passed);
+        Assert.Equal("quote-ready", row.Name);
+        Assert.Equal("packet-availability", row.PacketId);
         Assert.Equal(AvailabilityPreviewEvaluator.OutcomeQuoteReady, row.OutcomeCode);
         Assert.Null(row.ErrorCode);
         Assert.Equal(5, row.CandidateCount);
@@ -251,15 +253,78 @@ public sealed class AvailabilityPreviewTests
     }
 
     [Fact]
+    public async Task MalformedPacketRowsDoNotPersistUnsafeEvalCaseNameOrPacketId()
+    {
+        var packet = CreatePacket() with
+        {
+            PacketId = $"{RawPrompt}-{RawProviderPayload}-{GenericSentinel}",
+            Candidates = []
+        };
+        var evaluator = new AvailabilityPreviewEvaluator(new CountingAvailabilityPreviewAdapter());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new AvailabilityPreviewEvalCase($"{CandidateDisplayValue}-{Credential}", packet)]));
+
+        AssertMalformedRejectedRow(row, AvailabilityPreviewEvaluator.OutcomeMalformedPacket);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowName, row.Name);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowPacketId, row.PacketId);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task PacketMismatchRowsDoNotPersistUnsafeEvalCaseNameOrPacketIds()
+    {
+        var packet = CreatePacket() with
+        {
+            PacketId = $"{RawPrompt}-{RawProviderPayload}-{GenericSentinel}"
+        };
+        var evaluator = new AvailabilityPreviewEvaluator(new MockAvailabilityPreviewAdapter(
+            MockAvailabilityPreviewBehavior.PacketMismatch));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new AvailabilityPreviewEvalCase($"{CandidateDisplayValue}-{Credential}", packet)]));
+
+        AssertMalformedRejectedRow(row, AvailabilityPreviewEvaluator.OutcomePacketMismatch);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowName, row.Name);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowPacketId, row.PacketId);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+        Assert.DoesNotContain("RAW_PACKET_ID_SHOULD_NOT_PERSIST", SanitizedEvalArtifactAssert.Serialize(row));
+    }
+
+    [Fact]
+    public async Task MalformedResultRowsDoNotPersistUnsafeEvalCaseNameOrPacketId()
+    {
+        var packet = CreatePacket() with
+        {
+            PacketId = $"{RawPrompt}-{RawProviderPayload}-{GenericSentinel}"
+        };
+        var evaluator = new AvailabilityPreviewEvaluator(new NullAvailabilityPreviewAdapter());
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new AvailabilityPreviewEvalCase($"{CandidateDisplayValue}-{Credential}", packet)]));
+
+        AssertMalformedRejectedRow(row, AvailabilityPreviewEvaluator.OutcomeMalformedResult);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowName, row.Name);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowPacketId, row.PacketId);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
     public async Task SourceExceptionsUseFixedCodesWithoutRawExceptionText()
     {
         var evaluator = new AvailabilityPreviewEvaluator(new ThrowingAvailabilityPreviewAdapter(
             new InvalidOperationException($"{RawException} {RawProviderPayload} {Credential} {ApprovalToken} {RawFareReference}")));
+        var packet = CreatePacket() with
+        {
+            PacketId = $"{RawPrompt}-{RawProviderPayload}-{GenericSentinel}"
+        };
 
         var row = Assert.Single(await evaluator.EvaluateAsync(
-            [new AvailabilityPreviewEvalCase("exception", CreatePacket())]));
+            [new AvailabilityPreviewEvalCase($"{CandidateDisplayValue}-{Credential}", packet)]));
 
         Assert.False(row.Passed);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowName, row.Name);
+        Assert.Equal(AvailabilityPreviewEvaluator.RejectedRowPacketId, row.PacketId);
         Assert.Equal(AvailabilityPreviewEvaluator.OutcomeError, row.OutcomeCode);
         Assert.Equal("availability_preview_error", row.ErrorCode);
         Assert.Empty(row.Candidates);
