@@ -46,4 +46,6 @@ declare function moveDeck(direction: number): void;
 declare function setTimelineMode(mode: string): void;
 declare function focusOriginTurn(turnId: string): void;
 declare function closestAction(target: EventTarget | null, selector: string): HTMLElement | null;
+declare const chatActionSelector: string;
+declare function interceptChatAction(event: Event): void;
 declare function handleChatInteraction(target: EventTarget | null): void;

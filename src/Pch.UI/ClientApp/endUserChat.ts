@@ -419,6 +419,24 @@ function closestAction(target: EventTarget | null, selector: string): HTMLElemen
   return target instanceof HTMLElement ? target.closest<HTMLElement>(selector) : null;
 }
 
+const chatActionSelector = [
+  "[data-send-action]",
+  "[data-form-submit]",
+  "[data-choice-action]",
+  "[data-approval-action]",
+  "[data-ask-action]",
+  "[data-deck-control]",
+  "[data-timeline-mode-action]",
+  "[data-origin-turn-id]",
+].join(",");
+
+function interceptChatAction(event: Event): void {
+  if (!closestAction(event.target, chatActionSelector)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  handleChatInteraction(event.target);
+}
+
 function handleChatInteraction(target: EventTarget | null): void {
   const sendElement = closestAction(target, "[data-send-action]");
   const action = sendElement?.dataset ?? {};
@@ -511,8 +529,8 @@ function handleChatInteraction(target: EventTarget | null): void {
 }
 
 document.documentElement.dataset.endUserChatHelper = "ready";
-document.addEventListener("pointerup", (event) => handleChatInteraction(event.target), true);
-document.addEventListener("click", (event) => handleChatInteraction(event.target), true);
+document.addEventListener("pointerup", interceptChatAction, true);
+document.addEventListener("click", interceptChatAction, true);
 
 document.addEventListener("keydown", (event) => {
   const target = event.target;
