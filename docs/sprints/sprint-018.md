@@ -2,7 +2,7 @@
 
 Coordinator: Collin
 
-Dispatch base: to be set after Sprint 017 publishes.
+Dispatch base: `7c0439fb860d2c9b18bfc9831ebf009cb31ac84e`
 
 ## Objective
 
@@ -15,6 +15,39 @@ Read first:
 - `docs/design/end-user-chat-interaction-primitives.md`
 - `docs/design/end-user-progressive-history.md`
 - `docs/design/sprint-017-japan-card-media-pack.md` when available
+
+## Live Model Testing Posture
+
+Sprint 018 is allowed to spend credits during development and smoke when keys are configured. The goal is to discover whether the harness actually holds up when real model outputs are attached to the end-user experience.
+
+Allowed providers for guarded live exploration:
+
+- OpenRouter/OpenAI-compatible providers already supported by the repo.
+- OpenAI API when an explicit key/config is present.
+- Grok/xAI-compatible API if an explicit key/config is present or a lane adds a disabled-by-default adapter shape.
+
+Rules:
+
+- Required unit tests must remain deterministic/offline.
+- Live calls must be opt-in through environment/config checks, strict timeouts, provider/key/credit guards when available, and no silent paid-provider fallback.
+- Live prompts, provider payloads, raw completions, API keys, approval tokens, hold references, candidate display sentinels, credentials, and exception text must not be committed.
+- Live smoke may report fixed/sanitized outcome codes, model/provider names, request ids, response lengths, schema-validity state, and failure categories.
+- If a live model exposes a harness failure point, the lane should document it instead of trying to opportunistically paper over it unless the fix is clearly in-scope.
+
+Each lane must produce a sanitized live-observation report, even if live execution is blocked by missing keys:
+
+- Shellby: `docs/live-failure-reports/sprint-018-harness-edit-impact.md`
+- Kaneki: `docs/live-failure-reports/sprint-018-provider-repair-posture.md`
+- Sarah: `docs/live-failure-reports/sprint-018-end-user-ui.md`
+
+The report should include:
+
+- live status: `not_configured`, `blocked_by_guard`, `attempted`, or `passed_with_findings`;
+- provider/model roles attempted;
+- sanitized failure categories and fixed codes;
+- what the harness/UI did correctly;
+- what failed, surprised the model, or confused the user experience;
+- proposed follow-up tickets.
 
 ## Lane A - Harness Planning Edit Impact
 
@@ -37,6 +70,7 @@ Deliverables:
 - Fixed sanitized outcome codes for accepted, stale snapshot, unknown node, unsupported edit, no impact, and repair required.
 - No mutation unless explicitly applying a later edit; this lane is impact analysis only.
 - Tests for selected-candidate edit, day/slot edit, stale fingerprint, unknown node, no-mutation, and no raw prompt/provider/approval/secret leakage.
+- Sanitized live-observation report at `docs/live-failure-reports/sprint-018-harness-edit-impact.md`, based on deterministic replay plus any live UI/provider traces available from other lanes.
 
 Verification:
 
@@ -61,9 +95,10 @@ Deliverables:
 
 - Provider-local DTOs/eval rows for model-assisted repair suggestion posture, not automatic edits.
 - Deterministic mock source that can suggest keep, replan-day, reselect-candidate, or ask-user repair modes from sanitized node metadata.
-- Optional guarded live runner shape may exist, but required tests must stay deterministic/offline.
+- Guarded live runner shape for OpenRouter/OpenAI-compatible repair suggestions, with room for explicit OpenAI and Grok/xAI-compatible configuration if keys are present.
 - Sanitized rows persist fixed repair mode enums, counts, provider/model/request metadata only for accepted rows, and fixed codes for rejected/error rows.
 - No raw prompt, provider payload, candidate display text, approval token, hold reference, credentials, or exception text in rows.
+- Sanitized live-observation report at `docs/live-failure-reports/sprint-018-provider-repair-posture.md` covering attempted/blocked OpenRouter, OpenAI, and/or Grok paths.
 
 Verification:
 
@@ -91,6 +126,8 @@ Deliverables:
 - The folded `Ask` composer stays inside the chat view on the right edge, quiet/pastel, same rough height as the original textbox and roughly user-bubble inset width.
 - Break the end-user surface into Blazor components: shell, composer drawer, assistant work bubble, choice deck, option card, selected option bubble, planning timeline, task rail, approval plate, provider status.
 - Browser smoke proves prompt send, folded composer, Ask drawer, timeline day/task toggle, item click-to-scroll, selected card imagery, raw absence, and Stage Cockpit route separation.
+- Add a visibly honest live/deterministic state in the end-user UI. When live providers are configured, smoke should exercise at least one model-attached turn; when not configured, UI must clearly report the guard/block state.
+- Sanitized live-observation report at `docs/live-failure-reports/sprint-018-end-user-ui.md` describing model-attached interaction attempts, confusing UX points, and harness failure points.
 
 Verification:
 
@@ -106,4 +143,5 @@ Verification:
 - A user can click a timeline item and jump to the originating interaction.
 - The composer becomes easier to access without stealing attention.
 - The first deterministic harness edit-impact result can explain affected vs preserved nodes after a past choice changes.
+- Every lane writes a sanitized live-observation/failure report.
 - Required tests remain deterministic/offline and raw-sentinel scans remain clean.

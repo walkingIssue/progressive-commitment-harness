@@ -530,6 +530,7 @@ Sprint 018 should make the end-user planner easier to understand and safer to re
 - componentize the end-user Blazor surface into shell, composer, work bubble, choice deck, option card, selected bubble, planning timeline, task rail, approval plate, and provider status components;
 - add the first harness-owned edit-impact boundary so a changed past decision can report affected nodes, preserved nodes, and minimal repair prompts without mutating state;
 - add provider-local repair posture/eval artifacts for model-assisted repair suggestions while keeping required tests deterministic/offline and redacted.
+- allow guarded live OpenRouter/OpenAI/Grok-compatible exploration during development/smoke, with sanitized per-lane failure reports documenting what real model-attached runs expose.
 
 ## Not Yet Started
 
