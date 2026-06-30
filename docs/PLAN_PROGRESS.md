@@ -555,6 +555,17 @@ Sprint 020 should turn live preflight into one real model proposal applied throu
 - preserve the current end-user interaction surface, media hooks, selected-card echoes, compact timeline, `/trip` route, and `/stage-cockpit` route split;
 - record sanitized live/failure reports for provider, harness, and UI lanes describing what the real model path accepted, blocked, or could not yet express.
 
+## Sprint 020 Result
+
+Sprint 020 connected the first live mission proposal runner to the harness/UI path while preserving deterministic default behavior.
+
+- `LiveSessionConductor` now carries a hardened provider-agnostic live proposal seam with operation/result codes, packet/session/stage correlation, sanitized proposal fragments, stale-correlation blocking, and no-mutation rejected paths.
+- Provider `LiveMissionProposalRunner` adds a strict JSON/schema live mission proposal path over `IModelCompletionClient` plus optional credit guard, with fixed sanitized outcomes for disabled, key missing, credit exhausted, timeout, empty content, malformed/schema invalid, packet mismatch, unsupported/unsafe proposal value, fallback disabled, provider unavailable, and accepted proposal.
+- The end-user UI now builds a bounded live proposal packet, runs the canonical provider runner, maps accepted provider DTOs into `ProviderMissionProposalMirror`, and applies them through `LiveSessionConductor`.
+- UI markers distinguish deterministic fallback, preflight, live proposal accepted, live proposal blocked, provider unavailable, stale packet/session, harness validation blocked, and awaiting user input.
+- Required verification remained deterministic/offline. The provider lane attempted a guarded OpenRouter smoke and recorded sanitized `live_mission_proposal_provider_unavailable`; no accepted live provider proposal was obtained in Sprint 020.
+- Raw prompts, raw completions, provider payloads, API keys, credentials, approval tokens, hold references, booking/payment references, candidate display sentinels, secret sentinels, and raw exception text remain out of rendered or serialized state.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.

@@ -2,9 +2,11 @@
 
 Coordinator: Collin
 
-Planning base: `cc04b2084d25b4310ad9a2f79342b898c8dc9233`
+Planning checkpoint base: `cc04b2084d25b4310ad9a2f79342b898c8dc9233`
 
-Dispatch status: planned only. Do not start worker lanes until Collin explicitly dispatches Sprint 020.
+Dispatch base: `b8ff8ed629ed35c061312bbf72f793a2f8577b94`
+
+Dispatch status: completed and integrated.
 
 ## Objective
 
