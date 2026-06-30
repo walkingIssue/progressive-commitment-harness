@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-30
 
-Latest integrated code before this progress update: `130e42803a122f3cfda9fcd36a76ec6a7e87075f Merge sprint-014 UI availability preview panel`
+Latest integrated code before this progress update: `08c13de25af7deec16496bd128ac23ff95ae33dd Remove Blazor template shell from chat app`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, evidence-export, shared eval artifact redaction checks, provider-local fidelity eval rows, and a first canonical fidelity ownership matrix. Stage 7 now has deterministic availability/quote preview boundaries across harness, provider, and UI without booking/payment side effects. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, final evidence export, release-smoke summary, fidelity release dashboard, and availability preview. Stage 10 now has deterministic replay audit, cross-provider sanitized artifact policy, UI release-smoke/a11y markers, and fidelity release-gate markers. The next decisive gap is a real end-user-facing interaction shell: a chat/transcript UI that lets a person actually enter a trip prompt and watch the deterministic harness path unfold without needing to understand Stage Cockpit internals.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, canonical itinerary candidate application state, and a live-turn projection contract for end-user transcripts. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, mock hold preparation, and live model-role runner guardrails. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, evidence-export, shared eval artifact redaction checks, provider-local fidelity eval rows, and a first canonical fidelity ownership matrix. Stage 7 now has deterministic availability/quote preview boundaries across harness, provider, and UI without booking/payment side effects. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, final evidence export, release-smoke summary, fidelity release dashboard, availability preview, and a clickable end-user chat surface. Stage 10 now has deterministic replay audit, cross-provider sanitized artifact policy, UI release-smoke/a11y markers, fidelity release-gate markers, and browser-click regression coverage for the end-user chat. The next decisive gap is visual credibility: the end-user UI needs image-backed card decks, selected-card echoes, and a media/provenance path so a human can evaluate the planning experience without feeling like they are inside an engineering fixture.
 
 ## Sprint Ledger
 
@@ -73,6 +73,9 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 014 | Stage 7 | Availability quote boundary | `AvailabilityQuotePreviewApplication` validates current compilation, snapshot, selected itinerary decision, slot-owned candidate, quote kind, and approval-required preview state | done |
 | 014 | Stage 6/7 | Provider availability preview adapter | Provider-local availability preview packets/results/eval rows validate trusted slot/candidate/category maps and sanitize rejected row identifiers | done |
 | 014 | Stage 9/10 | Availability preview panel | Stage Cockpit renders canonical quote-ready, unavailable, provider-blocked, harness-blocked, approval-required, and raw-absence availability preview paths | done |
+| 015 | Stage 9/10 | End-user chat v0 | Deterministic end-user chat shell consumes golden traces/model-role posture and lets a user enter a prompt outside Stage Cockpit | done |
+| 016 | Stage 3/9 | Live turn contract and interactive chat | Live-turn projector, live model-role runner, agent-first UI primitives, selected card echo, Ask drawer, evidence trail, and browser-click regression | done |
+| 017 | Stage 9/10 | Visual card media | Planned sprint for generated/stock/provider media, card-safe media provenance, and image-backed end-user decks | planned |
 
 ## Sprint 001 Verification
 
@@ -484,6 +487,36 @@ Sprint 016 should turn the end-user shell into a genuinely interactive live-plan
 - redesign the primary UI around interaction primitives: composer, assistant work bubble, form card, choice set card, candidate option card, approval plate, task rail, evidence strip, and provider failure notice;
 - remove the boilerplate Blazor feel from the primary end-user surface with light/dark theme tokens, warmer color, clearer interactive-vs-decorative hierarchy, and approval/commitment-specific visual weight;
 - allow manual/live verification to spend credits while keeping required tests deterministic/offline and preserving no-raw-payload/no-secret redaction guarantees.
+
+## Sprint 016 Result
+
+Sprint 016 made the end-user chat surface genuinely clickable and moved it closer to the agent-first visual direction.
+
+- `LiveTurnProjector` adds harness-owned live-turn transcript/work-item DTOs over canonical prompt, runtime action, itinerary decision, and availability preview boundaries.
+- Provider `LiveModelRoleRunner` adds guarded live model-role execution surfaces with timeout enforcement, caller-cancellation behavior, credit guard support, no paid-provider fallback, and runtime-only raw arguments.
+- The end-user chat UI now has a slim left rail, dark task rail, agent-centered work area, expanded first prompt, collapsed `Ask` drawer after first send, form card, mood-backed choice decks, approval plate, provider fallback notice, evidence strip, and evidence/plan trail.
+- Selecting an option echoes a compact selected-option card bubble into the user transcript rather than a plain text "I choose..." sentence.
+- The coordinator removed the default Blazor template shell so the app lands directly on the product surface.
+- A delayed browser-local DOM helper remains as a smoke fallback only when Blazor Server negotiation does not mutate page state; healthy Blazor interactions are not double-handled.
+
+## Sprint 016 Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 55 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 377 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator in-app browser smoke on `http://127.0.0.1:5184/`: passed prompt send, composer collapse, `Ask` drawer affordance, selected option card echo, selected candidate evidence trail, old scaffold absence, and raw-sentinel absence.
+
+## Sprint 017 Target
+
+Sprint 017 should make the planning cards visually credible and media-ready without compromising provenance or licensing.
+
+- add a provider-local media source registry for generated, stock, open-license, and provider-supplied media, including source/license/attribution metadata and sanitized eval/status rows;
+- add a harness-owned card media/provenance boundary so candidate cards, selected-option echoes, and evidence/plan-trail items can carry safe media references without depending on provider implementation types;
+- generate or source a Japan-focused card asset pack for cultural, scenic, food, morning, downtime, and transit/logistics moods;
+- integrate image-backed cards into the end-user UI, including floaty same-mood decks, selected-card bubbles with thumbnails/backdrops, and evidence trail imagery;
+- preserve first-prompt, collapsed `Ask`, card selection, evidence trail, missing-media fallback, raw-sentinel absence, and old-scaffold absence browser gates.
 
 ## Not Yet Started
 
