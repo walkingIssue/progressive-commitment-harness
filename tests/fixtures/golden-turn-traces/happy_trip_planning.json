@@ -1,0 +1,122 @@
+{
+  "isAccepted": true,
+  "isBlocked": false,
+  "code": "golden_trace_complete",
+  "summary": "Golden turn trace completed.",
+  "scriptId": "golden-happy-trip-planning",
+  "scenario": "happy_trip_planning",
+  "prompt": {
+    "length": 57,
+    "sha256": "1eb0316ea97ff9129ecaae6eab18ef6494670ae909b2902f5c751d1d9cb52380",
+    "category": "vacation"
+  },
+  "turns": [
+    {
+      "turnId": "turn-01",
+      "kind": "user",
+      "actor": "user",
+      "stage": "Intake",
+      "code": "prompt_packet_built",
+      "summary": "User prompt metadata accepted: vacation.",
+      "markers": [
+        "prompt_length:57",
+        "prompt_category:vacation"
+      ],
+      "evidenceReferences": []
+    },
+    {
+      "turnId": "turn-02",
+      "kind": "assistant",
+      "actor": "assistant",
+      "stage": "Intake",
+      "code": "prompt_packet_built",
+      "summary": "Assistant prepared a deterministic planning packet.",
+      "markers": [
+        "prompt_hash:1eb0316ea97f",
+        "packet:prompt-packet-session-1-day-intake"
+      ],
+      "evidenceReferences": []
+    },
+    {
+      "turnId": "turn-03",
+      "kind": "harness",
+      "actor": "harness",
+      "stage": "mission_intake",
+      "code": "mission_intake_applied",
+      "summary": "Mission proposal applied with authority checks.",
+      "markers": [
+        "mission_intake"
+      ],
+      "evidenceReferences": [
+        "evidence-golden-user"
+      ]
+    },
+    {
+      "turnId": "turn-04",
+      "kind": "harness",
+      "actor": "harness",
+      "stage": "itinerary_compile",
+      "code": "itinerary_slots_compiled",
+      "summary": "Itinerary slots compiled.",
+      "markers": [
+        "itinerary_compile"
+      ],
+      "evidenceReferences": []
+    },
+    {
+      "turnId": "turn-05",
+      "kind": "decision",
+      "actor": "harness",
+      "stage": "candidate_decision",
+      "code": "itinerary_decision_applied",
+      "summary": "Itinerary slot decision applied.",
+      "markers": [
+        "selected_itinerary_candidate"
+      ],
+      "evidenceReferences": [
+        "evidence-golden-candidate"
+      ]
+    },
+    {
+      "turnId": "turn-06",
+      "kind": "harness",
+      "actor": "harness",
+      "stage": "availability_preview",
+      "code": "availability_quote_preview_accepted",
+      "summary": "Availability quote preview accepted.",
+      "markers": [
+        "availability_preview"
+      ],
+      "evidenceReferences": [
+        "evidence-golden-candidate"
+      ]
+    },
+    {
+      "turnId": "turn-07",
+      "kind": "evidence",
+      "actor": "harness",
+      "stage": "trip_run_snapshot",
+      "code": "complete",
+      "summary": "Trip run snapshot complete.",
+      "markers": [
+        "trip_run_snapshot",
+        "complete"
+      ],
+      "evidenceReferences": [
+        "evidence-user-purpose",
+        "evidence-country-pack",
+        "evidence-fixture-candidates",
+        "evidence-golden-user",
+        "evidence-golden-candidate"
+      ]
+    }
+  ],
+  "evidenceReferences": [
+    "evidence-golden-user",
+    "evidence-golden-candidate",
+    "evidence-user-purpose",
+    "evidence-country-pack",
+    "evidence-fixture-candidates"
+  ],
+  "transcriptHash": "93e14902b2c5f467a5728ab1483ac08aabfed735ac9a9af71da0cdfd4f8a8a6c"
+}

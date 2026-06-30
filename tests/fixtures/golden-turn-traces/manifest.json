@@ -1,0 +1,12 @@
+{
+  "corpus": "golden-turn-traces",
+  "version": 1,
+  "scenarios": [
+    "happy_trip_planning",
+    "blocked_safety"
+  ],
+  "files": [
+    "happy_trip_planning.json",
+    "blocked_safety.json"
+  ]
+}
