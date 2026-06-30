@@ -199,7 +199,8 @@ public sealed class LiveTurnProjectorTests
             "candidate-live-meal",
             CandidateKind.Restaurant,
             new DateTimeOffset(2026, 6, 30, 0, 0, 0, TimeSpan.Zero)));
-        var projected = new LiveTurnProjector().FromItineraryDecision(decision);
+        var mediaManifest = new CardMediaProvenanceBoundary().BuildJapanMoodMediaManifest();
+        var projected = new LiveTurnProjector().FromItineraryDecision(decision, mediaManifest);
         var serialized = JsonSerializer.Serialize(projected, JsonOptions);
 
         Assert.True(projected.IsAccepted);
@@ -208,6 +209,74 @@ public sealed class LiveTurnProjectorTests
         Assert.Equal("user", turn.Actor);
         Assert.Equal("candidate-live-meal", Assert.Single(turn.WorkItem!.Choices).CandidateId);
         Assert.Equal("meal", Assert.Single(turn.WorkItem.Choices).GroupFeel);
+        Assert.NotNull(Assert.Single(turn.WorkItem.Choices).Media);
+        Assert.Equal("japan-lively_food", Assert.Single(turn.WorkItem.Choices).Media!.MediaId);
+        Assert.DoesNotContain("RAW_CANDIDATE_DISPLAY_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlanTrailProjectionCarriesSelectedAndDeferredCardMediaWithoutMutatingSession()
+    {
+        var session = SyntheticTripFactory.CreateSession(1);
+        var compilation = new ItinerarySlotCompiler().Compile(session, new ItineraryCompilationRequest(
+            session.SessionId,
+            null,
+            null,
+            session.MemoryDigest,
+            []));
+        var mealSlot = compilation.Days.SelectMany(day => day.Slots).First(slot => slot.Kind == ItinerarySlotKind.Meal);
+        var downtimeSlot = compilation.Days.SelectMany(day => day.Slots).First(slot => slot.Kind == ItinerarySlotKind.Downtime);
+        session.AddItineraryCandidatePool(mealSlot.SlotId, new CandidatePool(
+            "pool-plan-meal",
+            "meal",
+            [
+                new(
+                    "candidate-plan-meal",
+                    CandidateKind.Restaurant,
+                    "RAW_CANDIDATE_DISPLAY_SHOULD_NOT_LEAK",
+                    "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK",
+                    null,
+                    null,
+                    ["evidence-plan-meal"],
+                    90)
+            ],
+            [],
+            new DateTimeOffset(2026, 6, 30, 0, 0, 0, TimeSpan.Zero)));
+        var selected = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
+            session.SessionId,
+            mealSlot.SlotId,
+            ItinerarySlotDecisionKind.Selected,
+            mealSlot.Kind,
+            "candidate-plan-meal",
+            CandidateKind.Restaurant,
+            new DateTimeOffset(2026, 6, 30, 0, 0, 0, TimeSpan.Zero)));
+        var deferred = new ItineraryCandidateApplication().Apply(session, new ItinerarySlotDecisionRequest(
+            session.SessionId,
+            downtimeSlot.SlotId,
+            ItinerarySlotDecisionKind.Deferred,
+            downtimeSlot.Kind,
+            null,
+            null,
+            new DateTimeOffset(2026, 6, 30, 0, 0, 0, TimeSpan.Zero)));
+        var actionCount = session.Actions.Count;
+        var decisionCount = session.DecisionLedger.Records.Count;
+
+        var trail = new LiveTurnProjector().BuildPlanTrail(
+            [selected, deferred],
+            new CardMediaProvenanceBoundary().BuildJapanMoodMediaManifest());
+        var serialized = JsonSerializer.Serialize(trail, JsonOptions);
+
+        Assert.True(trail.IsAccepted);
+        Assert.Equal(2, trail.Items.Count);
+        var selectedItem = Assert.Single(trail.Items, item => item.Kind == "selected_card");
+        var deferredItem = Assert.Single(trail.Items, item => item.Kind == "deferred_card");
+        Assert.Equal("candidate-plan-meal", selectedItem.CandidateId);
+        Assert.NotNull(selectedItem.Media);
+        Assert.Null(deferredItem.CandidateId);
+        Assert.Null(deferredItem.Media);
+        Assert.Equal(actionCount, session.Actions.Count);
+        Assert.Equal(decisionCount, session.DecisionLedger.Records.Count);
         Assert.DoesNotContain("RAW_CANDIDATE_DISPLAY_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
     }

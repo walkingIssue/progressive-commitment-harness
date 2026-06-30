@@ -1,0 +1,198 @@
+{
+  "manifestId": "japan-mood-media-v1",
+  "locale": "en-US",
+  "items": [
+    {
+      "mood": "calm_morning",
+      "candidateKind": "ScheduleBlock",
+      "media": {
+        "mediaId": "japan-calm_morning",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/calm_morning",
+        "altText": "Generated calm morning rice paper backdrop.",
+        "dominantColorToken": "pale-sun",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-calm_morning"
+        ]
+      }
+    },
+    {
+      "mood": "cultural_immersive",
+      "candidateKind": "Activity",
+      "media": {
+        "mediaId": "japan-cultural_immersive",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/cultural_immersive",
+        "altText": "Generated cherry and indigo cultural backdrop.",
+        "dominantColorToken": "cherry-indigo",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-cultural_immersive"
+        ]
+      }
+    },
+    {
+      "mood": "lively_food",
+      "candidateKind": "Restaurant",
+      "media": {
+        "mediaId": "japan-lively_food",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/lively_food",
+        "altText": "Generated warm market food backdrop.",
+        "dominantColorToken": "vermilion-amber",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-lively_food"
+        ]
+      }
+    },
+    {
+      "mood": "logistics_transit",
+      "candidateKind": "Transit",
+      "media": {
+        "mediaId": "japan-logistics_transit",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/logistics_transit",
+        "altText": "Generated clean transit logistics backdrop.",
+        "dominantColorToken": "signal-blue",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-logistics_transit"
+        ]
+      }
+    },
+    {
+      "mood": "reflective_culture",
+      "candidateKind": "Activity",
+      "media": {
+        "mediaId": "japan-reflective_culture",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/reflective_culture",
+        "altText": "Generated reflective culture lantern backdrop.",
+        "dominantColorToken": "paper-lantern",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-reflective_culture"
+        ]
+      }
+    },
+    {
+      "mood": "restorative_downtime",
+      "candidateKind": "Activity",
+      "media": {
+        "mediaId": "japan-restorative_downtime",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/restorative_downtime",
+        "altText": "Generated restorative downtime bathhouse backdrop.",
+        "dominantColorToken": "lavender-wood",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-restorative_downtime"
+        ]
+      }
+    },
+    {
+      "mood": "scenic_relaxed",
+      "candidateKind": "Activity",
+      "media": {
+        "mediaId": "japan-scenic_relaxed",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/scenic_relaxed",
+        "altText": "Generated sea glass scenic Japan backdrop.",
+        "dominantColorToken": "sea-glass",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-scenic_relaxed"
+        ]
+      }
+    },
+    {
+      "mood": "soft_nature",
+      "candidateKind": "Activity",
+      "media": {
+        "mediaId": "japan-soft_nature",
+        "sourceClass": "Generated",
+        "licenseClass": "Generated",
+        "uri": "local://card-media/japan/soft_nature",
+        "altText": "Generated soft nature moss and mist backdrop.",
+        "dominantColorToken": "moss-mist",
+        "width": 1200,
+        "height": 800,
+        "attribution": {
+          "sourceName": "Progressive Commitment Harness",
+          "authorName": "deterministic harness fixture",
+          "sourceUri": null,
+          "licenseName": "Generated internal fixture",
+          "licenseUri": null
+        },
+        "evidenceIds": [
+          "evidence-media-soft_nature"
+        ]
+      }
+    }
+  ]
+}
