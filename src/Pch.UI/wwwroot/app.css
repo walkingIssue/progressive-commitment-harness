@@ -1815,7 +1815,11 @@ body {
 .chat-shell--v18 .candidate-card {
     position: relative;
     overflow: hidden;
-    border-color: rgba(255, 255, 255, .74);
+    border: 3px solid rgba(255, 255, 255, .96);
+    box-shadow:
+        0 18px 38px rgba(22, 32, 51, .22),
+        0 0 0 1px rgba(28, 45, 69, .12),
+        inset 0 1px 0 rgba(255, 255, 255, .48);
 }
 
 .chat-shell--v18 .candidate-card::before {
@@ -1834,8 +1838,8 @@ body {
 
 .chat-shell--v18 .candidate-media {
     min-height: 8rem;
-    border: 1px solid rgba(255, 255, 255, .66);
-    box-shadow: 0 10px 26px rgba(22, 32, 51, .18);
+    border: 2px solid rgba(255, 255, 255, .9);
+    box-shadow: 0 10px 26px rgba(22, 32, 51, .22);
 }
 
 .chat-shell--v18 .candidate-card--culture {
