@@ -1,0 +1,48 @@
+<article class="candidate-card candidate-card--@Candidate.MoodTone"
+         data-candidate-id="@Candidate.CandidateId"
+         data-candidate-category="@Candidate.Category"
+         data-candidate-mood="@Candidate.Mood"
+         data-candidate-state="@Candidate.State"
+         data-media-asset-id="@Candidate.Media.AssetId"
+         data-media-state="@Candidate.Media.State"
+         data-media-source-class="@Candidate.Media.SourceClass"
+         data-evidence-ids="@string.Join(',', Candidate.EvidenceIds)">
+    <img class="candidate-media"
+         src="@Candidate.Media.Path"
+         alt="@Candidate.Media.Alt"
+         data-media-image="candidate"
+         data-media-asset-id="@Candidate.Media.AssetId"
+         data-media-mood="@Candidate.Media.Mood"
+         data-media-state="@Candidate.Media.State"
+         data-media-license="@Candidate.Media.License" />
+    <span>@Candidate.Mood.Replace('-', ' ')</span>
+    <h3>@Candidate.Title</h3>
+    <p>@Candidate.Summary</p>
+    <div class="candidate-actions">
+        <button type="button"
+                data-choice-action="select"
+                data-candidate-id="@Candidate.CandidateId"
+                aria-label="Select @Candidate.Title"
+                @onclick="() => OnSelect.InvokeAsync(Candidate.CandidateId)">
+            Select
+        </button>
+        <button type="button"
+                data-choice-action="defer"
+                data-candidate-id="@Candidate.CandidateId"
+                aria-label="Defer @Candidate.Title"
+                @onclick="() => OnDefer.InvokeAsync(Candidate.CandidateId)">
+            Defer
+        </button>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public EndUserCandidateOption Candidate { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnDefer { get; set; }
+}

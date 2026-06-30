@@ -1,0 +1,60 @@
+@if (Items.Count > 0)
+{
+    <section class="planning-timeline"
+             data-planning-timeline="trip"
+             data-planning-timeline-mode="@Mode"
+             data-raw-absence-state="@RawAbsenceState"
+             aria-labelledby="planning-timeline-title">
+        <div class="planning-timeline__header">
+            <div>
+                <p class="eyebrow">Planning history</p>
+                <h2 id="planning-timeline-title">Your itinerary memory</h2>
+            </div>
+            <div class="timeline-mode-toggle" data-timeline-mode-toggle="trip" role="group" aria-label="Planning timeline mode">
+                <button type="button"
+                        data-timeline-mode-action="day"
+                        data-timeline-mode-state="@(Mode == "day" ? "active" : "inactive")"
+                        aria-pressed="@(Mode == "day")"
+                        @onclick="() => OnModeChanged.InvokeAsync("day")">
+                    Day
+                </button>
+                <button type="button"
+                        data-timeline-mode-action="task"
+                        data-timeline-mode-state="@(Mode == "task" ? "active" : "inactive")"
+                        aria-pressed="@(Mode == "task")"
+                        @onclick="() => OnModeChanged.InvokeAsync("task")">
+                    Task
+                </button>
+            </div>
+        </div>
+        <div class="planning-timeline__rail"
+             data-planning-timeline-rail="@Mode"
+             tabindex="0"
+             aria-label="Browse planning history">
+            @foreach (var item in VisibleItems)
+            {
+                <PlanningTimelineItem Item="item" OnFocus="OnFocusTurn" />
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EndUserPlanningTimelineItem> Items { get; set; } = [];
+
+    [Parameter]
+    public string Mode { get; set; } = "day";
+
+    [Parameter]
+    public string RawAbsenceState { get; set; } = "verified";
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnModeChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnFocusTurn { get; set; }
+
+    private IReadOnlyList<EndUserPlanningTimelineItem> VisibleItems =>
+        Items.Where(item => item.Mode == Mode).ToArray();
+}

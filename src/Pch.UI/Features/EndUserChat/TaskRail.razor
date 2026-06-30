@@ -1,0 +1,31 @@
+<aside class="task-rail" data-task-rail="trip">
+    <div>
+        <p class="eyebrow">Tasks</p>
+        <h2>Agent plan</h2>
+    </div>
+    @foreach (var task in Tasks)
+    {
+        <details class="task-row"
+                 data-task-id="@task.TaskId"
+                 data-task-state="@task.State"
+                 data-task-progress="@task.Progress"
+                 open="@task.IsExpanded">
+            <summary>
+                <span class="status-dot" aria-hidden="true"></span>
+                <span>@task.Title</span>
+                <strong>@task.StatusLabel</strong>
+            </summary>
+            <div>
+                @foreach (var step in task.Steps)
+                {
+                    <p data-task-step-id="@step.StepId" data-task-step-state="@step.State">@step.Label</p>
+                }
+            </div>
+        </details>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EndUserTask> Tasks { get; set; } = [];
+}

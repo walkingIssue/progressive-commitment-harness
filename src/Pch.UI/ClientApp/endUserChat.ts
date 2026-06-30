@@ -161,6 +161,10 @@ function transcript(): HTMLElement | null {
   return document.querySelector<HTMLElement>("[data-transcript='trip']");
 }
 
+function chatMain(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".chat-main");
+}
+
 function scheduleFallback(shouldRun: () => boolean, action: () => void): void {
   window.setTimeout(() => {
     if (shouldRun()) {
@@ -228,6 +232,47 @@ function candidateCard(candidate: (typeof candidates)[number], state = "availabl
     </article>`;
 }
 
+function timelineItem(
+  id: string,
+  mode: string,
+  kind: string,
+  state: string,
+  title: string,
+  summary: string,
+  originTurnId: string,
+  media: MediaAsset,
+  attrs = "",
+): string {
+  return `<button type="button" class="planning-timeline__item" data-planning-timeline-item="${id}" data-planning-mode="${mode}" data-planning-kind="${kind}" data-planning-state="${state}" data-origin-turn-id="${originTurnId}" data-media-asset-id="${media.id}" data-media-state="${media.state}" data-trace-outcome="${state}" ${attrs} aria-label="Jump to ${title}"><img src="${media.path}" alt="${media.alt}" data-planning-timeline-media="true" data-media-asset-id="${media.id}" data-media-mood="${media.mood}" data-media-state="${media.state}" data-media-license="${media.license}" /><span>${kind.replaceAll("-", " ")}</span><strong>${title}</strong><small>${summary}</small></button>`;
+}
+
+function ensurePlanningTimeline(): void {
+  if (document.querySelector("[data-planning-timeline='trip']")) {
+    return;
+  }
+
+  chatMain()?.insertAdjacentHTML(
+    "beforeend",
+    `<section class="planning-timeline" data-planning-timeline="trip" data-planning-timeline-mode="day" data-raw-absence-state="verified" aria-labelledby="planning-timeline-title">
+      <div class="planning-timeline__header">
+        <div><p class="eyebrow">Planning history</p><h2 id="planning-timeline-title">Your itinerary memory</h2></div>
+        <div class="timeline-mode-toggle" data-timeline-mode-toggle="trip" role="group" aria-label="Planning timeline mode">
+          <button type="button" data-timeline-mode-action="day" data-timeline-mode-state="active" aria-pressed="true">Day</button>
+          <button type="button" data-timeline-mode-action="task" data-timeline-mode-state="inactive" aria-pressed="false">Task</button>
+        </div>
+      </div>
+      <div class="planning-timeline__rail" data-planning-timeline-rail="day" tabindex="0" aria-label="Browse planning history">
+        ${timelineItem("timeline-day-1-mission", "day", "mission", "accepted", "Day 1 direction", "Culture-first Japan trip facts accepted.", "turn-03", mediaAsset("calm_morning"), 'data-day-id="day-japan-01" data-slot-id="slot-morning" data-decision-id="decision-mission-facts" data-evidence-id="evidence-chat-purpose"')}
+        ${timelineItem("timeline-day-1-confirmation", "day", "confirmation", "pending", "Style confirmation", "Dates and travel style remain confirmation-ready.", "turn-assistant-final", mediaAsset("restorative_downtime"), 'data-day-id="day-japan-01" data-slot-id="slot-planning" data-decision-id="decision-pending-confirmation" data-evidence-id="evidence-chat-style"')}
+        ${timelineItem("timeline-day-2-availability", "day", "availability", "quote-ready", "Availability guarded", "Quote and hold-adjacent work remains approval gated.", "turn-assistant-final", mediaAsset("logistics_transit"), 'data-day-id="day-japan-02" data-slot-id="slot-availability" data-decision-id="decision-availability-preview" data-evidence-id="evidence-chat-approval"')}
+        ${timelineItem("timeline-task-basics", "task", "task", "accepted", "Understand trip basics", "Mission facts and deterministic transcript are ready.", "turn-03", mediaAsset("calm_morning"), 'data-task-id="task-basics" data-decision-id="decision-task-basics" data-evidence-id="evidence-chat-purpose" hidden')}
+        ${timelineItem("timeline-task-itinerary", "task", "task", "active", "Compare itinerary choices", "Candidate cards are ready for select or defer.", "turn-assistant-final", mediaAsset("reflective_culture"), 'data-task-id="task-itinerary" data-decision-id="decision-choice-set" data-evidence-id="evidence-chat-candidate" hidden')}
+        ${timelineItem("timeline-task-approval", "task", "task", "not_started", "Approval gate", "Mock hold work is blocked until explicit approval.", "turn-assistant-final", mediaAsset("logistics_transit"), 'data-task-id="task-approval" data-decision-id="decision-approval-preview" data-evidence-id="evidence-chat-approval" hidden')}
+      </div>
+    </section>`,
+  );
+}
+
 function ensureWorkObjects(): void {
   const panel = transcript();
   if (!panel || panel.querySelector("[data-form-id='form-trip-basics']")) {
@@ -259,11 +304,9 @@ function ensureWorkObjects(): void {
       <button type="button" data-approval-action="request" aria-label="Request mock hold approval preview">Preview approval block</button>
     </article>
     <aside class="provider-notice" data-provider-failure-notice="notice-deterministic-fallback" data-provider-outcome="deterministic_fallback_active" data-provider-state="deterministic"><strong>Provider status</strong><p>Live provider calls are disabled for required smoke; the deterministic transcript remains available.</p></aside>
-    <section class="plan-trail" data-plan-trail="chat" tabindex="0" aria-label="Evidence and plan trail">
-      <article data-plan-trail-item="trail-mission-facts" data-plan-trail-kind="mission" data-plan-trail-state="accepted" data-evidence-id="evidence-chat-purpose" data-media-asset-id="${calmMorningMedia.id}" data-media-state="${calmMorningMedia.state}" data-trace-outcome="golden_trace_complete"><img class="plan-trail__media" src="${calmMorningMedia.path}" alt="${calmMorningMedia.alt}" data-plan-trail-media="true" data-media-asset-id="${calmMorningMedia.id}" data-media-mood="${calmMorningMedia.mood}" data-media-state="${calmMorningMedia.state}" data-media-license="${calmMorningMedia.license}" /><span>mission</span><strong>Mission facts accepted</strong></article>
-      <article data-plan-trail-item="trail-pending-confirmations" data-plan-trail-kind="confirmation" data-plan-trail-state="pending" data-evidence-id="evidence-chat-style" data-media-asset-id="${restorativeDowntimeMedia.id}" data-media-state="${restorativeDowntimeMedia.state}" data-trace-outcome="end_user_chat_pending_confirmation"><img class="plan-trail__media" src="${restorativeDowntimeMedia.path}" alt="${restorativeDowntimeMedia.alt}" data-plan-trail-media="true" data-media-asset-id="${restorativeDowntimeMedia.id}" data-media-mood="${restorativeDowntimeMedia.mood}" data-media-state="${restorativeDowntimeMedia.state}" data-media-license="${restorativeDowntimeMedia.license}" /><span>confirmation</span><strong>Travel style and dates pending</strong></article>
-    </section>`,
+    <section class="evidence-strip" data-evidence-strip="chat"><span data-evidence-id="evidence-chat-purpose" data-evidence-kind="trace" data-trace-outcome="golden_trace_complete">Canonical trace evidence</span><span data-evidence-id="evidence-chat-candidate" data-evidence-kind="candidate" data-trace-outcome="candidate_pool_ready">Candidate provenance retained</span></section>`,
   );
+  ensurePlanningTimeline();
 }
 
 function sendPrompt(): void {
@@ -305,14 +348,16 @@ function selectCandidate(candidateId: string): void {
     article.dataset.candidateCategory = "trip-style";
     article.innerHTML = `<div class="chat-turn__meta"><span>user</span><strong>choice</strong></div><div class="selected-option-bubble candidate-card candidate-card--${candidate.tone}" data-selected-option-card="true" data-candidate-id="${candidate.id}" data-candidate-category="trip-style" data-candidate-mood="${candidate.mood}" data-candidate-state="selected" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-media-source-class="${candidate.media.sourceClass}" data-evidence-ids="evidence-chat-candidate,${candidate.evidence}"><img class="candidate-media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-media-image="selected-option" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>${candidate.mood.replaceAll("-", " ")}</span><h3>${candidate.title}</h3><p>${candidate.summary}</p></div>`;
   }
-  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-selected-option" data-plan-trail-kind="selected-option" data-plan-trail-state="selected" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-trace-outcome="choice_candidate_selected"><img class="plan-trail__media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-plan-trail-media="true" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>selected option</span><strong>${candidate.title}</strong></article>`);
+  ensurePlanningTimeline();
+  document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-selected-option", "day", "candidate", "selected", `Selected ${candidate.title}`, candidate.summary, "turn-choice-selected", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-itinerary-choice" data-candidate-id="${candidate.id}" data-decision-id="decision-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
 }
 
 function deferCandidate(candidateId: string): void {
   const candidate = candidates.find((item) => item.id === candidateId);
   if (!candidate) return;
   setRootState({ "data-final-state": "candidate_deferred" });
-  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-deferred-option" data-plan-trail-kind="deferred-option" data-plan-trail-state="deferred" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-trace-outcome="choice_candidate_deferred"><img class="plan-trail__media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-plan-trail-media="true" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>deferred option</span><strong>${candidate.title}</strong></article>`);
+  ensurePlanningTimeline();
+  document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-deferred-option", "day", "candidate", "deferred", `Deferred ${candidate.title}`, candidate.summary, "turn-choice-deferred", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-itinerary-choice" data-candidate-id="${candidate.id}" data-decision-id="decision-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
 }
 
 function requestApproval(): void {
@@ -321,7 +366,8 @@ function requestApproval(): void {
   plate?.setAttribute("data-approval-state", "blocked_missing_approval");
   plate?.setAttribute("data-blocked-reason", "approval_required_preview");
   appendTurn("turn-approval-blocked", "harness", "approval", "blocked", "Mock hold preparation is blocked until explicit approval is available. No hold or booking was created.", "approval_required_preview", "evidence-chat-approval");
-  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-approval-blocked" data-plan-trail-kind="approval" data-plan-trail-state="blocked" data-evidence-id="evidence-chat-approval" data-trace-outcome="approval_required_preview"><span>approval</span><strong>Mock hold approval blocked</strong></article>`);
+  ensurePlanningTimeline();
+  document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-approval-blocked", "task", "approval", "blocked", "Mock hold blocked", "Approval is required before mock hold work can continue.", "turn-approval-blocked", mediaAsset("logistics_transit"), 'data-task-id="task-approval" data-decision-id="decision-approval-preview" data-evidence-id="evidence-chat-approval" hidden'));
 }
 
 function toggleDrawer(open: boolean): void {
@@ -340,6 +386,33 @@ function moveDeck(direction: number): void {
   index.dataset.deckIndex = String(next);
   index.textContent = `${next + 1}/2`;
   deck.scrollLeft = next * 260;
+}
+
+function setTimelineMode(mode: string): void {
+  const timeline = document.querySelector<HTMLElement>("[data-planning-timeline='trip']");
+  const rail = document.querySelector<HTMLElement>("[data-planning-timeline-rail]");
+  if (!timeline || !rail) return;
+  const nextMode = mode === "task" ? "task" : "day";
+  timeline.dataset.planningTimelineMode = nextMode;
+  rail.dataset.planningTimelineRail = nextMode;
+  document.querySelectorAll<HTMLElement>("[data-planning-timeline-item]").forEach((item) => {
+    item.hidden = item.dataset.planningMode !== nextMode;
+  });
+  document.querySelectorAll<HTMLElement>("[data-timeline-mode-action]").forEach((button) => {
+    const active = button.dataset.timelineModeAction === nextMode;
+    button.dataset.timelineModeState = active ? "active" : "inactive";
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function focusOriginTurn(turnId: string): void {
+  const turn = document.querySelector<HTMLElement>(`[data-turn-id="${turnId}"]`);
+  if (!turn) return;
+  root()?.setAttribute("data-focused-turn-id", turnId);
+  document.querySelectorAll<HTMLElement>("[data-turn-id]").forEach((element) => {
+    element.dataset.turnFocused = element.dataset.turnId === turnId ? "true" : "false";
+  });
+  turn.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 document.addEventListener("click", (event) => {
@@ -408,19 +481,37 @@ document.addEventListener("click", (event) => {
       () => moveDeck(direction),
     );
   }
+
+  const modeButton = target.closest<HTMLElement>("[data-timeline-mode-action]");
+  if (modeButton?.dataset.timelineModeAction) {
+    const mode = modeButton.dataset.timelineModeAction;
+    scheduleFallback(
+      () => document.querySelector<HTMLElement>("[data-planning-timeline='trip']")?.dataset.planningTimelineMode !== mode,
+      () => setTimelineMode(mode),
+    );
+  }
+
+  const timelineItem = target.closest<HTMLElement>("[data-origin-turn-id]");
+  const originTurnId = timelineItem?.dataset.originTurnId;
+  if (originTurnId) {
+    scheduleFallback(
+      () => root()?.dataset.focusedTurnId !== originTurnId,
+      () => focusOriginTurn(originTurnId),
+    );
+  }
 });
 
 document.addEventListener("keydown", (event) => {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || target.dataset.planTrail !== "chat") return;
+  if (!(target instanceof HTMLElement) || target.dataset.planningTimelineRail == null) return;
   if (event.key === "ArrowRight") {
     target.scrollLeft += 180;
-    target.dataset.planTrailBrowse = "keyboard-next";
+    target.dataset.timelineBrowse = "keyboard-next";
     event.preventDefault();
   }
   if (event.key === "ArrowLeft") {
     target.scrollLeft -= 180;
-    target.dataset.planTrailBrowse = "keyboard-previous";
+    target.dataset.timelineBrowse = "keyboard-previous";
     event.preventDefault();
   }
 });

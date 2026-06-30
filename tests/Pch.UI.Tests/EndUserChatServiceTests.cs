@@ -58,6 +58,16 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(state.PlanTrail, item => item.TrailId == "trail-mission-facts"
             && item.State == "accepted"
             && item.Media?.AssetId == "calm_morning");
+        Assert.Contains(state.PlanningTimeline, item => item.TimelineId == "timeline-day-1-mission"
+            && item.Mode == "day"
+            && item.DayId == "day-japan-01"
+            && item.SlotId == "slot-morning"
+            && item.OriginTurnId == "turn-03"
+            && item.Media?.AssetId == "calm_morning");
+        Assert.Contains(state.PlanningTimeline, item => item.TimelineId == "timeline-task-itinerary"
+            && item.Mode == "task"
+            && item.TaskId == "task-itinerary"
+            && item.EvidenceId == "evidence-chat-candidate");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-user-1"
             && turn.Role == "user"
             && turn.Kind == "prompt"
@@ -99,11 +109,21 @@ public sealed class EndUserChatServiceTests
             && item.CandidateId == "candidate-japan-classic-highlights"
             && item.OutcomeCode == "choice_candidate_selected"
             && item.Media?.AssetId == "reflective_culture");
+        Assert.Contains(selected.PlanningTimeline, item => item.TimelineId == "timeline-selected-option"
+            && item.Mode == "day"
+            && item.CandidateId == "candidate-japan-classic-highlights"
+            && item.OriginTurnId == "turn-choice-selected"
+            && item.Media?.AssetId == "reflective_culture");
         Assert.Equal("blocked", blocked.FinalState);
         Assert.Equal("blocked_missing_approval", blocked.ApprovalState);
         Assert.Equal("approval_required_preview", blocked.ApprovalPlate?.BlockedReason);
         Assert.Contains(blocked.PlanTrail, item => item.TrailId == "trail-approval-blocked"
             && item.State == "blocked");
+        Assert.Contains(blocked.PlanningTimeline, item => item.TimelineId == "timeline-approval-blocked"
+            && item.Mode == "task"
+            && item.TaskId == "task-approval"
+            && item.OriginTurnId == "turn-approval-blocked"
+            && item.OutcomeCode == "approval_required_preview");
     }
 
     [Fact]
@@ -119,6 +139,10 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(deferred.PlanTrail, item => item.TrailId == "trail-deferred-option"
             && item.CandidateId == "candidate-japan-scenic-explorer"
             && item.OutcomeCode == "choice_candidate_deferred"
+            && item.Media?.AssetId == "soft_nature");
+        Assert.Contains(deferred.PlanningTimeline, item => item.TimelineId == "timeline-deferred-option"
+            && item.CandidateId == "candidate-japan-scenic-explorer"
+            && item.OriginTurnId == "turn-choice-deferred"
             && item.Media?.AssetId == "soft_nature");
     }
 

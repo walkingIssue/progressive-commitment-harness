@@ -1,0 +1,60 @@
+<article class="work-bubble" data-work-bubble="choices" data-choice-set-id="@ChoiceSet.ChoiceSetId" data-choice-state="@ChoiceSet.State">
+    <p class="work-lead">Here are option decks grouped by feel. The ids stay attached even when the cards get friendlier.</p>
+    <section class="choice-card" aria-labelledby="choice-title">
+        <div class="choice-card__header">
+            <div>
+                <h2 id="choice-title">@ChoiceSet.Title</h2>
+                <p>@ChoiceSet.Prompt</p>
+            </div>
+            <div class="deck-controls" data-deck-controls="mood-deck">
+                <button type="button" data-deck-control="previous" aria-label="Show previous culture option" @onclick="OnPrevious">Prev</button>
+                <span data-deck-index="@DeckIndex">@DeckIndexDisplay</span>
+                <button type="button" data-deck-control="next" aria-label="Show next culture option" @onclick="OnNext">Next</button>
+            </div>
+        </div>
+
+        <div class="candidate-deck"
+             data-candidate-deck="reflective-culture"
+             data-deck-index="@DeckIndex"
+             tabindex="0"
+             aria-label="Reflective culture option deck">
+            @foreach (var candidate in CultureCandidates)
+            {
+                <OptionCard Candidate="candidate" OnSelect="OnSelect" OnDefer="OnDefer" />
+            }
+        </div>
+
+        @foreach (var candidate in OtherCandidates)
+        {
+            <OptionCard Candidate="candidate" OnSelect="OnSelect" OnDefer="OnDefer" />
+        }
+    </section>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public EndUserChoiceSetCard ChoiceSet { get; set; } = default!;
+
+    [Parameter]
+    public int DeckIndex { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnPrevious { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnNext { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnSelect { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnDefer { get; set; }
+
+    private IReadOnlyList<EndUserCandidateOption> CultureCandidates =>
+        ChoiceSet.Candidates.Where(candidate => candidate.Mood == "reflective-culture").ToArray();
+
+    private IReadOnlyList<EndUserCandidateOption> OtherCandidates =>
+        ChoiceSet.Candidates.Where(candidate => candidate.Mood != "reflective-culture").ToArray();
+
+    private string DeckIndexDisplay => $"{DeckIndex + 1}/{Math.Max(1, CultureCandidates.Count)}";
+}

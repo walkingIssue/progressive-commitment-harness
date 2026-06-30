@@ -1,0 +1,37 @@
+@if (FormCard is not null)
+{
+    <article class="work-bubble" data-work-bubble="form" data-form-id="@FormCard.FormId" data-form-state="@FormCard.State">
+        <p class="work-lead">I pulled the basics into a structured checkpoint before comparing options.</p>
+        <section class="form-card" aria-labelledby="trip-form-title">
+            <div>
+                <h2 id="trip-form-title">@FormCard.Title</h2>
+                <p>@FormCard.Prompt</p>
+            </div>
+            @foreach (var field in FormCard.Fields)
+            {
+                <label class="form-field"
+                       data-field-id="@field.FieldId"
+                       data-field-state="@field.State"
+                       data-evidence-id="@field.EvidenceId">
+                    <span>@field.Label</span>
+                    <input value="@field.Value" aria-label="@field.Label" readonly />
+                </label>
+            }
+            <button type="button"
+                    class="secondary-button"
+                    data-form-submit="@FormCard.FormId"
+                    aria-label="Submit trip basics form"
+                    @onclick="OnSubmitForm">
+                Submit basics
+            </button>
+        </section>
+    </article>
+}
+
+@code {
+    [Parameter]
+    public EndUserFormCard? FormCard { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnSubmitForm { get; set; }
+}

@@ -1,0 +1,18 @@
+@if (ProviderFailure is not null)
+{
+    <aside class="provider-notice"
+           data-provider-failure-notice="@ProviderFailure.NoticeId"
+           data-provider-outcome="@ProviderFailure.OutcomeCode"
+           data-provider-state="@ProviderFailure.State">
+        <strong>Provider status</strong>
+        <p>@ProviderFailure.Message</p>
+        <button type="button" data-fallback-action="continue-deterministic" disabled="@(!ProviderFailure.CanContinueDeterministic)">
+            Continue deterministic
+        </button>
+    </aside>
+}
+
+@code {
+    [Parameter]
+    public EndUserProviderFailureNotice? ProviderFailure { get; set; }
+}
