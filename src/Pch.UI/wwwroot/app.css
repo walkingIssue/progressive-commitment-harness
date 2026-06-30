@@ -265,20 +265,26 @@ h1:focus {
     grid-column: 1 / -1;
 }
 
+.availability-preview-panel {
+    grid-column: 1 / -1;
+}
+
 .fidelity-release-panel {
     grid-column: 1 / -1;
 }
 
 .suggestion-list,
 .model-run-list,
-.mission-run-list {
+.mission-run-list,
+.availability-run-list {
     display: grid;
     gap: .75rem;
 }
 
 .suggestion-card,
 .model-run-card,
-.mission-run-card {
+.mission-run-card,
+.availability-card {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: .75rem;
@@ -290,7 +296,8 @@ h1:focus {
 
 .suggestion-card p,
 .model-run-card p,
-.mission-run-card p {
+.mission-run-card p,
+.availability-card p {
     color: var(--pch-muted);
     margin: .25rem 0;
 }
@@ -323,6 +330,23 @@ h1:focus {
 }
 
 .mission-run-card[data-itinerary-outcome="blocked"] {
+    border-color: #b86969;
+    background: #fff4f4;
+}
+
+.availability-card[data-availability-state="quote-ready"] {
+    border-color: #87b49d;
+    background: #f3faf6;
+}
+
+.availability-card[data-availability-state="approval-required"],
+.availability-card[data-availability-state="unavailable"] {
+    border-color: #d4ba72;
+    background: #fffaf0;
+}
+
+.availability-card[data-availability-state="provider-blocked"],
+.availability-card[data-availability-state="harness-blocked"] {
     border-color: #b86969;
     background: #fff4f4;
 }
@@ -483,12 +507,31 @@ h1:focus {
     padding-top: .75rem;
 }
 
+.availability-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: .85rem;
+    margin-top: 1rem;
+}
+
+.availability-grid section,
+.availability-list {
+    display: grid;
+    gap: .5rem;
+}
+
+.availability-grid section {
+    border-top: 1px solid var(--pch-line);
+    padding-top: .75rem;
+}
+
 .itinerary-day,
 .candidate-pool,
 .candidate-option,
 .itinerary-slot,
 .itinerary-evidence,
-.itinerary-digest {
+.itinerary-digest,
+.availability-quote {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -627,6 +670,7 @@ h1:focus {
     .suggestion-card,
     .model-run-card,
     .mission-run-card,
+    .availability-card,
     .mission-result-grid,
     .response-card,
     .trace-list li {
