@@ -1,0 +1,115 @@
+{
+  "version": "sprint-017",
+  "packId": "japan-card-pack",
+  "fallbackAssetId": "mood_placeholder",
+  "assets": [
+    {
+      "assetId": "cultural_immersive",
+      "mood": "cultural_immersive",
+      "path": "/media/japan-card-pack/cultural-immersive.svg",
+      "alt": "Abstract lanterns and temple lines for an immersive cultural Japan card.",
+      "dominantColor": "#25163f",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Abstract Japan cultural immersion card art, lantern glow, paper textures, indigo temple lines, warm cherry tones.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "scenic_relaxed",
+      "mood": "scenic_relaxed",
+      "path": "/media/japan-card-pack/scenic-relaxed.svg",
+      "alt": "Mist, moss, sky, and coastline shapes for a relaxed scenic Japan card.",
+      "dominantColor": "#78b9a5",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Relaxed scenic Japan abstract backdrop, sea glass, pale sky, moss, mist, soft coastline.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "lively_food",
+      "mood": "lively_food",
+      "path": "/media/japan-card-pack/lively-food.svg",
+      "alt": "Warm food market colors with lanterns and ceramic blue accents.",
+      "dominantColor": "#d94c3d",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Lively Japanese food market abstract card art, vermilion, amber, ceramic blue, lanterns.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "calm_morning",
+      "mood": "calm_morning",
+      "path": "/media/japan-card-pack/calm-morning.svg",
+      "alt": "Pale sun and soft green morning fields for a calm morning card.",
+      "dominantColor": "#f7ecd5",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Calm morning Japan abstract card art, rice paper, pale sun, soft green, low contrast.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "reflective_culture",
+      "mood": "reflective_culture",
+      "path": "/media/japan-card-pack/reflective-culture.svg",
+      "alt": "Cherry, indigo, paper, and lantern glow for a reflective culture card.",
+      "dominantColor": "#182340",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Reflective culture Japan card art, cherry, indigo, paper, lantern glow, quiet temple silhouette.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "soft_nature",
+      "mood": "soft_nature",
+      "path": "/media/japan-card-pack/soft-nature.svg",
+      "alt": "Soft mountain, moss, and water shapes for a quiet nature card.",
+      "dominantColor": "#8fd3ca",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Soft nature Japan abstract card art, moss, mountains, pale water, gentle sky.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "restorative_downtime",
+      "mood": "restorative_downtime",
+      "path": "/media/japan-card-pack/restorative-downtime.svg",
+      "alt": "Lavender grey, warm wood, and bathhouse steam for restorative downtime.",
+      "dominantColor": "#d8d3e8",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Restorative downtime Japan card art, lavender grey, warm wood, bathhouse steam, quiet rest.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "logistics_transit",
+      "mood": "logistics_transit",
+      "path": "/media/japan-card-pack/logistics-transit.svg",
+      "alt": "Crisp transit linework with blue, charcoal, and signal green.",
+      "dominantColor": "#102235",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Logistics transit Japan card art, crisp blue, charcoal, signal green, clean linework.",
+      "generationDate": "2026-06-30"
+    },
+    {
+      "assetId": "mood_placeholder",
+      "mood": "fallback",
+      "path": "/media/japan-card-pack/mood-placeholder.svg",
+      "alt": "Deterministic fallback mood art used when media is missing.",
+      "dominantColor": "#f7efe1",
+      "sourceClass": "generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally for Progressive Commitment Harness Sprint 017.",
+      "prompt": "Deterministic fallback card placeholder, quiet paper, teal lines, no location-specific claim.",
+      "generationDate": "2026-06-30"
+    }
+  ]
+}

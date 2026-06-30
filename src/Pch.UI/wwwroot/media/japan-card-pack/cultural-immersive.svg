@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Cultural immersive mood art</title>
+  <desc id="desc">Abstract lanterns, paper shapes, and indigo temple lines.</desc>
+  <rect width="640" height="420" fill="#25163f"/>
+  <path d="M0 328c100-54 184-41 277-17 111 29 205 31 363-48v157H0z" fill="#f4b6a6"/>
+  <circle cx="502" cy="92" r="42" fill="#f2c078"/>
+  <circle cx="156" cy="128" r="70" fill="#77345b"/>
+  <path d="M94 274h452M150 238h340M207 202h226" stroke="#f7efe1" stroke-width="12" stroke-linecap="round"/>
+  <path d="M220 94h202l-44 48H264zM252 142h138v112H252z" fill="#151f35" opacity=".82"/>
+  <path d="M290 142v112M352 142v112" stroke="#f4b6a6" stroke-width="8"/>
+  <g fill="#f7efe1" opacity=".9">
+    <circle cx="88" cy="70" r="8"/><circle cx="114" cy="96" r="5"/><circle cx="551" cy="186" r="7"/><circle cx="581" cy="220" r="4"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Lively food mood art</title>
+  <desc id="desc">Market lanterns, ceramic blues, and warm food stall colors.</desc>
+  <rect width="640" height="420" fill="#15344a"/>
+  <path d="M0 286h640v134H0z" fill="#f6a33f"/>
+  <path d="M55 102h530v90H55z" fill="#d94c3d"/>
+  <path d="M92 132h92v148H92zM274 132h92v148h-92zM456 132h92v148h-92z" fill="#fff0cc"/>
+  <circle cx="138" cy="216" r="36" fill="#234c8a"/><circle cx="320" cy="216" r="36" fill="#234c8a"/><circle cx="502" cy="216" r="36" fill="#234c8a"/>
+  <path d="M84 326c80-35 162-35 246 0s157 34 226 0" fill="none" stroke="#fff7df" stroke-width="18" stroke-linecap="round"/>
+  <path d="M72 72h496" stroke="#ffcf6b" stroke-width="10" stroke-linecap="round"/>
+</svg>

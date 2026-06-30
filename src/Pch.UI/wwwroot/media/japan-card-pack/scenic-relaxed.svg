@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Scenic relaxed mood art</title>
+  <desc id="desc">Mist, moss, pale sky, and quiet coastline shapes.</desc>
+  <rect width="640" height="420" fill="#d8f0ef"/>
+  <path d="M0 238c105-76 188-82 300-19 97 55 189 63 340-10v211H0z" fill="#78b9a5"/>
+  <path d="M0 302c130-46 203-32 304 13 100 45 207 26 336-29v134H0z" fill="#346f5f"/>
+  <path d="M0 340c128-14 222 6 308 31 95 27 195 26 332-8v57H0z" fill="#f7f0d2"/>
+  <circle cx="510" cy="96" r="44" fill="#fff1b8"/>
+  <path d="M76 155c73-30 158-30 252 0M361 164c62-25 119-23 191 4" fill="none" stroke="#ffffff" stroke-width="17" stroke-linecap="round" opacity=".7"/>
+</svg>

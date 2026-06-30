@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Soft nature mood art</title>
+  <desc id="desc">Soft mountain, moss, water, and pale nature gradients.</desc>
+  <rect width="640" height="420" fill="#dff5ea"/>
+  <path d="M60 274 242 104l182 170z" fill="#83b693"/>
+  <path d="M246 274 398 144l172 130z" fill="#5c947d"/>
+  <path d="M0 294c99-33 205-26 317 20 102 41 212 35 323-19v125H0z" fill="#8fd3ca"/>
+  <path d="M0 348c117-15 206-10 300 20 113 36 212 30 340-4v56H0z" fill="#f7f0d2"/>
+  <circle cx="520" cy="78" r="38" fill="#fff4a7"/>
+</svg>

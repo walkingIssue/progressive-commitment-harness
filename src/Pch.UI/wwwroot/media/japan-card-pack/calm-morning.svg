@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Calm morning mood art</title>
+  <desc id="desc">Rice paper, pale sun, soft green fields, and quiet morning bands.</desc>
+  <rect width="640" height="420" fill="#f7ecd5"/>
+  <circle cx="474" cy="116" r="58" fill="#f8d48a"/>
+  <path d="M0 260c102-48 222-48 330 0 90 41 186 42 310-9v169H0z" fill="#b8d6ad"/>
+  <path d="M0 320c126-24 231-20 343 11 82 23 173 20 297-17v106H0z" fill="#7faa84"/>
+  <path d="M104 116h238M76 154h296M128 192h192" stroke="#fffaf0" stroke-width="14" stroke-linecap="round"/>
+  <path d="M82 252c80 12 159 12 237 0" stroke="#5a7b61" stroke-width="8" opacity=".5"/>
+</svg>
