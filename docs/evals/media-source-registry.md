@@ -16,6 +16,12 @@ Accepted rows may persist:
 
 Accepted rows intentionally do not persist image URLs, thumbnail URLs, source URLs, raw alt text, raw provider payloads, search queries, keys, credentials, or candidate display values.
 
+Provider/API-origin metadata fields are sanitized before accepted rows are emitted:
+
+- media id, source id, source provider name, license name, author name, and attribution text keep safe bounded values and otherwise become fixed redacted placeholders.
+- author URL is optional and is kept only when it is a bounded HTTPS URL without unsafe markers; unsafe author URLs become null.
+- source URL and license URL remain runtime DTO fields only and are not copied into eval rows.
+
 Rejected rows use fixed identifiers:
 
 - row name `media_registry_rejected`

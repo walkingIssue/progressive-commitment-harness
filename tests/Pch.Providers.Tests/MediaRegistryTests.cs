@@ -93,6 +93,36 @@ public sealed class MediaRegistryTests
         Assert.DoesNotContain("soft_nature", serialized);
     }
 
+    [Fact]
+    public async Task AcceptedRowsRedactUnsafeProviderReturnedMetadataFields()
+    {
+        var packet = CreatePacket();
+        var result = CreateResult(packet) with
+        {
+            CandidateMedia =
+            [
+                CreateUnsafeMetadataMapping(packet.Candidates[0]),
+                .. CreateResult(packet).CandidateMedia.Skip(1)
+            ]
+        };
+        var evaluator = new MediaRegistryEvaluator(new StaticMediaRegistrySource(result));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new MediaRegistryEvalCase("unsafe-accepted-metadata", packet)]));
+
+        Assert.True(row.Passed);
+        var asset = Assert.Single(row.Candidates.Single(candidate => candidate.CandidateId == "candidate-flight").Assets);
+        Assert.Equal("media_id_redacted", asset.MediaId);
+        Assert.Equal(MediaRegistryEvaluator.RedactedMetadataValue, asset.SourceId);
+        Assert.Equal(MediaRegistryEvaluator.RedactedMetadataValue, asset.ProviderName);
+        Assert.Equal(MediaRegistryEvaluator.RedactedMetadataValue, asset.LicenseName);
+        Assert.Equal(MediaRegistryEvaluator.RedactedMetadataValue, asset.AuthorName);
+        Assert.Null(asset.AuthorUrl);
+        Assert.Equal(MediaRegistryEvaluator.RedactedMetadataValue, asset.AttributionText);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+        Assert.DoesNotContain("https://unsafe.example", SanitizedEvalArtifactAssert.Serialize(row));
+    }
+
     [Theory]
     [InlineData(MockMediaRegistryBehavior.PacketMismatch, "media_registry_packet_mismatch", null)]
     [InlineData(MockMediaRegistryBehavior.CandidateMismatch, "media_registry_candidate_mismatch", null)]
@@ -261,6 +291,34 @@ public sealed class MediaRegistryTests
             "provider-safe-unless-rejected",
             "model-safe-unless-rejected",
             "request-safe-unless-rejected");
+
+    private static CandidateMediaMapping CreateUnsafeMetadataMapping(MediaRegistryCandidate candidate) =>
+        new(
+            candidate.SlotId,
+            candidate.CandidateId,
+            candidate.Category,
+            [
+                new MediaAsset(
+                    $"{RawProviderPayload}-media-id",
+                    new MediaSource(
+                        $"{SecretSentinel}-source-id",
+                        MediaSourceClass.Pexels,
+                        $"{ApiKey}-provider-name",
+                        "https://unsafe.example/source"),
+                    new MediaLicense(
+                        MediaLicenseClass.FreeCommercial,
+                        $"{RawSearchQuery}-license-name",
+                        "https://unsafe.example/license",
+                        RequiresAttribution: true,
+                        AllowsCommercialUse: true),
+                    new MediaAttribution(
+                        $"{CandidateDisplayValue}-author-name",
+                        $"https://unsafe.example/{SecretSentinel}",
+                        $"{RawProviderPayload}-attribution-text"),
+                    1200,
+                    800,
+                    ImageUrl: $"https://image.example/{RawImageUrl}.jpg")
+            ]);
 
     private static void AssertRejected(
         SanitizedMediaRegistryEvalRow row,

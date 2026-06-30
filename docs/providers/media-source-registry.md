@@ -27,5 +27,7 @@ No arbitrary scraping is allowed in this provider lane. A future scraper would n
 Sanitization posture:
 
 - Accepted eval rows persist media ids, source class/id/provider name, license class/name, attribution fields, trusted slot/candidate/category ids, dimensions, response length, and accepted provider/model/request metadata.
+- Accepted provider-origin metadata fields are sanitized before persistence. Safe bounded values survive; raw-payload, credential, token, prompt, sentinel, or secret-like values become fixed redacted placeholders.
+- Author URLs are kept only when they are bounded HTTPS URLs without unsafe markers; unsafe author URLs are dropped. Image, thumbnail, source, and license URLs are not persisted in eval rows.
 - Eval rows do not persist image URLs, thumbnail URLs, alt text, search queries, provider payloads, API keys, credentials, raw exceptions, failed-response URLs, or sentinel strings.
 - Rejected/error rows use fixed redacted row identifiers and omit provider result metadata.

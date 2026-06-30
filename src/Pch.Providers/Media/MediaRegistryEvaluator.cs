@@ -6,6 +6,7 @@ public sealed class MediaRegistryEvaluator
 {
     public const string RejectedRowName = "media_registry_rejected";
     public const string RejectedRowPacketId = "media_registry_packet_redacted";
+    public const string RedactedMetadataValue = "media_metadata_redacted";
     public const string OutcomeAccepted = "media_registry_accepted";
     public const string OutcomePacketMismatch = "media_registry_packet_mismatch";
     public const string OutcomeCandidateMismatch = "media_registry_candidate_mismatch";
@@ -112,18 +113,7 @@ public sealed class MediaRegistryEvaluator
             {
                 var resultMapping = resultByKey[CandidateKey(candidate.SlotId, candidate.CandidateId)];
                 var assetRows = resultMapping.Assets
-                    .Select(asset => new SanitizedMediaAssetRow(
-                        asset.MediaId,
-                        asset.Source.SourceClass,
-                        asset.Source.SourceId,
-                        asset.Source.ProviderName,
-                        asset.License.LicenseClass,
-                        asset.License.LicenseName,
-                        asset.Attribution.AuthorName,
-                        asset.Attribution.AuthorUrl,
-                        asset.Attribution.AttributionText,
-                        asset.Width,
-                        asset.Height))
+                    .Select(ToSanitizedAssetRow)
                     .OrderBy(asset => asset.MediaId, StringComparer.Ordinal)
                     .ToArray();
 
@@ -150,6 +140,77 @@ public sealed class MediaRegistryEvaluator
             result.Provider,
             result.Model,
             result.RequestId);
+    }
+
+    private static SanitizedMediaAssetRow ToSanitizedAssetRow(MediaAsset asset) =>
+        new(
+            SanitizeToken(asset.MediaId, "media_id_redacted"),
+            asset.Source.SourceClass,
+            SanitizeToken(asset.Source.SourceId, RedactedMetadataValue),
+            SanitizeName(asset.Source.ProviderName),
+            asset.License.LicenseClass,
+            SanitizeRequiredText(asset.License.LicenseName),
+            SanitizeText(asset.Attribution.AuthorName),
+            SanitizeUrl(asset.Attribution.AuthorUrl),
+            SanitizeText(asset.Attribution.AttributionText),
+            asset.Width,
+            asset.Height);
+
+    private static string SanitizeToken(string value, string fallback) =>
+        IsSafeMetadata(value, allowUrl: false, maxLength: 96)
+            ? value
+            : fallback;
+
+    private static string SanitizeName(string value) =>
+        IsSafeMetadata(value, allowUrl: false, maxLength: 96)
+            ? value
+            : RedactedMetadataValue;
+
+    private static string SanitizeRequiredText(string value) =>
+        IsSafeMetadata(value, allowUrl: false, maxLength: 160)
+            ? value
+            : RedactedMetadataValue;
+
+    private static string? SanitizeText(string? value) =>
+        value is null
+            ? null
+            : SanitizeRequiredText(value);
+
+    private static string? SanitizeUrl(string? value) =>
+        value is null
+            ? null
+            : IsSafeMetadata(value, allowUrl: true, maxLength: 256) && Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "https"
+                ? value
+                : null;
+
+    private static bool IsSafeMetadata(string value, bool allowUrl, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+        {
+            return false;
+        }
+
+        if (!allowUrl && value.Contains("://", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var normalized = value.ToUpperInvariant();
+        string[] unsafeMarkers =
+        [
+            "RAW_",
+            "SHOULD_NOT_PERSIST",
+            "SENTINEL",
+            "SECRET",
+            "API_KEY",
+            "CREDENTIAL",
+            "TOKEN",
+            "SK-",
+            "PAYLOAD",
+            "PROMPT"
+        ];
+
+        return !unsafeMarkers.Any(marker => normalized.Contains(marker, StringComparison.Ordinal));
     }
 
     private static string? ValidateResultMappings(
