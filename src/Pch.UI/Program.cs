@@ -1,4 +1,5 @@
 using Pch.UI.Components;
+using Pch.UI.Features.EndUserChat;
 using Pch.UI.Features.StageCockpit;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddScoped<EndUserChatService>();
 builder.Services.AddScoped<HarnessStageCockpitService>();
 
 var app = builder.Build();
