@@ -1581,6 +1581,10 @@ body {
 .chat-shell--v18 .chat-main {
     grid-template-rows: auto auto auto minmax(0, auto);
     padding: 1.65rem clamp(.7rem, 1.5vw, 1.35rem) 6rem;
+    background:
+        linear-gradient(135deg, rgba(255, 206, 223, .7) 0%, rgba(255, 246, 176, .58) 30%, rgba(184, 244, 232, .7) 62%, rgba(214, 225, 255, .64) 100%),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, .28) 0 2px, transparent 2px 3.4rem),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, .2) 0 2px, transparent 2px 3.4rem);
 }
 
 .chat-shell--v18 .chat-topbar,
@@ -1593,7 +1597,13 @@ body {
 .chat-shell--v18 .agent-stage {
     align-content: start;
     justify-items: stretch;
-    padding: 0 0 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, .7);
+    border-radius: 8px;
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, .52), rgba(255, 255, 255, .18)),
+        repeating-linear-gradient(135deg, rgba(255, 255, 255, .28) 0 .45rem, transparent .45rem 1.6rem);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .38), 0 28px 72px rgba(31, 43, 59, .14);
 }
 
 .chat-shell--v18 .chat-turn,
@@ -1603,11 +1613,28 @@ body {
     width: min(100%, 80rem);
     max-width: none;
     justify-self: center;
+    border: 2px solid rgba(255, 255, 255, .72);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, .88), rgba(255, 251, 231, .74)),
+        repeating-linear-gradient(90deg, rgba(15, 139, 141, .07) 0 .45rem, transparent .45rem 1.7rem);
+    box-shadow: 0 16px 34px rgba(31, 43, 59, .1);
+}
+
+.chat-shell--v18 .chat-turn:not([data-turn-role="user"]) {
+    border: 2px solid rgba(255, 255, 255, .72);
+    background:
+        linear-gradient(135deg, rgba(239, 255, 249, .9), rgba(255, 245, 219, .78)),
+        repeating-linear-gradient(90deg, rgba(15, 139, 141, .08) 0 .5rem, transparent .5rem 1.8rem);
+    box-shadow: 0 14px 30px rgba(31, 43, 59, .1);
 }
 
 .chat-shell--v18 .chat-turn[data-turn-role="user"] {
     width: min(100%, 43rem);
     justify-self: end;
+    border: 2px solid rgba(114, 205, 214, .7);
+    background:
+        linear-gradient(135deg, rgba(219, 249, 246, .92), rgba(226, 238, 255, .82));
+    box-shadow: 0 14px 30px rgba(15, 139, 141, .14);
 }
 
 .chat-shell--v18 .ask-tab {
@@ -1632,14 +1659,13 @@ body {
 .chat-shell--v18 .work-bubble[data-work-bubble="choices"] {
     width: 100%;
     max-width: none;
-    border: 0;
+    border: 2px solid rgba(255, 255, 255, .82);
     border-radius: 8px;
     background:
-        radial-gradient(circle at 14% 18%, rgba(255, 194, 181, .52), transparent 34%),
-        radial-gradient(circle at 86% 18%, rgba(166, 225, 214, .5), transparent 34%),
-        linear-gradient(140deg, #fff9f2, #fff7fb 48%, #eefcf7);
+        linear-gradient(135deg, rgba(255, 201, 218, .82), rgba(255, 238, 168, .64) 35%, rgba(181, 245, 233, .72) 68%, rgba(218, 226, 255, .7)),
+        repeating-linear-gradient(135deg, rgba(255, 255, 255, .35) 0 .65rem, transparent .65rem 2rem);
     padding: 1rem;
-    box-shadow: 0 22px 56px rgba(31, 43, 59, .14);
+    box-shadow: 0 24px 62px rgba(31, 43, 59, .18);
 }
 
 .chat-shell--v18 .work-bubble[data-work-bubble="choices"] .work-lead {
@@ -1656,9 +1682,8 @@ body {
     border: 1px solid rgba(255, 255, 255, .76);
     border-radius: 8px;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .36)),
-        radial-gradient(circle at 12% 22%, rgba(244, 167, 187, .34), transparent 31%),
-        radial-gradient(circle at 88% 24%, rgba(167, 231, 223, .36), transparent 30%);
+        linear-gradient(135deg, rgba(255, 255, 255, .68), rgba(255, 247, 216, .34)),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, .28) 0 .55rem, transparent .55rem 1.8rem);
     padding: .85rem;
     max-height: min(72vh, 50rem);
     overflow-x: hidden;
@@ -1679,8 +1704,8 @@ body {
     min-height: 16.5rem;
     border-radius: 8px;
     background:
-        linear-gradient(90deg, rgba(255, 215, 205, .46), rgba(214, 245, 240, .46)),
-        rgba(255, 255, 255, .4);
+        linear-gradient(90deg, rgba(255, 202, 216, .58), rgba(255, 242, 172, .42), rgba(186, 246, 236, .58)),
+        rgba(255, 255, 255, .42);
     padding: .85rem 2rem 1rem .85rem;
 }
 
@@ -1747,6 +1772,7 @@ body {
     max-width: none;
     gap: .55rem;
     padding-top: .7rem;
+    border-color: rgba(255, 255, 255, .7);
 }
 
 .chat-shell--v18 .planning-timeline__header {
