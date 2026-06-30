@@ -472,6 +472,19 @@ Security/default-mode guarantees preserved:
 - `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
 - Coordinator HTTP/browser smoke on `http://127.0.0.1:5181/`: passed for `data-end-user-chat="v0"`, deterministic offline mode, prompt entry, send action, and raw-absence marker.
 
+Post-publish browser check found the Sprint 015 chat button did not invoke its Blazor handler in the live browser despite HTTP marker smoke. Sprint 016 treats this as the first non-negotiable fix.
+
+## Sprint 016 Target
+
+Sprint 016 should turn the end-user shell into a genuinely interactive live-planning surface.
+
+- fix Blazor interactivity for the end-user chat and add browser-click regression coverage so prompt send cannot silently no-op;
+- add harness-owned live turn/transcript projection DTOs over `SessionLoop`, `RuntimeActionApplication`, prompt packet, mission, itinerary, and availability boundaries;
+- add provider live model-role runner surfaces for in-harness and strong-planner roles, using guarded OpenRouter/OpenAI-compatible model calls when keys and credits are present;
+- redesign the primary UI around interaction primitives: composer, assistant work bubble, form card, choice set card, candidate option card, approval plate, task rail, evidence strip, and provider failure notice;
+- remove the boilerplate Blazor feel from the primary end-user surface with light/dark theme tokens, warmer color, clearer interactive-vs-decorative hierarchy, and approval/commitment-specific visual weight;
+- allow manual/live verification to spend credits while keeping required tests deterministic/offline and preserving no-raw-payload/no-secret redaction guarantees.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
