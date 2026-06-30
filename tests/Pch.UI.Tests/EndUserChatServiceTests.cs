@@ -20,6 +20,8 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("deterministic-offline", state.RoleStatusActiveRole);
         Assert.Equal("verified", state.RawAbsenceState);
         Assert.Equal("idle", state.FinalState);
+        Assert.Equal("not_requested", state.ApprovalState);
+        Assert.Equal("deterministic_fallback_active", state.ProviderOutcome);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-system-ready"
             && turn.Role == "system"
             && turn.OutcomeCode == "offline-deterministic");
@@ -40,6 +42,13 @@ public sealed class EndUserChatServiceTests
         Assert.Null(state.ErrorCode);
         Assert.Equal(ModelRoleStatusEvaluator.OutcomeReady, state.RoleStatusOutcome);
         Assert.Equal("deterministic-offline", state.RoleStatusActiveRole);
+        Assert.NotNull(state.FormCard);
+        Assert.NotNull(state.ChoiceSet);
+        Assert.NotNull(state.ApprovalPlate);
+        Assert.Contains(state.ChoiceSet.Candidates, candidate => candidate.CandidateId == "candidate-japan-classic-highlights"
+            && candidate.Mood == "reflective-culture");
+        Assert.Contains(state.PlanTrail, item => item.TrailId == "trail-mission-facts"
+            && item.State == "accepted");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-user-1"
             && turn.Role == "user"
             && turn.Kind == "prompt"
@@ -59,6 +68,47 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(state.Turns, turn => turn.Kind == "evidence"
             && turn.OutcomeCode == "complete");
         AssertChatRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public async Task FormChoiceApprovalAndTrailInteractionsMutateTypedState()
+    {
+        var service = new EndUserChatService();
+        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+
+        var formSubmitted = service.SubmitForm(sent);
+        var selected = service.SelectCandidate(formSubmitted, "candidate-japan-classic-highlights");
+        var blocked = service.RequestApproval(selected);
+
+        Assert.Equal("accepted", formSubmitted.FormCard?.State);
+        Assert.Equal("candidate_selected", selected.FinalState);
+        Assert.Equal("candidate-japan-classic-highlights", selected.ChoiceSet?.SelectedCandidateId);
+        Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-choice-selected"
+            && turn.CandidateId == "candidate-japan-classic-highlights"
+            && turn.CandidateCategory == "trip-style");
+        Assert.Contains(selected.PlanTrail, item => item.TrailId == "trail-selected-option"
+            && item.CandidateId == "candidate-japan-classic-highlights"
+            && item.OutcomeCode == "choice_candidate_selected");
+        Assert.Equal("blocked", blocked.FinalState);
+        Assert.Equal("blocked_missing_approval", blocked.ApprovalState);
+        Assert.Equal("approval_required_preview", blocked.ApprovalPlate?.BlockedReason);
+        Assert.Contains(blocked.PlanTrail, item => item.TrailId == "trail-approval-blocked"
+            && item.State == "blocked");
+    }
+
+    [Fact]
+    public async Task DeferCandidatePreservesCandidateIdAndEvidenceTrail()
+    {
+        var service = new EndUserChatService();
+        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+
+        var deferred = service.DeferCandidate(sent, "candidate-japan-scenic-explorer");
+
+        Assert.Equal("candidate_deferred", deferred.FinalState);
+        Assert.Equal("candidate-japan-scenic-explorer", deferred.ChoiceSet?.DeferredCandidateId);
+        Assert.Contains(deferred.PlanTrail, item => item.TrailId == "trail-deferred-option"
+            && item.CandidateId == "candidate-japan-scenic-explorer"
+            && item.OutcomeCode == "choice_candidate_deferred");
     }
 
     [Fact]

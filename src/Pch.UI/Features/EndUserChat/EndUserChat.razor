@@ -1,53 +1,72 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @inject EndUserChatService ChatService
-@rendermode InteractiveServer
 
-<section class="chat-shell"
+<section class="chat-shell chat-shell--v16"
          data-end-user-chat="v0"
+         data-chat-interactive="true"
          data-deterministic-mode="@Chat.ModeState"
+         data-model-role-state="@Chat.RoleStatusActiveRole"
          data-role-status="@Chat.RoleStatusOutcome"
-         data-active-model-role="@Chat.RoleStatusActiveRole"
+         data-provider-outcome="@Chat.ProviderOutcome"
+         data-approval-state="@Chat.ApprovalState"
          data-final-state="@Chat.FinalState"
+         data-composer-state="@ComposerState"
+         data-ask-drawer="@DrawerState"
          data-error-code="@Chat.ErrorCode"
          data-blocked-reason="@Chat.BlockedReason"
          data-raw-absence-state="@Chat.RawAbsenceState"
          aria-labelledby="trip-chat-title">
-    <div class="chat-header">
-        <div>
-            <p class="eyebrow">Trip planner</p>
-            <h1 id="trip-chat-title">Plan a trip with the deterministic assistant</h1>
-        </div>
-        <span class="mode-pill"
-              data-offline-mode="@Chat.ModeState"
-              data-role-status-marker="@Chat.RoleStatusOutcome"
-              data-active-model-role="@Chat.RoleStatusActiveRole"
-              data-raw-absence-state="@Chat.RawAbsenceState">
-            @Chat.ModeLabel
-        </span>
-    </div>
+    <aside class="chat-nav" aria-label="Trip planning sections">
+        <span class="chat-nav__mark" aria-hidden="true">PC</span>
+        <span class="chat-nav__item is-active" aria-hidden="true">Chat</span>
+        <a href="#stage-cockpit" class="chat-nav__item" data-engineering-surface-link="stage-cockpit">Stage</a>
+    </aside>
 
-    <div class="chat-layout">
-        <div class="chat-compose" data-chat-form="prompt">
-            <label for="trip-prompt">Trip prompt</label>
-            <textarea id="trip-prompt"
-                      data-prompt-entry="trip"
-                      aria-label="Trip prompt"
-                      @bind="Prompt"
-                      @bind:event="oninput"
-                      rows="5"></textarea>
-            <div class="chat-compose__footer">
-                <span data-raw-absence-marker="@Chat.RawAbsenceState">Raw text redaction verified</span>
-                <button type="button"
-                        class="send-button"
-                        data-send-action="deterministic"
-                        aria-label="Send deterministic trip prompt"
-                        @onclick="SendPromptAsync">
-                    Send
-                </button>
+    <main class="chat-main" data-agent-work-area="@AgentWorkState">
+        <header class="chat-topbar">
+            <div>
+                <p class="eyebrow">Japan Adventure</p>
+                <h1 id="trip-chat-title">Plan with the agent</h1>
             </div>
-        </div>
+            <div class="model-strip"
+                 data-model-status-strip="end-user"
+                 data-model-role-state="@Chat.RoleStatusActiveRole"
+                 data-provider-health="@Chat.ProviderHealth"
+                 data-credit-state="@Chat.CreditState"
+                 data-last-provider-failure="@Chat.LastProviderFailureCode">
+                <span data-live-mode-state="@Chat.ModeState">@Chat.ModeLabel</span>
+                <span data-provider-outcome="@Chat.ProviderOutcome">@Chat.ProviderOutcome.Replace('_', ' ')</span>
+                <span data-raw-absence-state="@Chat.RawAbsenceState">Raw absence @Chat.RawAbsenceState</span>
+            </div>
+        </header>
 
-        <section class="transcript-panel"
+        @if (!HasSubmitted)
+        {
+            <section class="composer-start" data-composer-layout="expanded_start">
+                <p>Where should we begin?</p>
+                <div class="composer-card" data-chat-form="prompt">
+                    <label for="trip-prompt">Trip prompt</label>
+                    <textarea id="trip-prompt"
+                              data-prompt-entry="trip"
+                              aria-label="Trip prompt"
+                              @bind="Prompt"
+                              @bind:event="oninput"
+                              rows="5"></textarea>
+                    <div class="composer-actions">
+                        <span data-raw-absence-marker="@Chat.RawAbsenceState">Prompt text is redacted from transcript records</span>
+                        <button type="button"
+                                class="send-button"
+                                data-send-action="deterministic"
+                                aria-label="Send deterministic trip prompt"
+                                @onclick="SendPromptAsync">
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </section>
+        }
+
+        <section class="agent-stage"
                  data-transcript="trip"
                  data-turn-count="@Chat.Turns.Count"
                  aria-label="Trip planning transcript">
@@ -60,21 +79,318 @@
                          data-turn-state="@turn.State"
                          data-outcome-code="@turn.OutcomeCode"
                          data-evidence-id="@turn.EvidenceId"
+                         data-candidate-id="@turn.CandidateId"
+                         data-candidate-category="@turn.CandidateCategory"
                          data-error-code="@turn.ErrorCode">
-                    <div>
+                    <div class="chat-turn__meta">
                         <span>@turn.Role</span>
                         <strong>@turn.Kind</strong>
                     </div>
-                    <p>@turn.Text</p>
+                    @if (turn.Kind == "choice" && turn.CandidateId is not null && SelectedBubble is not null)
+                    {
+                        <div class="selected-option-bubble candidate-card candidate-card--@SelectedBubble.MoodTone"
+                             data-selected-option-card="true"
+                             data-candidate-id="@SelectedBubble.CandidateId"
+                             data-candidate-category="@SelectedBubble.Category"
+                             data-candidate-mood="@SelectedBubble.Mood"
+                             data-candidate-state="@SelectedBubble.State"
+                             data-evidence-ids="@string.Join(',', SelectedBubble.EvidenceIds)">
+                            <span>@SelectedBubble.Mood.Replace('-', ' ')</span>
+                            <h3>@SelectedBubble.Title</h3>
+                            <p>@SelectedBubble.Summary</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <p>@turn.Text</p>
+                    }
                 </article>
             }
+
+            @if (Chat.FormCard is not null)
+            {
+                <article class="work-bubble" data-work-bubble="form" data-form-id="@Chat.FormCard.FormId" data-form-state="@Chat.FormCard.State">
+                    <p class="work-lead">I pulled the basics into a structured checkpoint before comparing options.</p>
+                    <section class="form-card" aria-labelledby="trip-form-title">
+                        <div>
+                            <h2 id="trip-form-title">@Chat.FormCard.Title</h2>
+                            <p>@Chat.FormCard.Prompt</p>
+                        </div>
+                        @foreach (var field in Chat.FormCard.Fields)
+                        {
+                            <label class="form-field"
+                                   data-field-id="@field.FieldId"
+                                   data-field-state="@field.State"
+                                   data-evidence-id="@field.EvidenceId">
+                                <span>@field.Label</span>
+                                <input value="@field.Value" aria-label="@field.Label" readonly />
+                            </label>
+                        }
+                        <button type="button"
+                                class="secondary-button"
+                                data-form-submit="@Chat.FormCard.FormId"
+                                aria-label="Submit trip basics form"
+                                @onclick="SubmitForm">
+                            Submit basics
+                        </button>
+                    </section>
+                </article>
+            }
+
+            @if (Chat.ChoiceSet is not null)
+            {
+                <article class="work-bubble" data-work-bubble="choices" data-choice-set-id="@Chat.ChoiceSet.ChoiceSetId" data-choice-state="@Chat.ChoiceSet.State">
+                    <p class="work-lead">Here are option decks grouped by feel. The ids stay attached even when the cards get friendlier.</p>
+                    <section class="choice-card" aria-labelledby="choice-title">
+                        <div class="choice-card__header">
+                            <div>
+                                <h2 id="choice-title">@Chat.ChoiceSet.Title</h2>
+                                <p>@Chat.ChoiceSet.Prompt</p>
+                            </div>
+                            <div class="deck-controls" data-deck-controls="mood-deck">
+                                <button type="button" data-deck-control="previous" aria-label="Show previous culture option" @onclick="PreviousDeckCard">‹</button>
+                                <span data-deck-index="@DeckIndex">@DeckIndexDisplay</span>
+                                <button type="button" data-deck-control="next" aria-label="Show next culture option" @onclick="NextDeckCard">›</button>
+                            </div>
+                        </div>
+
+                        <div class="candidate-deck"
+                             data-candidate-deck="reflective-culture"
+                             data-deck-index="@DeckIndex"
+                             tabindex="0"
+                             aria-label="Reflective culture option deck">
+                            @foreach (var candidate in CultureCandidates)
+                            {
+                                <article class="candidate-card candidate-card--@candidate.MoodTone"
+                                         data-candidate-id="@candidate.CandidateId"
+                                         data-candidate-category="@candidate.Category"
+                                         data-candidate-mood="@candidate.Mood"
+                                         data-candidate-state="@candidate.State"
+                                         data-evidence-ids="@string.Join(',', candidate.EvidenceIds)">
+                                    <span>@candidate.Mood.Replace('-', ' ')</span>
+                                    <h3>@candidate.Title</h3>
+                                    <p>@candidate.Summary</p>
+                                    <div class="candidate-actions">
+                                        <button type="button"
+                                                data-choice-action="select"
+                                                data-candidate-id="@candidate.CandidateId"
+                                                aria-label="Select @candidate.Title"
+                                                @onclick="() => SelectCandidate(candidate.CandidateId)">
+                                            Select
+                                        </button>
+                                        <button type="button"
+                                                data-choice-action="defer"
+                                                data-candidate-id="@candidate.CandidateId"
+                                                aria-label="Defer @candidate.Title"
+                                                @onclick="() => DeferCandidate(candidate.CandidateId)">
+                                            Defer
+                                        </button>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+
+                        @foreach (var candidate in OtherCandidates)
+                        {
+                            <article class="candidate-card candidate-card--@candidate.MoodTone"
+                                     data-candidate-id="@candidate.CandidateId"
+                                     data-candidate-category="@candidate.Category"
+                                     data-candidate-mood="@candidate.Mood"
+                                     data-candidate-state="@candidate.State"
+                                     data-evidence-ids="@string.Join(',', candidate.EvidenceIds)">
+                                <span>@candidate.Mood.Replace('-', ' ')</span>
+                                <h3>@candidate.Title</h3>
+                                <p>@candidate.Summary</p>
+                                <div class="candidate-actions">
+                                    <button type="button"
+                                            data-choice-action="select"
+                                            data-candidate-id="@candidate.CandidateId"
+                                            aria-label="Select @candidate.Title"
+                                            @onclick="() => SelectCandidate(candidate.CandidateId)">
+                                        Select
+                                    </button>
+                                    <button type="button"
+                                            data-choice-action="defer"
+                                            data-candidate-id="@candidate.CandidateId"
+                                            aria-label="Defer @candidate.Title"
+                                            @onclick="() => DeferCandidate(candidate.CandidateId)">
+                                        Defer
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    </section>
+                </article>
+            }
+
+            @if (Chat.ApprovalPlate is not null)
+            {
+                <article class="approval-plate"
+                         data-approval-id="@Chat.ApprovalPlate.ApprovalId"
+                         data-approval-state="@Chat.ApprovalPlate.State"
+                         data-approval-outcome="@Chat.ApprovalPlate.OutcomeCode"
+                         data-blocked-reason="@Chat.ApprovalPlate.BlockedReason">
+                    <div>
+                        <span>Commitment checkpoint</span>
+                        <h2>@Chat.ApprovalPlate.Title</h2>
+                        <p>No hold, booking, payment, or live provider handoff can run without approval.</p>
+                    </div>
+                    <button type="button"
+                            data-approval-action="request"
+                            aria-label="Request mock hold approval preview"
+                            @onclick="RequestApproval">
+                        Preview approval block
+                    </button>
+                </article>
+            }
+
+            @if (Chat.ProviderFailure is not null)
+            {
+                <aside class="provider-notice"
+                       data-provider-failure-notice="@Chat.ProviderFailure.NoticeId"
+                       data-provider-outcome="@Chat.ProviderFailure.OutcomeCode"
+                       data-provider-state="@Chat.ProviderFailure.State">
+                    <strong>Provider status</strong>
+                    <p>@Chat.ProviderFailure.Message</p>
+                    <button type="button" data-fallback-action="continue-deterministic" disabled="@(!Chat.ProviderFailure.CanContinueDeterministic)">
+                        Continue deterministic
+                    </button>
+                </aside>
+            }
+
+            @if (Chat.Evidence.Count > 0)
+            {
+                <section class="evidence-strip" data-evidence-strip="chat">
+                    @foreach (var evidence in Chat.Evidence)
+                    {
+                        <span data-evidence-id="@evidence.EvidenceId" data-evidence-kind="@evidence.Kind" data-trace-outcome="@evidence.OutcomeCode">
+                            @evidence.Label
+                        </span>
+                    }
+                </section>
+            }
+
+            @if (Chat.PlanTrail.Count > 0)
+            {
+                <section class="plan-trail"
+                         data-plan-trail="chat"
+                         tabindex="0"
+                         aria-label="Evidence and plan trail">
+                    @foreach (var item in Chat.PlanTrail)
+                    {
+                        <article data-plan-trail-item="@item.TrailId"
+                                 data-plan-trail-kind="@item.Kind"
+                                 data-plan-trail-state="@item.State"
+                                 data-candidate-id="@item.CandidateId"
+                                 data-evidence-id="@item.EvidenceId"
+                                 data-trace-outcome="@item.OutcomeCode">
+                            <span>@item.Kind.Replace('-', ' ')</span>
+                            <strong>@item.Label</strong>
+                        </article>
+                    }
+                </section>
+            }
         </section>
-    </div>
+
+        @if (HasSubmitted)
+        {
+            <button type="button"
+                    class="ask-tab"
+                    data-ask-action="open"
+                    aria-label="Open Ask drawer"
+                    @onclick="OpenDrawer">
+                Ask
+            </button>
+        }
+
+        @if (DrawerOpen)
+        {
+            <aside class="ask-drawer"
+                   data-ask-drawer-panel="open"
+                   aria-label="Ask drawer">
+                <div>
+                    <h2>Ask the agent</h2>
+                    <button type="button" data-ask-action="close" aria-label="Close Ask drawer" @onclick="CloseDrawer">Close</button>
+                </div>
+                <label for="trip-prompt-drawer">Follow-up prompt</label>
+                <textarea id="trip-prompt-drawer"
+                          data-prompt-entry="trip-drawer"
+                          aria-label="Follow-up trip prompt"
+                          @bind="Prompt"
+                          @bind:event="oninput"
+                          rows="5"></textarea>
+                <button type="button"
+                        class="send-button"
+                        data-send-action="deterministic-drawer"
+                        aria-label="Send deterministic follow-up prompt"
+                        @onclick="SendPromptAsync">
+                    Send
+                </button>
+            </aside>
+        }
+    </main>
+
+    <aside class="task-rail" data-task-rail="trip">
+        <div>
+            <p class="eyebrow">Tasks</p>
+            <h2>Agent plan</h2>
+        </div>
+        @foreach (var task in Chat.Tasks)
+        {
+            <details class="task-row"
+                     data-task-id="@task.TaskId"
+                     data-task-state="@task.State"
+                     data-task-progress="@task.Progress"
+                     open="@task.IsExpanded">
+                <summary>
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span>@task.Title</span>
+                    <strong>@task.StatusLabel</strong>
+                </summary>
+                <div>
+                    @foreach (var step in task.Steps)
+                    {
+                        <p data-task-step-id="@step.StepId" data-task-step-state="@step.State">@step.Label</p>
+                    }
+                </div>
+            </details>
+        }
+    </aside>
 </section>
 
 @code {
     private EndUserChatState Chat { get; set; } = default!;
     private string Prompt { get; set; } = string.Empty;
+    private bool HasSubmitted { get; set; }
+    private bool DrawerOpen { get; set; }
+    private int DeckIndex { get; set; }
+
+    private string ComposerState => HasSubmitted
+        ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
+        : "expanded_start";
+
+    private string DrawerState => DrawerOpen ? "open" : "closed";
+
+    private string AgentWorkState => HasSubmitted ? "active" : "waiting_for_first_prompt";
+
+    private IReadOnlyList<EndUserCandidateOption> CultureCandidates =>
+        Chat.ChoiceSet?.Candidates.Where(candidate => candidate.Mood == "reflective-culture").ToArray() ?? [];
+
+    private IReadOnlyList<EndUserCandidateOption> OtherCandidates =>
+        Chat.ChoiceSet?.Candidates.Where(candidate => candidate.Mood != "reflective-culture").ToArray() ?? [];
+
+    private string DeckIndexDisplay => $"{DeckIndex + 1}/{Math.Max(1, CultureCandidates.Count)}";
+
+    private EndUserSelectedOptionBubble? SelectedBubble
+    {
+        get
+        {
+            var selected = Chat.ChoiceSet?.Candidates.SingleOrDefault(candidate => candidate.CandidateId == Chat.ChoiceSet.SelectedCandidateId);
+            return selected is null
+                ? null
+                : new(selected.CandidateId, selected.Category, selected.Mood, selected.MoodTone, selected.Title, selected.Summary, "selected", selected.EvidenceIds);
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -86,5 +402,50 @@
     {
         Chat = await ChatService.SendAsync(Prompt);
         Prompt = Chat.Prompt;
+        HasSubmitted = true;
+        DrawerOpen = false;
+        DeckIndex = 0;
+    }
+
+    private void SubmitForm()
+    {
+        Chat = ChatService.SubmitForm(Chat);
+    }
+
+    private void SelectCandidate(string candidateId)
+    {
+        Chat = ChatService.SelectCandidate(Chat, candidateId);
+    }
+
+    private void DeferCandidate(string candidateId)
+    {
+        Chat = ChatService.DeferCandidate(Chat, candidateId);
+    }
+
+    private void RequestApproval()
+    {
+        Chat = ChatService.RequestApproval(Chat);
+    }
+
+    private void OpenDrawer()
+    {
+        DrawerOpen = true;
+    }
+
+    private void CloseDrawer()
+    {
+        DrawerOpen = false;
+    }
+
+    private void PreviousDeckCard()
+    {
+        var count = CultureCandidates.Count;
+        DeckIndex = count == 0 ? 0 : (DeckIndex + count - 1) % count;
+    }
+
+    private void NextDeckCard()
+    {
+        var count = CultureCandidates.Count;
+        DeckIndex = count == 0 ? 0 : (DeckIndex + 1) % count;
     }
 }
