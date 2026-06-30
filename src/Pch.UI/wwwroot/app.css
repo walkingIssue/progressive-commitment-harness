@@ -1580,19 +1580,19 @@ body {
 /* Sprint 018 end-user polish: keep the agent work centered and the Ask affordance quiet. */
 .chat-shell--v18 .chat-main {
     grid-template-rows: auto auto auto minmax(0, auto);
-    padding: 2rem clamp(1rem, 3vw, 2.4rem) 6rem;
+    padding: 1.65rem clamp(.7rem, 1.5vw, 1.35rem) 6rem;
 }
 
 .chat-shell--v18 .chat-topbar,
 .chat-shell--v18 .agent-stage,
 .chat-shell--v18 .planning-timeline {
-    width: min(100%, 63rem);
+    width: min(100%, 88rem);
     justify-self: center;
 }
 
 .chat-shell--v18 .agent-stage {
     align-content: start;
-    justify-items: center;
+    justify-items: stretch;
     padding: 0 0 1rem;
 }
 
@@ -1600,11 +1600,13 @@ body {
 .chat-shell--v18 .work-bubble,
 .chat-shell--v18 .provider-notice,
 .chat-shell--v18 .approval-plate {
-    width: min(100%, 51rem);
+    width: min(100%, 80rem);
+    max-width: none;
+    justify-self: center;
 }
 
 .chat-shell--v18 .chat-turn[data-turn-role="user"] {
-    width: min(100%, 37rem);
+    width: min(100%, 43rem);
     justify-self: end;
 }
 
@@ -1628,7 +1630,8 @@ body {
 }
 
 .chat-shell--v18 .work-bubble[data-work-bubble="choices"] {
-    width: min(100%, 59rem);
+    width: 100%;
+    max-width: none;
     border: 0;
     border-radius: 8px;
     background:
@@ -1640,7 +1643,7 @@ body {
 }
 
 .chat-shell--v18 .work-bubble[data-work-bubble="choices"] .work-lead {
-    max-width: 33rem;
+    max-width: 60rem;
     color: #536173;
     font-weight: 700;
 }
@@ -1657,7 +1660,7 @@ body {
         radial-gradient(circle at 12% 22%, rgba(244, 167, 187, .34), transparent 31%),
         radial-gradient(circle at 88% 24%, rgba(167, 231, 223, .36), transparent 30%);
     padding: .85rem;
-    max-height: min(70vh, 46rem);
+    max-height: min(72vh, 50rem);
     overflow-x: hidden;
     overflow-y: auto;
 }
@@ -1682,14 +1685,14 @@ body {
 }
 
 .chat-shell--v18 .candidate-deck .candidate-card {
-    flex-basis: min(15.5rem, 72vw);
+    flex-basis: min(16.5rem, 72vw);
     min-height: 15rem;
     margin-right: -1.35rem;
 }
 
 .chat-shell--v18 .choice-card > .candidate-card {
-    flex: 1 1 15rem;
-    max-width: 21rem;
+    flex: 1 1 17.5rem;
+    max-width: 27rem;
     min-height: 15rem;
     transform: rotate(-.35deg);
 }
@@ -1740,7 +1743,8 @@ body {
 }
 
 .chat-shell--v18 .planning-timeline {
-    width: min(100%, 51rem);
+    width: min(100%, 80rem);
+    max-width: none;
     gap: .55rem;
     padding-top: .7rem;
 }
