@@ -291,7 +291,7 @@ function ensureWorkObjects(): void {
       </section>
     </article>
     <article class="work-bubble" data-work-bubble="choices" data-choice-set-id="choice-japan-style" data-choice-state="active">
-      <p class="work-lead">Here are option decks grouped by feel.</p>
+      <p class="work-lead">I grouped these into little moods. Pick the one that feels like the trip you want to remember.</p>
       <section class="choice-card">
         <div class="choice-card__header"><h2>Choose an itinerary direction</h2><div class="deck-controls" data-deck-controls="mood-deck"><button type="button" data-deck-control="previous" aria-label="Show previous culture option">Prev</button><span data-deck-index="0">1/2</span><button type="button" data-deck-control="next" aria-label="Show next culture option">Next</button></div></div>
         <div class="candidate-deck" data-candidate-deck="reflective-culture" data-deck-index="0" tabindex="0">${candidates.slice(0, 2).map((candidate) => candidateCard(candidate)).join("")}</div>
@@ -415,10 +415,13 @@ function focusOriginTurn(turnId: string): void {
   turn.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const action = target.dataset;
+function closestAction(target: EventTarget | null, selector: string): HTMLElement | null {
+  return target instanceof HTMLElement ? target.closest<HTMLElement>(selector) : null;
+}
+
+function handleChatInteraction(target: EventTarget | null): void {
+  const sendElement = closestAction(target, "[data-send-action]");
+  const action = sendElement?.dataset ?? {};
 
   if (action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
     const beforeFinalState = root()?.dataset.finalState;
@@ -429,60 +432,65 @@ document.addEventListener("click", (event) => {
     );
   }
 
-  if (action.formSubmit === "form-trip-basics") {
+  const formAction = closestAction(target, "[data-form-submit]")?.dataset ?? {};
+  if (formAction.formSubmit === "form-trip-basics") {
     scheduleFallback(
       () => document.querySelector<HTMLElement>("[data-form-id='form-trip-basics']")?.dataset.formState !== "accepted",
       submitForm,
     );
   }
 
-  if (action.choiceAction === "select" && action.candidateId) {
-    const candidateId = action.candidateId;
+  const choiceAction = closestAction(target, "[data-choice-action]")?.dataset ?? {};
+  if (choiceAction.choiceAction === "select" && choiceAction.candidateId) {
+    const candidateId = choiceAction.candidateId;
     scheduleFallback(
       () => document.querySelector(`[data-selected-option-card='true'][data-candidate-id='${candidateId}']`) === null,
       () => selectCandidate(candidateId),
     );
   }
 
-  if (action.choiceAction === "defer" && action.candidateId) {
-    const candidateId = action.candidateId;
+  if (choiceAction.choiceAction === "defer" && choiceAction.candidateId) {
+    const candidateId = choiceAction.candidateId;
     scheduleFallback(
       () => document.querySelector(`[data-plan-trail-item='trail-deferred-option'][data-candidate-id='${candidateId}']`) === null,
       () => deferCandidate(candidateId),
     );
   }
 
-  if (action.approvalAction === "request") {
+  const approvalAction = closestAction(target, "[data-approval-action]")?.dataset ?? {};
+  if (approvalAction.approvalAction === "request") {
     scheduleFallback(
       () => root()?.dataset.approvalState !== "blocked_missing_approval",
       requestApproval,
     );
   }
 
-  if (action.askAction === "open") {
+  const askAction = closestAction(target, "[data-ask-action]")?.dataset ?? {};
+  if (askAction.askAction === "open") {
     scheduleFallback(
       () => root()?.dataset.askDrawer !== "open",
       () => toggleDrawer(true),
     );
   }
 
-  if (action.askAction === "close") {
+  if (askAction.askAction === "close") {
     scheduleFallback(
       () => root()?.dataset.askDrawer !== "closed",
       () => toggleDrawer(false),
     );
   }
 
-  if (action.deckControl === "next" || action.deckControl === "previous") {
+  const deckAction = closestAction(target, "[data-deck-control]")?.dataset ?? {};
+  if (deckAction.deckControl === "next" || deckAction.deckControl === "previous") {
     const beforeIndex = document.querySelector<HTMLElement>("[data-candidate-deck='reflective-culture']")?.dataset.deckIndex;
-    const direction = action.deckControl === "next" ? 1 : -1;
+    const direction = deckAction.deckControl === "next" ? 1 : -1;
     scheduleFallback(
       () => document.querySelector<HTMLElement>("[data-candidate-deck='reflective-culture']")?.dataset.deckIndex === beforeIndex,
       () => moveDeck(direction),
     );
   }
 
-  const modeButton = target.closest<HTMLElement>("[data-timeline-mode-action]");
+  const modeButton = closestAction(target, "[data-timeline-mode-action]");
   if (modeButton?.dataset.timelineModeAction) {
     const mode = modeButton.dataset.timelineModeAction;
     scheduleFallback(
@@ -491,7 +499,7 @@ document.addEventListener("click", (event) => {
     );
   }
 
-  const timelineItem = target.closest<HTMLElement>("[data-origin-turn-id]");
+  const timelineItem = closestAction(target, "[data-origin-turn-id]");
   const originTurnId = timelineItem?.dataset.originTurnId;
   if (originTurnId) {
     focusOriginTurn(originTurnId);
@@ -500,7 +508,11 @@ document.addEventListener("click", (event) => {
       () => focusOriginTurn(originTurnId),
     );
   }
-});
+}
+
+document.documentElement.dataset.endUserChatHelper = "ready";
+document.addEventListener("pointerup", (event) => handleChatInteraction(event.target), true);
+document.addEventListener("click", (event) => handleChatInteraction(event.target), true);
 
 document.addEventListener("keydown", (event) => {
   const target = event.target;

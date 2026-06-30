@@ -1576,3 +1576,172 @@ body {
         justify-content: flex-start;
     }
 }
+
+/* Sprint 018 end-user polish: keep the agent work centered and the Ask affordance quiet. */
+.chat-shell--v18 .chat-main {
+    grid-template-rows: auto auto auto minmax(0, auto);
+    padding: 2rem clamp(1rem, 3vw, 2.4rem) 6rem;
+}
+
+.chat-shell--v18 .chat-topbar,
+.chat-shell--v18 .agent-stage,
+.chat-shell--v18 .planning-timeline {
+    width: min(100%, 63rem);
+    justify-self: center;
+}
+
+.chat-shell--v18 .agent-stage {
+    align-content: start;
+    justify-items: center;
+    padding: 0 0 1rem;
+}
+
+.chat-shell--v18 .chat-turn,
+.chat-shell--v18 .work-bubble,
+.chat-shell--v18 .provider-notice,
+.chat-shell--v18 .approval-plate {
+    width: min(100%, 51rem);
+}
+
+.chat-shell--v18 .chat-turn[data-turn-role="user"] {
+    width: min(100%, 37rem);
+    justify-self: end;
+}
+
+.chat-shell--v18 .ask-tab {
+    position: fixed;
+    right: calc(24rem + 1.35rem);
+    top: auto;
+    bottom: 1.35rem;
+    width: 4rem;
+    min-height: 8.25rem;
+    border-color: rgba(15, 139, 141, .18);
+    background:
+        radial-gradient(circle at 50% 12%, rgba(255, 225, 148, .66), transparent 38%),
+        linear-gradient(180deg, rgba(221, 251, 246, .86), rgba(255, 245, 222, .78));
+    opacity: .9;
+}
+
+.chat-shell--v18 .ask-tab:hover,
+.chat-shell--v18 .ask-tab:focus {
+    opacity: 1;
+}
+
+.chat-shell--v18 .work-bubble[data-work-bubble="choices"] {
+    width: min(100%, 59rem);
+    border: 0;
+    border-radius: 8px;
+    background:
+        radial-gradient(circle at 14% 18%, rgba(255, 194, 181, .52), transparent 34%),
+        radial-gradient(circle at 86% 18%, rgba(166, 225, 214, .5), transparent 34%),
+        linear-gradient(140deg, #fff9f2, #fff7fb 48%, #eefcf7);
+    padding: 1rem;
+    box-shadow: 0 22px 56px rgba(31, 43, 59, .14);
+}
+
+.chat-shell--v18 .work-bubble[data-work-bubble="choices"] .work-lead {
+    max-width: 33rem;
+    color: #536173;
+    font-weight: 700;
+}
+
+.chat-shell--v18 .choice-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: .8rem;
+    border: 1px solid rgba(255, 255, 255, .76);
+    border-radius: 8px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .36)),
+        radial-gradient(circle at 12% 22%, rgba(244, 167, 187, .34), transparent 31%),
+        radial-gradient(circle at 88% 24%, rgba(167, 231, 223, .36), transparent 30%);
+    padding: .85rem;
+    max-height: min(70vh, 46rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.chat-shell--v18 .choice-card__header {
+    flex: 1 1 100%;
+    align-items: center;
+}
+
+.chat-shell--v18 .choice-card h2 {
+    font-size: 1.22rem;
+}
+
+.chat-shell--v18 .candidate-deck {
+    flex: 1 1 100%;
+    min-height: 16.5rem;
+    border-radius: 8px;
+    background:
+        linear-gradient(90deg, rgba(255, 215, 205, .46), rgba(214, 245, 240, .46)),
+        rgba(255, 255, 255, .4);
+    padding: .85rem 2rem 1rem .85rem;
+}
+
+.chat-shell--v18 .candidate-deck .candidate-card {
+    flex-basis: min(15.5rem, 72vw);
+    min-height: 15rem;
+    margin-right: -1.35rem;
+}
+
+.chat-shell--v18 .choice-card > .candidate-card {
+    flex: 1 1 15rem;
+    max-width: 21rem;
+    min-height: 15rem;
+    transform: rotate(-.35deg);
+}
+
+.chat-shell--v18 .choice-card > .candidate-card:nth-of-type(2n) {
+    transform: translateY(.35rem) rotate(.5deg);
+}
+
+.chat-shell--v18 .candidate-card {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(255, 255, 255, .74);
+}
+
+.chat-shell--v18 .candidate-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 82% 12%, rgba(255, 255, 255, .52), transparent 25%);
+}
+
+.chat-shell--v18 .candidate-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.chat-shell--v18 .candidate-media {
+    min-height: 8rem;
+    border: 1px solid rgba(255, 255, 255, .66);
+    box-shadow: 0 10px 26px rgba(22, 32, 51, .18);
+}
+
+.chat-shell--v18 .candidate-card--culture {
+    background:
+        linear-gradient(145deg, rgba(255, 216, 205, .98), rgba(245, 154, 184, .82) 50%, rgba(168, 231, 221, .82));
+}
+
+.chat-shell--v18 .candidate-card--nature {
+    background:
+        linear-gradient(145deg, rgba(196, 247, 218, .96), rgba(185, 232, 255, .86) 52%, rgba(255, 241, 184, .82));
+}
+
+.chat-shell--v18 .candidate-card--transit {
+    background:
+        linear-gradient(145deg, rgba(230, 238, 255, .98), rgba(205, 240, 235, .88) 52%, rgba(255, 232, 194, .82));
+}
+
+@media (max-width: 1100px) {
+    .chat-shell--v18 .ask-tab {
+        right: 1rem;
+        bottom: 1rem;
+    }
+}

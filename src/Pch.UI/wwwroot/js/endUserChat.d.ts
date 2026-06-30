@@ -45,3 +45,5 @@ declare function toggleDrawer(open: boolean): void;
 declare function moveDeck(direction: number): void;
 declare function setTimelineMode(mode: string): void;
 declare function focusOriginTurn(turnId: string): void;
+declare function closestAction(target: EventTarget | null, selector: string): HTMLElement | null;
+declare function handleChatInteraction(target: EventTarget | null): void;
