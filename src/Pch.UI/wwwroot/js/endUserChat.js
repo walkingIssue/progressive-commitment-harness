@@ -162,11 +162,15 @@ function setModelRole(role) {
     setRootState({
         "data-selected-model-role": normalized,
         "data-live-preflight-state": normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard",
+        "data-live-proposal-state": normalized === "deterministic-offline" ? "not_requested" : "not_run",
+        "data-harness-validation-state": "not_run",
         "data-latest-turn-source": "deterministic_fallback",
         "data-provider-request-state": "not_attempted",
     });
     document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-selected-model-role", normalized);
     document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-live-preflight-state", normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard");
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-live-proposal-state", normalized === "deterministic-offline" ? "not_requested" : "not_run");
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-harness-validation-state", "not_run");
     document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-latest-turn-source", "deterministic_fallback");
     document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-provider-request-state", "not_attempted");
     document.querySelectorAll("[data-model-role-option]").forEach((button) => {
@@ -284,6 +288,8 @@ function sendPrompt() {
         "data-ask-drawer": "closed",
         "data-provider-outcome": liveSelected ? "live_preflight_disabled" : "deterministic_fallback_active",
         "data-live-preflight-state": liveSelected ? "blocked_by_guard" : "deterministic_default",
+        "data-live-proposal-state": liveSelected ? "not_run" : "not_requested",
+        "data-harness-validation-state": "not_run",
         "data-latest-turn-source": "deterministic_fallback",
         "data-provider-request-state": "not_attempted",
         "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",

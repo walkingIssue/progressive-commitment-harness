@@ -4,6 +4,8 @@
      data-selected-model-role="@Chat.SelectedModelRole"
      data-selected-provider="@Chat.SelectedProvider"
      data-live-preflight-state="@Chat.LivePreflightState"
+     data-live-proposal-state="@Chat.LiveProposalState"
+     data-harness-validation-state="@Chat.HarnessValidationState"
      data-latest-turn-source="@Chat.LatestTurnSource"
      data-provider-request-state="@Chat.ProviderRequestState"
      data-provider-health="@Chat.ProviderHealth"
@@ -13,6 +15,8 @@
     <span data-live-mode-state="@Chat.ModeState">@Chat.ModeLabel</span>
     <span data-provider-outcome="@Chat.ProviderOutcome">@Chat.ProviderOutcome.Replace('_', ' ')</span>
     <span data-live-preflight-indicator="@Chat.LivePreflightState">@Chat.LivePreflightState.Replace('_', ' ')</span>
+    <span data-live-proposal-indicator="@Chat.LiveProposalState">@Chat.LiveProposalState.Replace('_', ' ')</span>
+    <span data-harness-validation-indicator="@Chat.HarnessValidationState">@Chat.HarnessValidationState.Replace('_', ' ')</span>
     <span data-latest-turn-source="@Chat.LatestTurnSource">@Chat.LatestTurnSource.Replace('_', ' ')</span>
     <span data-live-provider-state="@LiveGuardState">@LiveGuardLabel</span>
     <span data-raw-absence-state="@Chat.RawAbsenceState">Raw absence @Chat.RawAbsenceState</span>
