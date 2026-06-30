@@ -566,6 +566,18 @@ Sprint 020 connected the first live mission proposal runner to the harness/UI pa
 - Required verification remained deterministic/offline. The provider lane attempted a guarded OpenRouter smoke and recorded sanitized `live_mission_proposal_provider_unavailable`; no accepted live provider proposal was obtained in Sprint 020.
 - Raw prompts, raw completions, provider payloads, API keys, credentials, approval tokens, hold references, booking/payment references, candidate display sentinels, secret sentinels, and raw exception text remain out of rendered or serialized state.
 
+## Sprint 021 Target
+
+Sprint 021 should prove a real model can drive a multi-turn harness session, not only a single mission proposal.
+
+- maintain one end-user `TripSession` across live turns instead of using a synthetic one-turn proposal session;
+- call real configured models during manual/in-app-browser smoke, with OpenRouter, OpenAI, and Grok/xAI-compatible inference explicitly allowed when keys/config are present;
+- run at least two sequential live/harness turns or record a specific fixed provider/harness reason why the second turn could not proceed;
+- ensure later model turns receive freshly compiled harness projections rather than raw chat history;
+- render model/harness-derived assistant work items in `/trip`, not deterministic cards disguised as live output;
+- add sanitized live interaction logs for provider, harness, and UI debugging, including fixed failure classes such as timeout, rate-limited, http 4xx/5xx, upstream model unavailable, malformed JSON, schema invalid, and harness validation blocked;
+- consolidate MVP documentation into `docs/MVP_STATUS.md`, archive or fold the three addendum planning notes, and clearly mark which stages are live, deterministic, provider-plumbed, or still synthetic.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
