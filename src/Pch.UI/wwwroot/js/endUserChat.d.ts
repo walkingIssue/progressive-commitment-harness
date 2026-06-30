@@ -15,9 +15,11 @@ declare const scenicCandidate: {
     summary: string;
     evidence: string;
 };
+declare const FALLBACK_DELAY_MS = 350;
 declare function sanitizeText(value: string): string;
 declare function root(): HTMLElement | null;
 declare function transcript(): HTMLElement | null;
+declare function scheduleFallback(shouldRun: () => boolean, action: () => void): void;
 declare function setRootState(attrs: Record<string, string>): void;
 declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
 declare function candidateCard(candidate: (typeof candidates)[number], state?: string): string;

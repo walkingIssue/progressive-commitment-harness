@@ -37,6 +37,7 @@ const candidates = [
     },
 ];
 const scenicCandidate = candidates[2];
+const FALLBACK_DELAY_MS = 350;
 function sanitizeText(value) {
     let sanitized = value.trim();
     for (const sentinel of RAW_SENTINELS) {
@@ -49,6 +50,13 @@ function root() {
 }
 function transcript() {
     return document.querySelector("[data-transcript='trip']");
+}
+function scheduleFallback(shouldRun, action) {
+    window.setTimeout(() => {
+        if (shouldRun()) {
+            action();
+        }
+    }, FALLBACK_DELAY_MS);
 }
 function setRootState(attrs) {
     const element = root();
@@ -205,24 +213,36 @@ document.addEventListener("click", (event) => {
     if (!(target instanceof HTMLElement))
         return;
     const action = target.dataset;
-    if (action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer")
-        sendPrompt();
-    if (action.formSubmit === "form-trip-basics")
-        submitForm();
-    if (action.choiceAction === "select" && action.candidateId)
-        selectCandidate(action.candidateId);
-    if (action.choiceAction === "defer" && action.candidateId)
-        deferCandidate(action.candidateId);
-    if (action.approvalAction === "request")
-        requestApproval();
-    if (action.askAction === "open")
-        toggleDrawer(true);
-    if (action.askAction === "close")
-        toggleDrawer(false);
-    if (action.deckControl === "next")
-        moveDeck(1);
-    if (action.deckControl === "previous")
-        moveDeck(-1);
+    if (action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
+        const beforeFinalState = root()?.dataset.finalState;
+        const beforeTurnCount = transcript()?.dataset.turnCount;
+        scheduleFallback(() => root()?.dataset.finalState === beforeFinalState && transcript()?.dataset.turnCount === beforeTurnCount, sendPrompt);
+    }
+    if (action.formSubmit === "form-trip-basics") {
+        scheduleFallback(() => document.querySelector("[data-form-id='form-trip-basics']")?.dataset.formState !== "accepted", submitForm);
+    }
+    if (action.choiceAction === "select" && action.candidateId) {
+        const candidateId = action.candidateId;
+        scheduleFallback(() => document.querySelector(`[data-selected-option-card='true'][data-candidate-id='${candidateId}']`) === null, () => selectCandidate(candidateId));
+    }
+    if (action.choiceAction === "defer" && action.candidateId) {
+        const candidateId = action.candidateId;
+        scheduleFallback(() => document.querySelector(`[data-plan-trail-item='trail-deferred-option'][data-candidate-id='${candidateId}']`) === null, () => deferCandidate(candidateId));
+    }
+    if (action.approvalAction === "request") {
+        scheduleFallback(() => root()?.dataset.approvalState !== "blocked_missing_approval", requestApproval);
+    }
+    if (action.askAction === "open") {
+        scheduleFallback(() => root()?.dataset.askDrawer !== "open", () => toggleDrawer(true));
+    }
+    if (action.askAction === "close") {
+        scheduleFallback(() => root()?.dataset.askDrawer !== "closed", () => toggleDrawer(false));
+    }
+    if (action.deckControl === "next" || action.deckControl === "previous") {
+        const beforeIndex = document.querySelector("[data-candidate-deck='reflective-culture']")?.dataset.deckIndex;
+        const direction = action.deckControl === "next" ? 1 : -1;
+        scheduleFallback(() => document.querySelector("[data-candidate-deck='reflective-culture']")?.dataset.deckIndex === beforeIndex, () => moveDeck(direction));
+    }
 });
 document.addEventListener("keydown", (event) => {
     const target = event.target;
