@@ -1,4 +1,6 @@
-using Pch.UI.Features.StageCockpit;
+using Pch.Harness;
+using Pch.Providers.Mock;
+using Pch.Providers.ModelRoles;
 
 namespace Pch.UI.Features.EndUserChat;
 
@@ -9,11 +11,31 @@ public sealed class EndUserChatService
     public const string ModeState = "offline-deterministic";
     public const string RawAbsenceState = "verified";
 
-    private readonly EndToEndTripRunService _tripRunService = new();
+    private const string PendingConfirmationCode = "end_user_chat_pending_confirmation";
+
+    private readonly GoldenTurnTraceRunner _traceRunner;
+    private readonly ModelRoleStatusEvaluator _roleStatusEvaluator;
+
+    public EndUserChatService()
+        : this(
+            new GoldenTurnTraceRunner(),
+            new ModelRoleStatusEvaluator(new MockModelRoleStatusSource()))
+    {
+    }
+
+    public EndUserChatService(
+        GoldenTurnTraceRunner traceRunner,
+        ModelRoleStatusEvaluator roleStatusEvaluator)
+    {
+        _traceRunner = traceRunner ?? throw new ArgumentNullException(nameof(traceRunner));
+        _roleStatusEvaluator = roleStatusEvaluator ?? throw new ArgumentNullException(nameof(roleStatusEvaluator));
+    }
 
     public EndUserChatState CreateInitialState() => new(
         ModeLabel,
         ModeState,
+        ModelRoleStatusEvaluator.OutcomeReady,
+        ActiveRoleMarker(ModelRoleKind.DeterministicOffline),
         RawAbsenceState,
         DefaultPrompt,
         "idle",
@@ -40,29 +62,39 @@ public sealed class EndUserChatService
                 null)
         ]);
 
-    public EndUserChatState Send(string prompt)
+    public async Task<EndUserChatState> SendAsync(string prompt, CancellationToken cancellationToken = default)
     {
         var normalizedPrompt = NormalizePrompt(prompt);
         var scenario = SelectScenario(normalizedPrompt);
-        var run = _tripRunService.Run(scenario);
-        var turns = BuildTurns(normalizedPrompt, run);
+        var trace = _traceRunner.Run(ScriptFor(scenario));
+        var roleStatus = await EvaluateRoleStatus(cancellationToken).ConfigureAwait(false);
+        var turns = BuildTurns(normalizedPrompt, scenario, trace, roleStatus);
+        var finalState = FinalStateFor(scenario, trace);
+        var errorCode = ErrorCodeFor(scenario, trace);
+        var blockedReason = trace.IsBlocked ? trace.Code : null;
 
         return new(
             ModeLabel,
             ModeState,
+            roleStatus.OutcomeCode,
+            ActiveRoleMarker(roleStatus.ActiveRole),
             RawAbsenceState,
             string.Empty,
-            run.Outcome.State,
-            run.Outcome.ErrorCode,
-            run.Outcome.BlockedReason,
+            finalState,
+            errorCode,
+            blockedReason,
             turns);
     }
 
+    public EndUserChatState Send(string prompt) =>
+        SendAsync(prompt).GetAwaiter().GetResult();
+
     private static IReadOnlyList<EndUserChatTurn> BuildTurns(
         string normalizedPrompt,
-        EndToEndTripRunResult run)
+        EndUserChatScenario scenario,
+        GoldenTurnTraceResult trace,
+        SanitizedModelRoleStatusEvalRow roleStatus)
     {
-        var outcome = run.Outcome;
         var turns = new List<EndUserChatTurn>
         {
             new(
@@ -75,81 +107,126 @@ public sealed class EndUserChatService
                 null,
                 null),
             new(
-                "turn-harness-mode",
-                "harness",
-                "mode",
+                "turn-provider-role-status",
+                "provider",
+                "role-status",
                 "applied",
-                "Offline deterministic mode used canonical mock planner, itinerary, hold, and evidence paths only.",
-                ModeState,
+                RoleStatusText(roleStatus),
+                roleStatus.OutcomeCode,
                 null,
-                null),
-            new(
-                "turn-assistant-mission",
-                "assistant",
-                "mission",
-                outcome.State == "blocked" ? "blocked" : "applied",
-                MissionText(outcome),
-                outcome.MissionOutcomeCode,
-                "evidence-user-purpose",
-                outcome.State == "blocked" ? outcome.ErrorCode : null),
-            new(
-                "turn-harness-itinerary",
-                "harness",
-                "itinerary",
-                outcome.State == "blocked" ? "blocked" : outcome.State,
-                ItineraryText(outcome),
-                outcome.ItineraryOutcomeCode,
-                "evidence-fixture-candidates",
-                outcome.State == "blocked" ? outcome.ErrorCode : null),
-            new(
-                "turn-harness-hold",
-                "harness",
-                "approval",
-                ResolveHoldState(outcome),
-                HoldText(outcome),
-                outcome.HoldOutcomeCode,
-                outcome.ApprovalId,
-                outcome.HoldOutcomeCode == "not_run" ? outcome.ErrorCode : null),
-            new(
-                "turn-assistant-final",
-                "assistant",
-                outcome.State == "blocked" ? "blocked" : "final",
-                outcome.State,
-                FinalText(outcome),
-                outcome.TraceOutcome,
-                outcome.EvidencePacketId,
-                outcome.ErrorCode)
+                roleStatus.ErrorCode)
         };
 
-        turns.AddRange(run.Evidence.Take(3).Select((evidence, index) => new EndUserChatTurn(
-            $"turn-evidence-{index + 1}",
-            "harness",
-            "evidence",
-            outcome.State,
-            $"Evidence packet {evidence.ExportPacketId} recorded {evidence.Outcome}.",
-            evidence.Outcome,
-            evidence.EvidenceId,
-            null)));
+        turns.AddRange(trace.Turns.Select(turn => new EndUserChatTurn(
+            turn.TurnId,
+            turn.Actor,
+            turn.Kind,
+            StateFor(turn, scenario, trace),
+            turn.Summary,
+            turn.Code,
+            turn.EvidenceReferences.FirstOrDefault(),
+            trace.IsBlocked && turn.Kind == "blocked" ? trace.Code : null)));
+
+        turns.Add(new(
+            "turn-assistant-final",
+            "assistant",
+            trace.IsBlocked ? "blocked" : "final",
+            FinalStateFor(scenario, trace),
+            FinalText(scenario, trace),
+            scenario == EndUserChatScenario.PendingConfirmation ? PendingConfirmationCode : trace.Code,
+            trace.EvidenceReferences.FirstOrDefault(),
+            ErrorCodeFor(scenario, trace)));
 
         return turns;
     }
 
-    private static string SelectScenario(string normalizedPrompt)
+    private async Task<SanitizedModelRoleStatusEvalRow> EvaluateRoleStatus(CancellationToken cancellationToken)
+    {
+        var row = await _roleStatusEvaluator.EvaluateAsync(
+            [new ModelRoleStatusEvalCase("end-user-chat-model-role", CreateRoleStatusPacket())],
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        return row.Single();
+    }
+
+    private static ModelRoleStatusPacket CreateRoleStatusPacket() =>
+        new(
+            "packet-end-user-chat-role-status",
+            [
+                new ModelRoleRequest(ModelRoleKind.DeterministicOffline, ModelRoleProviderMode.OfflineDeterministic, true, true),
+                new ModelRoleRequest(ModelRoleKind.SmallModel, ModelRoleProviderMode.HostedSmallModel, false, false),
+                new ModelRoleRequest(ModelRoleKind.StrongModel, ModelRoleProviderMode.HostedStrongModel, false, false),
+                new ModelRoleRequest(ModelRoleKind.LiveProviderDisabled, ModelRoleProviderMode.LiveProviderDisabled, false, false)
+            ],
+            ModelRoleKind.DeterministicOffline,
+            AllowFallback: false,
+            Locale: "en-US",
+            ContextDigest: "end-user-chat-offline-deterministic");
+
+    private static EndUserChatScenario SelectScenario(string normalizedPrompt)
     {
         if (normalizedPrompt.Contains("block", StringComparison.OrdinalIgnoreCase)
             || normalizedPrompt.Contains("safety", StringComparison.OrdinalIgnoreCase)
-            || normalizedPrompt.Contains("approval", StringComparison.OrdinalIgnoreCase))
+            || normalizedPrompt.Contains("approval", StringComparison.OrdinalIgnoreCase)
+            || normalizedPrompt.Contains("payment", StringComparison.OrdinalIgnoreCase))
         {
-            return "e2e.missing-approval";
+            return EndUserChatScenario.BlockedSafety;
         }
 
         if (normalizedPrompt.Contains("maybe", StringComparison.OrdinalIgnoreCase)
             || normalizedPrompt.Contains("confirm", StringComparison.OrdinalIgnoreCase))
         {
-            return "e2e.pending-confirmation";
+            return EndUserChatScenario.PendingConfirmation;
         }
 
-        return "e2e.happy-path";
+        return EndUserChatScenario.HappyPath;
+    }
+
+    private static GoldenTurnTraceScript ScriptFor(EndUserChatScenario scenario) =>
+        scenario == EndUserChatScenario.BlockedSafety
+            ? GoldenTurnTraceRunner.BlockedSafetyScript
+            : GoldenTurnTraceRunner.HappyPathScript;
+
+    private static string StateFor(
+        GoldenTurnTraceTurn turn,
+        EndUserChatScenario scenario,
+        GoldenTurnTraceResult trace)
+    {
+        if (trace.IsBlocked && turn.Kind == "blocked")
+        {
+            return "blocked";
+        }
+
+        if (scenario == EndUserChatScenario.PendingConfirmation && turn.Stage is "mission_intake" or "itinerary_compile")
+        {
+            return "pending";
+        }
+
+        return turn.Kind switch
+        {
+            "user" or "assistant" => "applied",
+            "blocked" => "blocked",
+            _ => trace.IsBlocked ? "blocked" : "applied"
+        };
+    }
+
+    private static string FinalStateFor(EndUserChatScenario scenario, GoldenTurnTraceResult trace)
+    {
+        if (trace.IsBlocked)
+        {
+            return "blocked";
+        }
+
+        return scenario == EndUserChatScenario.PendingConfirmation ? "pending" : "applied";
+    }
+
+    private static string? ErrorCodeFor(EndUserChatScenario scenario, GoldenTurnTraceResult trace)
+    {
+        if (trace.IsBlocked)
+        {
+            return trace.Code;
+        }
+
+        return scenario == EndUserChatScenario.PendingConfirmation ? PendingConfirmationCode : null;
     }
 
     private static string NormalizePrompt(string prompt)
@@ -161,41 +238,37 @@ public sealed class EndUserChatService
     private static string PromptSummary(string prompt) =>
         $"Trip request accepted with {prompt.Length} characters. Raw prompt text is kept out of transcript storage.";
 
-    private static string MissionText(EndToEndTripRunOutcomeFixture outcome) =>
-        outcome.State == "blocked"
-            ? "Mission intake stopped before completing the deterministic trip run."
-            : "Mission facts were applied through deterministic prompt intake.";
+    private static string RoleStatusText(SanitizedModelRoleStatusEvalRow roleStatus) =>
+        roleStatus.Passed
+            ? "Offline deterministic model role is active; live provider roles are disabled for this run."
+            : $"Model role posture blocked with {roleStatus.OutcomeCode}.";
 
-    private static string ItineraryText(EndToEndTripRunOutcomeFixture outcome) =>
-        outcome.State switch
+    private static string FinalText(EndUserChatScenario scenario, GoldenTurnTraceResult trace)
+    {
+        if (trace.IsBlocked)
         {
-            "blocked" => outcome.BlockedReason ?? "The deterministic itinerary path was blocked.",
-            "proposed" => "The planner is waiting for confirmation before building itinerary slots.",
-            _ => $"Selected {outcome.SelectedCount} candidate and deferred {outcome.DeferredCount} slot."
+            return "Blocked by the deterministic safety gate before any live provider or booking step.";
+        }
+
+        return scenario == EndUserChatScenario.PendingConfirmation
+            ? "Pending confirmation before final itinerary and availability steps."
+            : "Final deterministic trip plan is ready with canonical evidence markers.";
+    }
+
+    private static string ActiveRoleMarker(ModelRoleKind? role) =>
+        role switch
+        {
+            ModelRoleKind.DeterministicOffline => "deterministic-offline",
+            ModelRoleKind.SmallModel => "small-model",
+            ModelRoleKind.StrongModel => "strong-model",
+            ModelRoleKind.LiveProviderDisabled => "live-provider-disabled",
+            _ => "none"
         };
 
-    private static string ResolveHoldState(EndToEndTripRunOutcomeFixture outcome) =>
-        outcome.HoldOutcomeCode switch
-        {
-            "hold_preparation_ready" => "ready",
-            "hold_preparation_missing_approval" => "approval-required",
-            "not_run" => "not-run",
-            _ => outcome.State
-        };
-
-    private static string HoldText(EndToEndTripRunOutcomeFixture outcome) =>
-        outcome.HoldOutcomeCode switch
-        {
-            "hold_preparation_ready" => "Mock hold preparation is ready after approval gating; no real hold was placed.",
-            "hold_preparation_missing_approval" => "Mock hold preparation is blocked until explicit approval is available.",
-            _ => "No hold, booking, payment, or live provider handoff ran."
-        };
-
-    private static string FinalText(EndToEndTripRunOutcomeFixture outcome) =>
-        outcome.State switch
-        {
-            "blocked" => $"Blocked with {outcome.ErrorCode}.",
-            "proposed" => "Pending confirmation before final itinerary and hold steps.",
-            _ => $"Final deterministic plan is ready with evidence packet {outcome.EvidencePacketId}."
-        };
+    private enum EndUserChatScenario
+    {
+        HappyPath,
+        BlockedSafety,
+        PendingConfirmation
+    }
 }

@@ -3,6 +3,8 @@ namespace Pch.UI.Features.EndUserChat;
 public sealed record EndUserChatState(
     string ModeLabel,
     string ModeState,
+    string RoleStatusOutcome,
+    string RoleStatusActiveRole,
     string RawAbsenceState,
     string Prompt,
     string FinalState,

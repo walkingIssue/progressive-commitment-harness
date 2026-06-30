@@ -5,6 +5,8 @@
 <section class="chat-shell"
          data-end-user-chat="v0"
          data-deterministic-mode="@Chat.ModeState"
+         data-role-status="@Chat.RoleStatusOutcome"
+         data-active-model-role="@Chat.RoleStatusActiveRole"
          data-final-state="@Chat.FinalState"
          data-error-code="@Chat.ErrorCode"
          data-blocked-reason="@Chat.BlockedReason"
@@ -17,6 +19,8 @@
         </div>
         <span class="mode-pill"
               data-offline-mode="@Chat.ModeState"
+              data-role-status-marker="@Chat.RoleStatusOutcome"
+              data-active-model-role="@Chat.RoleStatusActiveRole"
               data-raw-absence-state="@Chat.RawAbsenceState">
             @Chat.ModeLabel
         </span>
@@ -37,7 +41,7 @@
                         class="send-button"
                         data-send-action="deterministic"
                         aria-label="Send deterministic trip prompt"
-                        @onclick="SendPrompt">
+                        @onclick="SendPromptAsync">
                     Send
                 </button>
             </div>
@@ -78,9 +82,9 @@
         Prompt = Chat.Prompt;
     }
 
-    private void SendPrompt()
+    private async Task SendPromptAsync()
     {
-        Chat = ChatService.Send(Prompt);
+        Chat = await ChatService.SendAsync(Prompt);
         Prompt = Chat.Prompt;
     }
 }
