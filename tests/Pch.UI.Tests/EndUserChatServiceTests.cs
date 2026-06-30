@@ -18,6 +18,10 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("offline-deterministic", state.ModeState);
         Assert.Equal(ModelRoleStatusEvaluator.OutcomeReady, state.RoleStatusOutcome);
         Assert.Equal("deterministic-offline", state.RoleStatusActiveRole);
+        Assert.Equal("deterministic-offline", state.SelectedModelRole);
+        Assert.Equal("deterministic_default", state.LivePreflightState);
+        Assert.Equal("deterministic_fallback", state.LatestTurnSource);
+        Assert.Equal("not_attempted", state.ProviderRequestState);
         Assert.Equal("verified", state.RawAbsenceState);
         Assert.Equal("idle", state.FinalState);
         Assert.Equal("not_requested", state.ApprovalState);
@@ -42,6 +46,10 @@ public sealed class EndUserChatServiceTests
         Assert.Null(state.ErrorCode);
         Assert.Equal(ModelRoleStatusEvaluator.OutcomeReady, state.RoleStatusOutcome);
         Assert.Equal("deterministic-offline", state.RoleStatusActiveRole);
+        Assert.Equal("deterministic-offline", state.SelectedModelRole);
+        Assert.Equal("deterministic_default", state.LivePreflightState);
+        Assert.Equal("deterministic_fallback", state.LatestTurnSource);
+        Assert.Equal("not_attempted", state.ProviderRequestState);
         Assert.NotNull(state.FormCard);
         Assert.NotNull(state.ChoiceSet);
         Assert.NotNull(state.ApprovalPlate);
@@ -86,6 +94,47 @@ public sealed class EndUserChatServiceTests
             && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
         Assert.Contains(state.Turns, turn => turn.Kind == "evidence"
             && turn.OutcomeCode == "complete");
+        AssertChatRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public async Task LiveRoleWithoutExplicitConfigRendersSanitizedGuardAndDeterministicFallback()
+    {
+        var service = new EndUserChatService(
+            new GoldenTurnTraceRunner(),
+            new ModelRoleStatusEvaluator(new Pch.Providers.Mock.MockModelRoleStatusSource()),
+            new EndUserLiveModelTurnService(() => new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["PCH_LIVE_MODEL_ENABLED"] = "false",
+                ["PCH_LIVE_MODEL_KEY_AVAILABLE"] = "false",
+                ["PCH_LIVE_MODEL_PROVIDER"] = "openrouter",
+                ["PCH_LIVE_IN_HARNESS_MODEL"] = "qwen/qwen3-14b"
+            }));
+
+        var state = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with live mode.",
+            EndUserModelRoleSelection.InHarnessActionGenerator);
+        var serialized = Serialize(state);
+
+        Assert.Equal("in-harness-action-generator", state.SelectedModelRole);
+        Assert.Equal("openrouter", state.SelectedProvider);
+        Assert.Equal("blocked_by_guard", state.LivePreflightState);
+        Assert.Equal("deterministic_fallback", state.LatestTurnSource);
+        Assert.Equal("not_attempted", state.ProviderRequestState);
+        Assert.Equal("live_model_disabled", state.ProviderOutcome);
+        Assert.Equal("live_guard_blocked", state.ProviderHealth);
+        Assert.Equal("PCH_UI_LIVE_MODEL_GUARDED", state.ErrorCode);
+        Assert.Equal("live_model_disabled", state.BlockedReason);
+        Assert.Equal("live_model_disabled", state.LastProviderFailureCode);
+        Assert.Equal("notice-live-model-guard", state.ProviderFailure?.NoticeId);
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
+            && turn.Kind == "live-model"
+            && turn.State == "blocked"
+            && turn.OutcomeCode == "live_model_disabled"
+            && turn.ErrorCode == "PCH_UI_LIVE_MODEL_GUARDED");
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-final"
+            && turn.State == "applied"
+            && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
         AssertChatRawTextAbsent(serialized);
     }
 

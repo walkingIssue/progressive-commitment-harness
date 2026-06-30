@@ -195,6 +195,40 @@ body {
     font-weight: 750;
 }
 
+.model-strip__roles {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .25rem;
+    border: 1px solid rgba(29, 44, 63, .12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .58);
+}
+
+.model-strip__roles button {
+    min-height: 2rem;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--chat-muted);
+    padding: .2rem .55rem;
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.model-strip__roles button[data-model-role-selected="true"] {
+    background: #1f2c3f;
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(31, 44, 63, .16);
+}
+
+.model-strip__roles button:focus-visible {
+    outline: 3px solid rgba(76, 127, 255, .35);
+    outline-offset: 2px;
+}
+
 .composer-start {
     align-self: center;
     justify-self: center;

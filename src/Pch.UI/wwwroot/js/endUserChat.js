@@ -152,6 +152,29 @@ function setRootState(attrs) {
         element.setAttribute(key, value);
     }
 }
+function selectedModelRole() {
+    return root()?.dataset.selectedModelRole ?? "deterministic-offline";
+}
+function setModelRole(role) {
+    const normalized = role === "in-harness-action-generator" || role === "strong-planner"
+        ? role
+        : "deterministic-offline";
+    setRootState({
+        "data-selected-model-role": normalized,
+        "data-live-preflight-state": normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard",
+        "data-latest-turn-source": "deterministic_fallback",
+        "data-provider-request-state": "not_attempted",
+    });
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-selected-model-role", normalized);
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-live-preflight-state", normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard");
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-latest-turn-source", "deterministic_fallback");
+    document.querySelector("[data-model-status-strip='end-user']")?.setAttribute("data-provider-request-state", "not_attempted");
+    document.querySelectorAll("[data-model-role-option]").forEach((button) => {
+        const isSelected = button.dataset.modelRoleOption === normalized;
+        button.dataset.modelRoleSelected = String(isSelected);
+        button.setAttribute("aria-pressed", String(isSelected));
+    });
+}
 function appendTurn(id, role, kind, state, text, outcome, evidence, candidateId) {
     const panel = transcript();
     if (!panel || panel.querySelector(`[data-turn-id="${id}"]`)) {
@@ -252,16 +275,26 @@ function ensureWorkObjects() {
 function sendPrompt() {
     const prompt = document.querySelector("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
     const promptLength = prompt?.value.trim().length ?? 0;
+    const role = selectedModelRole();
+    const liveSelected = role !== "deterministic-offline";
     document.querySelector("[data-composer-layout='expanded_start']")?.setAttribute("hidden", "");
     setRootState({
         "data-final-state": "applied",
         "data-composer-state": "collapsed_drawer",
         "data-ask-drawer": "closed",
-        "data-provider-outcome": "deterministic_fallback_active",
+        "data-provider-outcome": liveSelected ? "live_model_disabled" : "deterministic_fallback_active",
+        "data-live-preflight-state": liveSelected ? "blocked_by_guard" : "deterministic_default",
+        "data-latest-turn-source": "deterministic_fallback",
+        "data-provider-request-state": "not_attempted",
+        "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",
+        "data-blocked-reason": liveSelected ? "live_model_disabled" : "",
     });
     toggleDrawer(false);
     appendTurn("turn-user-1", "user", "prompt", "submitted", `Trip request accepted with ${promptLength} characters. Raw prompt text is kept out of transcript storage.`, "prompt_received");
     appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active; live provider roles are disabled for this run.", "model_role_status_ready");
+    if (liveSelected) {
+        appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.", "live_model_disabled", "evidence-chat-live-model");
+    }
     appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
     ensureWorkObjects();
     if (!document.querySelector("[data-ask-action='open']")) {
@@ -394,6 +427,7 @@ const chatActionSelector = [
     "[data-deck-control]",
     "[data-timeline-mode-action]",
     "[data-origin-turn-id]",
+    "[data-model-role-option]",
 ].join(",");
 function interceptChatAction(event) {
     if (!closestAction(event.target, chatActionSelector))
@@ -405,6 +439,10 @@ function interceptChatAction(event) {
 function handleChatInteraction(target) {
     const sendElement = closestAction(target, "[data-send-action]");
     const action = sendElement?.dataset ?? {};
+    const modelRole = closestAction(target, "[data-model-role-option]")?.dataset.modelRoleOption;
+    if (modelRole) {
+        scheduleFallback(() => root()?.dataset.selectedModelRole !== modelRole, () => setModelRole(modelRole));
+    }
     if (action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
         const beforeFinalState = root()?.dataset.finalState;
         const beforeTurnCount = transcript()?.dataset.turnCount;

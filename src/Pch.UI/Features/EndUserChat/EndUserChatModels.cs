@@ -5,6 +5,11 @@ public sealed record EndUserChatState(
     string ModeState,
     string RoleStatusOutcome,
     string RoleStatusActiveRole,
+    string SelectedModelRole,
+    string SelectedProvider,
+    string LivePreflightState,
+    string LatestTurnSource,
+    string ProviderRequestState,
     string ProviderOutcome,
     string ProviderHealth,
     string CreditState,
@@ -160,3 +165,18 @@ public sealed record EndUserMediaAsset(
     string License,
     string Attribution,
     string State);
+
+public static class EndUserModelRoleSelection
+{
+    public const string DeterministicOffline = "deterministic-offline";
+    public const string InHarnessActionGenerator = "in-harness-action-generator";
+    public const string StrongPlanner = "strong-planner";
+
+    public static string Normalize(string? role) =>
+        role switch
+        {
+            InHarnessActionGenerator => InHarnessActionGenerator,
+            StrongPlanner => StrongPlanner,
+            _ => DeterministicOffline
+        };
+}
