@@ -518,6 +518,19 @@ Sprint 017 should make the planning cards visually credible and media-ready with
 - integrate image-backed cards into the end-user UI, including floaty same-mood decks, selected-card bubbles with thumbnails/backdrops, and evidence trail imagery;
 - preserve first-prompt, collapsed `Ask`, card selection, evidence trail, missing-media fallback, raw-sentinel absence, and old-scaffold absence browser gates.
 
+## Sprint 018 Target
+
+Sprint 018 should make the end-user planner easier to understand and safer to revise by separating active chat from planning history.
+
+- split the end-user planner and Stage Cockpit onto separate routes so a user no longer sees engineering panels inline with the product surface;
+- move selected/deferred/blocked/approved evidence out of the chat transcript into a dedicated image-backed planning timeline;
+- support day-mode and task-mode planning history so the user can review both local itinerary decisions and higher-level decomposed work;
+- make timeline items click-to-scroll back to the originating interaction, creating the first usable live history/edit affordance;
+- fold the `Ask` composer into a quiet right-edge control inside the chat view after the first prompt, with a subtle pastel treatment that is visible without competing with the assistant work;
+- componentize the end-user Blazor surface into shell, composer, work bubble, choice deck, option card, selected bubble, planning timeline, task rail, approval plate, and provider status components;
+- add the first harness-owned edit-impact boundary so a changed past decision can report affected nodes, preserved nodes, and minimal repair prompts without mutating state;
+- add provider-local repair posture/eval artifacts for model-assisted repair suggestions while keeping required tests deterministic/offline and redacted.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
