@@ -73,6 +73,541 @@ h1:focus {
     color: var(--pch-ink);
 }
 
+/* Sprint 016 end-user interaction surface */
+:root {
+    --chat-paper: #fbf7ef;
+    --chat-paper-strong: #fffdf8;
+    --chat-ink: #172033;
+    --chat-muted: #697080;
+    --chat-line: rgba(28, 45, 69, .14);
+    --chat-teal: #0f8b8d;
+    --chat-teal-dark: #086468;
+    --chat-amber: #c87918;
+    --chat-coral: #c75656;
+    --chat-rose: #fff0ee;
+    --chat-marine: #122033;
+    --chat-green: #4bb77d;
+    --chat-shadow: 0 18px 50px rgba(33, 37, 41, .12);
+}
+
+body {
+    background: var(--chat-paper);
+    color: var(--chat-ink);
+}
+
+.content {
+    padding: 0;
+}
+
+.chat-shell--v16 {
+    position: relative;
+    display: grid;
+    grid-template-columns: 4.75rem minmax(0, 1fr) minmax(18rem, 24rem);
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--chat-paper);
+    color: var(--chat-ink);
+}
+
+.chat-nav {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-height: 100vh;
+    padding: 1.1rem .65rem;
+    border-right: 1px solid var(--chat-line);
+    background: rgba(255, 253, 248, .72);
+}
+
+.chat-nav__mark,
+.chat-nav__item {
+    display: grid;
+    place-items: center;
+    min-height: 3rem;
+    border-radius: 16px;
+    color: var(--chat-teal-dark);
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.chat-nav__mark,
+.chat-nav__item.is-active {
+    background: var(--chat-teal);
+    color: #fff;
+}
+
+.chat-main {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 1.25rem;
+    min-width: 0;
+    padding: 2rem;
+}
+
+.chat-topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.chat-topbar h1 {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    line-height: 1;
+}
+
+.model-strip {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .45rem;
+    max-width: 34rem;
+}
+
+.model-strip span,
+.provider-notice button,
+.secondary-button,
+.send-button,
+.candidate-actions button,
+.approval-plate button,
+.ask-tab,
+.deck-controls button,
+.ask-drawer button {
+    min-height: 2.35rem;
+    border-radius: 8px;
+    font: inherit;
+}
+
+.model-strip span {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--chat-line);
+    background: rgba(255, 255, 255, .74);
+    color: var(--chat-muted);
+    padding: .3rem .65rem;
+    font-size: .82rem;
+    font-weight: 750;
+}
+
+.composer-start {
+    align-self: center;
+    justify-self: center;
+    display: grid;
+    gap: 1rem;
+    width: min(100%, 48rem);
+    margin: 4vh auto;
+}
+
+.composer-start > p {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 850;
+}
+
+.composer-card,
+.work-bubble,
+.chat-turn,
+.provider-notice {
+    border: 1px solid var(--chat-line);
+    border-radius: 8px;
+    background: var(--chat-paper-strong);
+    box-shadow: var(--chat-shadow);
+}
+
+.composer-card {
+    display: grid;
+    gap: .8rem;
+    padding: 1rem;
+}
+
+.composer-card textarea,
+.ask-drawer textarea,
+.form-field input {
+    width: 100%;
+    border: 1px solid var(--chat-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--chat-ink);
+    font: inherit;
+}
+
+.composer-card textarea,
+.ask-drawer textarea {
+    min-height: 9rem;
+    padding: .9rem;
+    resize: vertical;
+}
+
+.composer-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--chat-muted);
+    font-size: .9rem;
+}
+
+.send-button {
+    border: 1px solid var(--chat-teal-dark);
+    background: var(--chat-teal);
+    color: #fff;
+    font-weight: 850;
+    padding: .45rem 1rem;
+}
+
+.agent-stage {
+    display: grid;
+    align-content: start;
+    gap: .9rem;
+    min-height: 20rem;
+    padding-bottom: 6rem;
+}
+
+.chat-turn,
+.work-bubble,
+.provider-notice,
+.approval-plate {
+    display: grid;
+    gap: .65rem;
+    max-width: 49rem;
+    padding: .9rem 1rem;
+}
+
+.chat-turn[data-turn-role="user"] {
+    justify-self: end;
+    background: #e9f5f3;
+    border-color: rgba(15, 139, 141, .28);
+}
+
+.chat-turn[data-turn-kind="blocked"],
+.chat-turn[data-turn-state="blocked"] {
+    background: var(--chat-rose);
+    border-color: rgba(199, 86, 86, .4);
+}
+
+.chat-turn__meta {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    color: var(--chat-muted);
+    font-size: .78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.chat-turn p,
+.work-bubble p,
+.provider-notice p,
+.approval-plate p,
+.task-row p {
+    margin: 0;
+}
+
+.work-lead {
+    color: var(--chat-muted);
+}
+
+.form-card,
+.choice-card {
+    display: grid;
+    gap: .9rem;
+}
+
+.form-card h2,
+.choice-card h2,
+.approval-plate h2,
+.task-rail h2,
+.ask-drawer h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.form-field {
+    display: grid;
+    gap: .35rem;
+    color: var(--chat-muted);
+    font-weight: 750;
+}
+
+.form-field input {
+    min-height: 2.6rem;
+    padding: .45rem .65rem;
+}
+
+.secondary-button,
+.candidate-actions button,
+.provider-notice button,
+.approval-plate button,
+.deck-controls button,
+.ask-drawer button {
+    border: 1px solid var(--chat-line);
+    background: #fff;
+    color: var(--chat-ink);
+    font-weight: 800;
+    padding: .4rem .75rem;
+}
+
+.choice-card__header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.deck-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    color: var(--chat-muted);
+    font-weight: 800;
+}
+
+.candidate-deck,
+.plan-trail {
+    display: flex;
+    gap: .75rem;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: .45rem .15rem .8rem;
+    scroll-snap-type: x proximity;
+}
+
+.candidate-deck .candidate-card {
+    flex: 0 0 min(18rem, 82vw);
+    scroll-snap-align: start;
+}
+
+.candidate-card {
+    display: grid;
+    gap: .65rem;
+    min-height: 12rem;
+    margin-top: .25rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, .65);
+    border-radius: 8px;
+    color: #122033;
+    box-shadow: 0 16px 32px rgba(33, 37, 41, .13);
+}
+
+.candidate-card--culture {
+    background: linear-gradient(135deg, #fed7aa, #f9a8d4 45%, #99f6e4);
+}
+
+.candidate-card--nature {
+    background: linear-gradient(135deg, #bbf7d0, #bae6fd 48%, #fef3c7);
+}
+
+.candidate-card[data-candidate-state="selected"] {
+    outline: 4px solid rgba(15, 139, 141, .5);
+}
+
+.candidate-card[data-candidate-state="deferred"] {
+    filter: saturate(.65);
+}
+
+.candidate-card span {
+    width: fit-content;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .68);
+    padding: .25rem .55rem;
+    font-size: .78rem;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.candidate-card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.candidate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-self: end;
+}
+
+.selected-option-bubble {
+    min-width: min(18rem, 70vw);
+    min-height: 9rem;
+    text-align: left;
+}
+
+.approval-plate {
+    border: 2px solid rgba(199, 86, 86, .45);
+    background: linear-gradient(135deg, #fff7ed, #fff0ee);
+}
+
+.evidence-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    max-width: 49rem;
+    padding-top: .6rem;
+    border-top: 1px solid var(--chat-line);
+}
+
+.evidence-strip span,
+.plan-trail article {
+    color: var(--chat-muted);
+    font-size: .82rem;
+}
+
+.plan-trail {
+    max-width: 49rem;
+    border-top: 1px solid var(--chat-line);
+}
+
+.plan-trail article {
+    flex: 0 0 13rem;
+    display: grid;
+    gap: .25rem;
+    border-left: 3px solid var(--chat-teal);
+    background: rgba(255, 255, 255, .74);
+    border-radius: 8px;
+    padding: .65rem;
+    scroll-snap-align: start;
+}
+
+.ask-tab {
+    position: fixed;
+    right: 25.5rem;
+    bottom: 1.25rem;
+    z-index: 4;
+    border: 1px solid var(--chat-teal-dark);
+    background: var(--chat-teal);
+    color: #fff;
+    box-shadow: var(--chat-shadow);
+    padding: .55rem 1rem;
+}
+
+.ask-drawer {
+    position: fixed;
+    right: 24rem;
+    bottom: 0;
+    z-index: 5;
+    display: grid;
+    gap: .8rem;
+    width: min(31rem, calc(100vw - 2rem));
+    max-height: 80vh;
+    padding: 1rem;
+    border: 1px solid var(--chat-line);
+    border-radius: 8px 8px 0 0;
+    background: var(--chat-paper-strong);
+    box-shadow: var(--chat-shadow);
+}
+
+.ask-drawer > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.task-rail {
+    display: grid;
+    align-content: start;
+    gap: .75rem;
+    min-height: 100vh;
+    padding: 2rem 1.35rem;
+    background: linear-gradient(180deg, var(--chat-marine), #16263e);
+    color: #f8fbff;
+}
+
+.task-rail .eyebrow {
+    color: #9ddbd5;
+}
+
+.task-row {
+    border: 1px solid rgba(255, 255, 255, .13);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .07);
+}
+
+.task-row summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .65rem;
+    min-height: 3.3rem;
+    padding: .75rem;
+    cursor: pointer;
+}
+
+.task-row summary strong {
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .12);
+    padding: .25rem .55rem;
+    color: #cce9df;
+    font-size: .78rem;
+}
+
+.task-row div {
+    display: grid;
+    gap: .35rem;
+    padding: 0 .75rem .8rem 2rem;
+    color: rgba(248, 251, 255, .78);
+}
+
+.status-dot {
+    width: .8rem;
+    height: .8rem;
+    border-radius: 999px;
+    background: #8996a8;
+}
+
+.task-row[data-task-state="accepted"] .status-dot {
+    background: var(--chat-green);
+}
+
+.task-row[data-task-state="active"] .status-dot,
+.task-row[data-task-state="needs_user"] .status-dot {
+    background: #f2b84b;
+}
+
+.task-row[data-task-state="blocked"] .status-dot {
+    background: var(--chat-coral);
+}
+
+.composer-card textarea:focus,
+.ask-drawer textarea:focus,
+.send-button:focus,
+.secondary-button:focus,
+.candidate-actions button:focus,
+.approval-plate button:focus,
+.deck-controls button:focus,
+.ask-tab:focus,
+.plan-trail:focus,
+.candidate-deck:focus {
+    outline: 3px solid rgba(15, 139, 141, .35);
+    outline-offset: 2px;
+}
+
+@media (max-width: 1100px) {
+    .chat-shell--v16 {
+        grid-template-columns: 1fr;
+    }
+
+    .chat-nav,
+    .task-rail {
+        min-height: auto;
+    }
+
+    .chat-nav {
+        display: flex;
+    }
+
+    .ask-tab,
+    .ask-drawer {
+        right: 1rem;
+    }
+}
+
 .chat-shell {
     display: grid;
     gap: 1rem;

@@ -1,0 +1,31 @@
+declare const RAW_SENTINELS: string[];
+declare const candidates: {
+    id: string;
+    title: string;
+    mood: string;
+    tone: string;
+    summary: string;
+    evidence: string;
+}[];
+declare const scenicCandidate: {
+    id: string;
+    title: string;
+    mood: string;
+    tone: string;
+    summary: string;
+    evidence: string;
+};
+declare function sanitizeText(value: string): string;
+declare function root(): HTMLElement | null;
+declare function transcript(): HTMLElement | null;
+declare function setRootState(attrs: Record<string, string>): void;
+declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
+declare function candidateCard(candidate: (typeof candidates)[number], state?: string): string;
+declare function ensureWorkObjects(): void;
+declare function sendPrompt(): void;
+declare function submitForm(): void;
+declare function selectCandidate(candidateId: string): void;
+declare function deferCandidate(candidateId: string): void;
+declare function requestApproval(): void;
+declare function toggleDrawer(open: boolean): void;
+declare function moveDeck(direction: number): void;

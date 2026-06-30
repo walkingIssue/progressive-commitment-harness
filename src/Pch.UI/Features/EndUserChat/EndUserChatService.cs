@@ -10,8 +10,16 @@ public sealed class EndUserChatService
     public const string ModeLabel = "Deterministic offline";
     public const string ModeState = "offline-deterministic";
     public const string RawAbsenceState = "verified";
+    public const string ProviderOutcomeFallback = "deterministic_fallback_active";
+    public const string ApprovalRequiredCode = "approval_required_preview";
 
     private const string PendingConfirmationCode = "end_user_chat_pending_confirmation";
+    private const string FormId = "form-trip-basics";
+    private const string ChoiceSetId = "choice-japan-style";
+    private const string ApprovalId = "approval-preview-mock-hold";
+    private const string CandidateClassic = "candidate-japan-classic-highlights";
+    private const string CandidateScenic = "candidate-japan-scenic-explorer";
+    private const string CandidateCulture = "candidate-japan-reflective-culture";
 
     private readonly GoldenTurnTraceRunner _traceRunner;
     private readonly ModelRoleStatusEvaluator _roleStatusEvaluator;
@@ -31,36 +39,52 @@ public sealed class EndUserChatService
         _roleStatusEvaluator = roleStatusEvaluator ?? throw new ArgumentNullException(nameof(roleStatusEvaluator));
     }
 
-    public EndUserChatState CreateInitialState() => new(
-        ModeLabel,
-        ModeState,
-        ModelRoleStatusEvaluator.OutcomeReady,
-        ActiveRoleMarker(ModelRoleKind.DeterministicOffline),
-        RawAbsenceState,
-        DefaultPrompt,
-        "idle",
-        null,
-        null,
-        [
-            new(
-                "turn-system-ready",
-                "system",
-                "mode",
-                "ready",
-                "Deterministic offline mode is on. This preview never contacts live providers or creates bookings.",
-                ModeState,
-                null,
-                null),
-            new(
-                "turn-assistant-start",
-                "assistant",
-                "guidance",
-                "ready",
-                "Describe the trip you want to test, then send it through the deterministic planner.",
-                null,
-                null,
-                null)
-        ]);
+    public EndUserChatState CreateInitialState()
+    {
+        return new(
+            ModeLabel,
+            ModeState,
+            ModelRoleStatusEvaluator.OutcomeReady,
+            ActiveRoleMarker(ModelRoleKind.DeterministicOffline),
+            ProviderOutcomeFallback,
+            "offline_ready",
+            "credits_not_used",
+            "none",
+            "not_requested",
+            RawAbsenceState,
+            DefaultPrompt,
+            "idle",
+            "idle",
+            null,
+            null,
+            [
+                new(
+                    "turn-system-ready",
+                    "system",
+                    "mode",
+                    "ready",
+                    "Deterministic offline mode is active. Live providers, bookings, holds, and payments are disabled for this run.",
+                    ModeState,
+                    null,
+                    null),
+                new(
+                    "turn-assistant-start",
+                    "assistant",
+                    "guidance",
+                    "ready",
+                    "Tell me the trip you want to shape, then send it into the planner.",
+                    null,
+                    null,
+                    null)
+            ],
+            InitialTasks(),
+            null,
+            null,
+            null,
+            FallbackNotice(),
+            [],
+            []);
+    }
 
     public async Task<EndUserChatState> SendAsync(string prompt, CancellationToken cancellationToken = default)
     {
@@ -68,7 +92,7 @@ public sealed class EndUserChatService
         var scenario = SelectScenario(normalizedPrompt);
         var trace = _traceRunner.Run(ScriptFor(scenario));
         var roleStatus = await EvaluateRoleStatus(cancellationToken).ConfigureAwait(false);
-        var turns = BuildTurns(normalizedPrompt, scenario, trace, roleStatus);
+        var turns = BuildTraceTurns(normalizedPrompt, scenario, trace, roleStatus);
         var finalState = FinalStateFor(scenario, trace);
         var errorCode = ErrorCodeFor(scenario, trace);
         var blockedReason = trace.IsBlocked ? trace.Code : null;
@@ -78,18 +102,139 @@ public sealed class EndUserChatService
             ModeState,
             roleStatus.OutcomeCode,
             ActiveRoleMarker(roleStatus.ActiveRole),
+            ProviderOutcomeFallback,
+            "offline_ready",
+            "credits_not_used",
+            "none",
+            "not_requested",
             RawAbsenceState,
             string.Empty,
+            scenario == EndUserChatScenario.PendingConfirmation ? "awaiting_user_input" : "awaiting_user_input",
             finalState,
             errorCode,
             blockedReason,
-            turns);
+            turns,
+            TasksAfterSend(scenario),
+            FormCard("draft"),
+            ChoiceSet("active", null, null),
+            ApprovalPlate("not_requested", null),
+            FallbackNotice(),
+            EvidenceFrom(trace),
+            PlanTrailFrom(trace, null, null));
     }
 
     public EndUserChatState Send(string prompt) =>
         SendAsync(prompt).GetAwaiter().GetResult();
 
-    private static IReadOnlyList<EndUserChatTurn> BuildTurns(
+    public EndUserChatState SubmitForm(EndUserChatState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        return state with
+        {
+            ComposerState = "awaiting_user_input",
+            FinalState = "form_submitted",
+            FormCard = FormCard("accepted"),
+            Tasks = UpdateTask(state.Tasks, "task-basics", "accepted", 100, "Accepted"),
+            Turns = AppendTurn(state.Turns, new(
+                "turn-form-submitted",
+                "user",
+                "form",
+                "accepted",
+                "Trip basics were submitted and accepted by the deterministic harness path.",
+                "form_card_accepted",
+                "evidence-chat-purpose",
+                null))
+        };
+    }
+
+    public EndUserChatState SelectCandidate(EndUserChatState state, string candidateId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        var candidate = state.ChoiceSet?.Candidates.SingleOrDefault(candidate => candidate.CandidateId == candidateId);
+        if (candidate is null)
+        {
+            return BlockWithFixedError(state, "PCH_UI_CHAT_UNKNOWN_CANDIDATE", "Unknown candidate id was rejected.");
+        }
+
+        return state with
+        {
+            ComposerState = "awaiting_user_input",
+            FinalState = "candidate_selected",
+            ChoiceSet = ChoiceSet("selected", candidateId, null),
+            Tasks = UpdateTask(state.Tasks, "task-itinerary", "accepted", 72, "Candidate selected"),
+            PlanTrail = PlanTrailFromState(state, candidate, "selected"),
+            Turns = AppendTurn(state.Turns, new(
+                "turn-choice-selected",
+                "user",
+                "choice",
+                "selected",
+                $"Selected {candidate.Title} for {candidate.Category}.",
+                "choice_candidate_selected",
+                "evidence-chat-candidate",
+                null,
+                candidate.CandidateId,
+                candidate.Category))
+        };
+    }
+
+    public EndUserChatState DeferCandidate(EndUserChatState state, string candidateId)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        var candidate = state.ChoiceSet?.Candidates.SingleOrDefault(candidate => candidate.CandidateId == candidateId);
+        if (candidate is null)
+        {
+            return BlockWithFixedError(state, "PCH_UI_CHAT_UNKNOWN_CANDIDATE", "Unknown candidate id was rejected.");
+        }
+
+        return state with
+        {
+            ComposerState = "awaiting_user_input",
+            FinalState = "candidate_deferred",
+            ChoiceSet = ChoiceSet("deferred", null, candidateId),
+            Tasks = UpdateTask(state.Tasks, "task-itinerary", "deferred", 52, "Deferred"),
+            PlanTrail = PlanTrailFromState(state, candidate, "deferred"),
+            Turns = AppendTurn(state.Turns, new(
+                "turn-choice-deferred",
+                "user",
+                "choice",
+                "deferred",
+                "A candidate was deferred without losing its candidate id or evidence references.",
+                "choice_candidate_deferred",
+                "evidence-chat-candidate",
+                null))
+        };
+    }
+
+    public EndUserChatState RequestApproval(EndUserChatState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        return state with
+        {
+            ComposerState = "blocked_harness",
+            FinalState = "blocked",
+            ErrorCode = "PCH_UI_CHAT_APPROVAL_REQUIRED",
+            BlockedReason = ApprovalRequiredCode,
+            ApprovalState = "blocked_missing_approval",
+            ApprovalPlate = ApprovalPlate("blocked_missing_approval", ApprovalRequiredCode),
+            Tasks = UpdateTask(state.Tasks, "task-approval", "blocked", 35, "Approval required"),
+            PlanTrail = AppendPlanTrail(state.PlanTrail, new("trail-approval-blocked", "approval", "blocked", "Mock hold approval blocked", null, "evidence-chat-approval", ApprovalRequiredCode)),
+            Turns = AppendTurn(state.Turns, new(
+                "turn-approval-blocked",
+                "harness",
+                "approval",
+                "blocked",
+                "Mock hold preparation is blocked until explicit approval is available. No hold or booking was created.",
+                ApprovalRequiredCode,
+                "evidence-chat-approval",
+                "PCH_UI_CHAT_APPROVAL_REQUIRED"))
+        };
+    }
+
+    private static IReadOnlyList<EndUserChatTurn> BuildTraceTurns(
         string normalizedPrompt,
         EndUserChatScenario scenario,
         GoldenTurnTraceResult trace,
@@ -161,6 +306,206 @@ public sealed class EndUserChatService
             AllowFallback: false,
             Locale: "en-US",
             ContextDigest: "end-user-chat-offline-deterministic");
+
+    private static IReadOnlyList<EndUserTask> InitialTasks() =>
+    [
+        new("task-basics", "Understand trip basics", "not_started", 0, "Ready", BasicsSteps("not_started"), true),
+        new("task-destination", "Destination ideas", "not_started", 0, "Ready", [new("destination-ideas", "Sketch destination options", "not_started")], false),
+        new("task-itinerary", "Itinerary options", "not_started", 0, "Ask", ItinerarySteps("not_started"), true),
+        new("task-approval", "Book and confirm", "not_started", 0, "Approval gated", [new("approval-mock-hold", "Review mock hold preview", "not_started")], false)
+    ];
+
+    private static IReadOnlyList<EndUserTask> TasksAfterSend(EndUserChatScenario scenario) =>
+    [
+        new("task-basics", "Understand trip basics", "active", 65, "Needs details", BasicsSteps("active"), true),
+        new("task-destination", "Destination ideas", "accepted", 100, "Ready", [new("destination-ideas", "Sketch destination options", "accepted")], false),
+        new("task-itinerary", "Itinerary options", scenario == EndUserChatScenario.PendingConfirmation ? "needs_user" : "active", 48, "Needs review", ItinerarySteps("active"), true),
+        new("task-approval", "Book and confirm", "not_started", 0, "Approval gated", [new("approval-mock-hold", "Review mock hold preview", "not_started")], false)
+    ];
+
+    private static IReadOnlyList<EndUserTaskStep> BasicsSteps(string state) =>
+    [
+        new("trip-purpose", "Trip purpose", state == "not_started" ? "not_started" : "accepted"),
+        new("travel-style", "Travel style", state == "not_started" ? "not_started" : "needs_user"),
+        new("budget-range", "Budget range", state == "not_started" ? "not_started" : "needs_user"),
+        new("preferred-dates", "Preferred dates", state == "not_started" ? "not_started" : "needs_user")
+    ];
+
+    private static IReadOnlyList<EndUserTaskStep> ItinerarySteps(string state) =>
+    [
+        new("build-option-a", "Build option A", state == "not_started" ? "not_started" : "active"),
+        new("build-option-b", "Build option B", state == "not_started" ? "not_started" : "active"),
+        new("compare-options", "Compare options", "needs_user"),
+        new("get-choice", "Get your choice", "needs_user")
+    ];
+
+    private static EndUserFormCard FormCard(string state) =>
+        new(
+            FormId,
+            "Trip basics",
+            "Confirm the structured details before itinerary work continues.",
+            state,
+            [
+                new("field-trip-purpose", "Purpose", "Vacation", true, state, "evidence-chat-purpose"),
+                new("field-travel-style", "Travel style", "Balanced culture and quiet time", true, state, "evidence-chat-style"),
+                new("field-budget-range", "Budget range", "Moderate", false, state, "evidence-chat-budget")
+            ],
+            ["evidence-chat-purpose", "evidence-chat-style"]);
+
+    private static EndUserChoiceSetCard ChoiceSet(string state, string? selectedCandidateId, string? deferredCandidateId) =>
+        new(
+            ChoiceSetId,
+            "Choose an itinerary direction",
+            "Pick the direction that feels closest, or defer one while we gather more detail.",
+            state,
+            selectedCandidateId,
+            deferredCandidateId,
+            [
+                Candidate(CandidateClassic, "reflective-culture", "culture", "Classic Japan highlights", "Tokyo, Kyoto, and Osaka with cultural landmarks and local favorites.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-a"]),
+                Candidate(CandidateCulture, "reflective-culture", "culture", "Temple mornings and neighborhood evenings", "A slower cultural route with calm mornings and local evening walks.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-c"]),
+                Candidate(CandidateScenic, "soft-nature", "nature", "Scenic Japan explorer", "Mountains, hot springs, and coastal towns for a quieter route.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-b"])
+            ]);
+
+    private static EndUserCandidateOption Candidate(
+        string candidateId,
+        string mood,
+        string tone,
+        string title,
+        string summary,
+        string? selectedCandidateId,
+        string? deferredCandidateId,
+        IReadOnlyList<string> evidenceIds)
+    {
+        var state = string.Equals(candidateId, selectedCandidateId, StringComparison.Ordinal)
+            ? "selected"
+            : string.Equals(candidateId, deferredCandidateId, StringComparison.Ordinal)
+                ? "deferred"
+                : "available";
+        return new(candidateId, "itinerary", "trip-style", mood, tone, title, summary, state, "deterministic-fixture", evidenceIds);
+    }
+
+    private static EndUserApprovalPlate ApprovalPlate(string state, string? blockedReason) =>
+        new(
+            ApprovalId,
+            "Mock hold preview",
+            state,
+            state == "blocked_missing_approval" ? ApprovalRequiredCode : "not_requested",
+            blockedReason,
+            ["evidence-chat-approval"]);
+
+    private static EndUserProviderFailureNotice FallbackNotice() =>
+        new(
+            "notice-deterministic-fallback",
+            ProviderOutcomeFallback,
+            "deterministic",
+            "Live provider calls are disabled for required smoke; the deterministic transcript remains available.",
+            CanRetry: false,
+            CanContinueDeterministic: true);
+
+    private static IReadOnlyList<EndUserEvidenceItem> EvidenceFrom(GoldenTurnTraceResult trace)
+    {
+        var evidence = trace.EvidenceReferences
+            .Take(4)
+            .Select(reference => new EndUserEvidenceItem(reference, "Canonical trace evidence", "trace", trace.Code))
+            .ToList();
+
+        evidence.Add(new("evidence-chat-candidate", "Candidate provenance retained", "candidate", "candidate_pool_ready"));
+        evidence.Add(new("evidence-chat-approval", "Approval gate retained", "approval", ApprovalRequiredCode));
+        return evidence;
+    }
+
+    private static IReadOnlyList<EndUserPlanTrailItem> PlanTrailFrom(
+        GoldenTurnTraceResult trace,
+        EndUserCandidateOption? selected,
+        EndUserCandidateOption? deferred)
+    {
+        var items = new List<EndUserPlanTrailItem>
+        {
+            new("trail-mission-facts", "mission", "accepted", "Mission facts accepted", null, trace.EvidenceReferences.FirstOrDefault(), trace.Code),
+            new("trail-pending-confirmations", "confirmation", "pending", "Travel style and dates pending confirmation", null, "evidence-chat-style", PendingConfirmationCode),
+            new("trail-availability", "availability", trace.IsBlocked ? "blocked" : "quote-ready", "Availability preview remains gated", null, "evidence-chat-approval", trace.IsBlocked ? trace.Code : "availability_preview_ready")
+        };
+
+        if (selected is not null)
+        {
+            items.Add(new("trail-selected-option", "selected-option", "selected", selected.Title, selected.CandidateId, selected.EvidenceIds.FirstOrDefault(), "choice_candidate_selected"));
+        }
+
+        if (deferred is not null)
+        {
+            items.Add(new("trail-deferred-option", "deferred-option", "deferred", deferred.Title, deferred.CandidateId, deferred.EvidenceIds.FirstOrDefault(), "choice_candidate_deferred"));
+        }
+
+        return items;
+    }
+
+    private static IReadOnlyList<EndUserPlanTrailItem> PlanTrailFromState(
+        EndUserChatState state,
+        EndUserCandidateOption candidate,
+        string stateName)
+    {
+        var outcome = stateName == "selected" ? "choice_candidate_selected" : "choice_candidate_deferred";
+        var kind = stateName == "selected" ? "selected-option" : "deferred-option";
+        var trailId = stateName == "selected" ? "trail-selected-option" : "trail-deferred-option";
+        return AppendPlanTrail(
+            state.PlanTrail.Where(item => item.TrailId != trailId).ToArray(),
+            new(trailId, kind, stateName, candidate.Title, candidate.CandidateId, candidate.EvidenceIds.FirstOrDefault(), outcome));
+    }
+
+    private static IReadOnlyList<EndUserPlanTrailItem> AppendPlanTrail(
+        IReadOnlyList<EndUserPlanTrailItem> items,
+        EndUserPlanTrailItem item) =>
+        items.Concat([item]).ToArray();
+
+    private static IReadOnlyList<EndUserTask> UpdateTask(
+        IReadOnlyList<EndUserTask> tasks,
+        string taskId,
+        string state,
+        int progress,
+        string label) =>
+        tasks.Select(task => task.TaskId == taskId
+            ? task with
+            {
+                State = state,
+                Progress = progress,
+                StatusLabel = label,
+                IsExpanded = true,
+                Steps = task.Steps.Select(step => step with { State = state }).ToArray()
+            }
+            : task).ToArray();
+
+    private static IReadOnlyList<EndUserChatTurn> AppendTurn(
+        IReadOnlyList<EndUserChatTurn> turns,
+        EndUserChatTurn turn) =>
+        turns.Concat([turn]).ToArray();
+
+    private static EndUserChatState BlockWithFixedError(
+        EndUserChatState state,
+        string errorCode,
+        string reason) =>
+        state with
+        {
+            ComposerState = "blocked_harness",
+            FinalState = "blocked",
+            ErrorCode = errorCode,
+            BlockedReason = reason,
+            Turns = AppendTurn(state.Turns, new(
+                "turn-fixed-block",
+                "harness",
+                "blocked",
+                "blocked",
+                "The request was blocked by a fixed UI safety code.",
+                errorCode,
+                null,
+                errorCode))
+        };
+
+    private static IReadOnlyList<string> KnownCandidateIds() =>
+    [
+        CandidateClassic,
+        CandidateCulture,
+        CandidateScenic
+    ];
 
     private static EndUserChatScenario SelectScenario(string normalizedPrompt)
     {
