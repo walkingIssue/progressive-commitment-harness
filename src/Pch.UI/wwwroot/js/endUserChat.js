@@ -395,6 +395,7 @@ document.addEventListener("click", (event) => {
     const timelineItem = target.closest("[data-origin-turn-id]");
     const originTurnId = timelineItem?.dataset.originTurnId;
     if (originTurnId) {
+        focusOriginTurn(originTurnId);
         scheduleFallback(() => root()?.dataset.focusedTurnId !== originTurnId, () => focusOriginTurn(originTurnId));
     }
 });
