@@ -1,0 +1,16 @@
+@if (Evidence.Count > 0)
+{
+    <section class="evidence-strip" data-evidence-strip="chat">
+        @foreach (var evidence in Evidence)
+        {
+            <span data-evidence-id="@evidence.EvidenceId" data-evidence-kind="@evidence.Kind" data-trace-outcome="@evidence.OutcomeCode">
+                @evidence.Label
+            </span>
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EndUserEvidenceItem> Evidence { get; set; } = [];
+}

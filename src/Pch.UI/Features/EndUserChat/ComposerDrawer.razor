@@ -1,0 +1,90 @@
+@if (!HasSubmitted)
+{
+    <section class="composer-start" data-composer-layout="expanded_start">
+        <p>Where should we begin?</p>
+        <div class="composer-card" data-chat-form="prompt">
+            <label for="trip-prompt">Trip prompt</label>
+            <textarea id="trip-prompt"
+                      data-prompt-entry="trip"
+                      aria-label="Trip prompt"
+                      value="@Prompt"
+                      @oninput="OnPromptInput"
+                      rows="5"></textarea>
+            <div class="composer-actions">
+                <span data-raw-absence-marker="@RawAbsenceState">Prompt text is redacted from transcript records</span>
+                <button type="button"
+                        class="send-button"
+                        data-send-action="deterministic"
+                        aria-label="Send deterministic trip prompt"
+                        @onclick="OnSend">
+                    Send
+                </button>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <button type="button"
+            class="ask-tab"
+            data-ask-action="open"
+            aria-label="Open Ask drawer"
+            @onclick="OnOpen">
+        Ask
+    </button>
+}
+
+@if (DrawerOpen)
+{
+    <aside class="ask-drawer"
+           data-ask-drawer-panel="open"
+           aria-label="Ask drawer">
+        <div>
+            <h2>Ask the agent</h2>
+            <button type="button" data-ask-action="close" aria-label="Close Ask drawer" @onclick="OnClose">Close</button>
+        </div>
+        <label for="trip-prompt-drawer">Follow-up prompt</label>
+        <textarea id="trip-prompt-drawer"
+                  data-prompt-entry="trip-drawer"
+                  aria-label="Follow-up trip prompt"
+                  value="@Prompt"
+                  @oninput="OnPromptInput"
+                  rows="5"></textarea>
+        <button type="button"
+                class="send-button"
+                data-send-action="deterministic-drawer"
+                aria-label="Send deterministic follow-up prompt"
+                @onclick="OnSend">
+            Send
+        </button>
+    </aside>
+}
+
+@code {
+    [Parameter]
+    public string Prompt { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool HasSubmitted { get; set; }
+
+    [Parameter]
+    public bool DrawerOpen { get; set; }
+
+    [Parameter]
+    public string RawAbsenceState { get; set; } = "verified";
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> PromptChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnSend { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnOpen { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnClose { get; set; }
+
+    private Task OnPromptInput(ChangeEventArgs args) =>
+        PromptChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+}

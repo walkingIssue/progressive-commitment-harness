@@ -23,7 +23,8 @@ public sealed record EndUserChatState(
     EndUserApprovalPlate? ApprovalPlate,
     EndUserProviderFailureNotice? ProviderFailure,
     IReadOnlyList<EndUserEvidenceItem> Evidence,
-    IReadOnlyList<EndUserPlanTrailItem> PlanTrail);
+    IReadOnlyList<EndUserPlanTrailItem> PlanTrail,
+    IReadOnlyList<EndUserPlanningTimelineItem> PlanningTimeline);
 
 public sealed record EndUserChatTurn(
     string TurnId,
@@ -129,6 +130,23 @@ public sealed record EndUserPlanTrailItem(
     string Label,
     string? CandidateId,
     string? EvidenceId,
+    EndUserMediaAsset? Media,
+    string OutcomeCode);
+
+public sealed record EndUserPlanningTimelineItem(
+    string TimelineId,
+    string Mode,
+    string Kind,
+    string State,
+    string Title,
+    string Summary,
+    string? DayId,
+    string? SlotId,
+    string? TaskId,
+    string? CandidateId,
+    string? DecisionId,
+    string? EvidenceId,
+    string OriginTurnId,
     EndUserMediaAsset? Media,
     string OutcomeCode);
 

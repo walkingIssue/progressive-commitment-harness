@@ -1,0 +1,40 @@
+<button type="button"
+        class="planning-timeline__item"
+        data-planning-timeline-item="@Item.TimelineId"
+        data-planning-mode="@Item.Mode"
+        data-planning-kind="@Item.Kind"
+        data-planning-state="@Item.State"
+        data-day-id="@Item.DayId"
+        data-slot-id="@Item.SlotId"
+        data-task-id="@Item.TaskId"
+        data-candidate-id="@Item.CandidateId"
+        data-decision-id="@Item.DecisionId"
+        data-evidence-id="@Item.EvidenceId"
+        data-origin-turn-id="@Item.OriginTurnId"
+        data-trace-outcome="@Item.OutcomeCode"
+        data-media-asset-id="@Item.Media?.AssetId"
+        data-media-state="@Item.Media?.State"
+        aria-label="Jump to @Item.Title"
+        @onclick="() => OnFocus.InvokeAsync(Item.OriginTurnId)">
+    @if (Item.Media is not null)
+    {
+        <img src="@Item.Media.Path"
+             alt="@Item.Media.Alt"
+             data-planning-timeline-media="true"
+             data-media-asset-id="@Item.Media.AssetId"
+             data-media-mood="@Item.Media.Mood"
+             data-media-state="@Item.Media.State"
+             data-media-license="@Item.Media.License" />
+    }
+    <span>@Item.Kind.Replace('-', ' ')</span>
+    <strong>@Item.Title</strong>
+    <small>@Item.Summary</small>
+</button>
+
+@code {
+    [Parameter, EditorRequired]
+    public EndUserPlanningTimelineItem Item { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnFocus { get; set; }
+}

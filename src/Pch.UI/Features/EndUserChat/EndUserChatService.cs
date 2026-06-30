@@ -84,6 +84,7 @@ public sealed class EndUserChatService
             null,
             FallbackNotice(),
             [],
+            [],
             []);
     }
 
@@ -121,7 +122,8 @@ public sealed class EndUserChatService
             ApprovalPlate("not_requested", null),
             FallbackNotice(),
             EvidenceFrom(trace),
-            PlanTrailFrom(trace, null, null));
+            PlanTrailFrom(trace, null, null),
+            TimelineFrom(trace, null, null));
     }
 
     public EndUserChatState Send(string prompt) =>
@@ -166,6 +168,7 @@ public sealed class EndUserChatService
             ChoiceSet = ChoiceSet("selected", candidateId, null),
             Tasks = UpdateTask(state.Tasks, "task-itinerary", "accepted", 72, "Candidate selected"),
             PlanTrail = PlanTrailFromState(state, candidate, "selected"),
+            PlanningTimeline = TimelineFromState(state, candidate, "selected"),
             Turns = AppendTurn(state.Turns, new(
                 "turn-choice-selected",
                 "user",
@@ -197,6 +200,7 @@ public sealed class EndUserChatService
             ChoiceSet = ChoiceSet("deferred", null, candidateId),
             Tasks = UpdateTask(state.Tasks, "task-itinerary", "deferred", 52, "Deferred"),
             PlanTrail = PlanTrailFromState(state, candidate, "deferred"),
+            PlanningTimeline = TimelineFromState(state, candidate, "deferred"),
             Turns = AppendTurn(state.Turns, new(
                 "turn-choice-deferred",
                 "user",
@@ -223,6 +227,7 @@ public sealed class EndUserChatService
             ApprovalPlate = ApprovalPlate("blocked_missing_approval", ApprovalRequiredCode),
             Tasks = UpdateTask(state.Tasks, "task-approval", "blocked", 35, "Approval required"),
             PlanTrail = AppendPlanTrail(state.PlanTrail, new("trail-approval-blocked", "approval", "blocked", "Mock hold approval blocked", null, "evidence-chat-approval", MediaAsset("logistics_transit"), ApprovalRequiredCode)),
+            PlanningTimeline = AppendTimeline(state.PlanningTimeline, new("timeline-approval-blocked", "task", "approval", "blocked", "Mock hold blocked", "Approval is required before any mock hold preview can continue.", null, null, "task-approval", null, "decision-approval-preview", "evidence-chat-approval", "turn-approval-blocked", MediaAsset("logistics_transit"), ApprovalRequiredCode)),
             Turns = AppendTurn(state.Turns, new(
                 "turn-approval-blocked",
                 "harness",
@@ -455,9 +460,63 @@ public sealed class EndUserChatService
             new(trailId, kind, stateName, candidate.Title, candidate.CandidateId, candidate.EvidenceIds.FirstOrDefault(), candidate.Media, outcome));
     }
 
+    private static IReadOnlyList<EndUserPlanningTimelineItem> TimelineFrom(
+        GoldenTurnTraceResult trace,
+        EndUserCandidateOption? selected,
+        EndUserCandidateOption? deferred)
+    {
+        var items = new List<EndUserPlanningTimelineItem>
+        {
+            new("timeline-day-1-mission", "day", "mission", "accepted", "Day 1 direction", "Culture-first Japan trip facts accepted.", "day-japan-01", "slot-morning", null, null, "decision-mission-facts", trace.EvidenceReferences.FirstOrDefault(), "turn-03", MediaAsset("calm_morning"), trace.Code),
+            new("timeline-day-1-confirmation", "day", "confirmation", "pending", "Style confirmation", "Dates and travel style remain confirmation-ready.", "day-japan-01", "slot-planning", null, null, "decision-pending-confirmation", "evidence-chat-style", "turn-assistant-final", MediaAsset("restorative_downtime"), PendingConfirmationCode),
+            new("timeline-day-2-availability", "day", "availability", trace.IsBlocked ? "blocked" : "quote-ready", "Availability guarded", "Quote and hold-adjacent work remains approval gated.", "day-japan-02", "slot-availability", null, null, "decision-availability-preview", "evidence-chat-approval", "turn-assistant-final", MediaAsset("logistics_transit"), trace.IsBlocked ? trace.Code : "availability_preview_ready"),
+            new("timeline-task-basics", "task", "task", "accepted", "Understand trip basics", "Mission facts and deterministic transcript are ready.", null, null, "task-basics", null, "decision-task-basics", trace.EvidenceReferences.FirstOrDefault(), "turn-03", MediaAsset("calm_morning"), trace.Code),
+            new("timeline-task-itinerary", "task", "task", "active", "Compare itinerary choices", "Candidate cards are ready for select or defer.", null, null, "task-itinerary", null, "decision-choice-set", "evidence-chat-candidate", "turn-assistant-final", MediaAsset("reflective_culture"), "candidate_pool_ready"),
+            new("timeline-task-approval", "task", "task", "not_started", "Approval gate", "Mock hold work is blocked until explicit approval.", null, null, "task-approval", null, "decision-approval-preview", "evidence-chat-approval", "turn-assistant-final", MediaAsset("logistics_transit"), ApprovalRequiredCode)
+        };
+
+        if (selected is not null)
+        {
+            items.Add(TimelineCandidateItem(selected, "selected"));
+        }
+
+        if (deferred is not null)
+        {
+            items.Add(TimelineCandidateItem(deferred, "deferred"));
+        }
+
+        return items;
+    }
+
+    private static IReadOnlyList<EndUserPlanningTimelineItem> TimelineFromState(
+        EndUserChatState state,
+        EndUserCandidateOption candidate,
+        string stateName)
+    {
+        var timelineId = stateName == "selected" ? "timeline-selected-option" : "timeline-deferred-option";
+        return AppendTimeline(
+            state.PlanningTimeline.Where(item => item.TimelineId != timelineId).ToArray(),
+            TimelineCandidateItem(candidate, stateName));
+    }
+
+    private static EndUserPlanningTimelineItem TimelineCandidateItem(
+        EndUserCandidateOption candidate,
+        string stateName)
+    {
+        var outcome = stateName == "selected" ? "choice_candidate_selected" : "choice_candidate_deferred";
+        var timelineId = stateName == "selected" ? "timeline-selected-option" : "timeline-deferred-option";
+        var title = stateName == "selected" ? $"Selected {candidate.Title}" : $"Deferred {candidate.Title}";
+        return new(timelineId, "day", "candidate", stateName, title, candidate.Summary, "day-japan-02", "slot-itinerary-choice", null, candidate.CandidateId, $"decision-{candidate.CandidateId}", candidate.EvidenceIds.FirstOrDefault(), stateName == "selected" ? "turn-choice-selected" : "turn-choice-deferred", candidate.Media, outcome);
+    }
+
     private static IReadOnlyList<EndUserPlanTrailItem> AppendPlanTrail(
         IReadOnlyList<EndUserPlanTrailItem> items,
         EndUserPlanTrailItem item) =>
+        items.Concat([item]).ToArray();
+
+    private static IReadOnlyList<EndUserPlanningTimelineItem> AppendTimeline(
+        IReadOnlyList<EndUserPlanningTimelineItem> items,
+        EndUserPlanningTimelineItem item) =>
         items.Concat([item]).ToArray();
 
     private static IReadOnlyList<EndUserTask> UpdateTask(

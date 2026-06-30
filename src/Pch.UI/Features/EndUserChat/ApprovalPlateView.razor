@@ -1,0 +1,28 @@
+@if (ApprovalPlate is not null)
+{
+    <article class="approval-plate"
+             data-approval-id="@ApprovalPlate.ApprovalId"
+             data-approval-state="@ApprovalPlate.State"
+             data-approval-outcome="@ApprovalPlate.OutcomeCode"
+             data-blocked-reason="@ApprovalPlate.BlockedReason">
+        <div>
+            <span>Commitment checkpoint</span>
+            <h2>@ApprovalPlate.Title</h2>
+            <p>No hold, booking, payment, or live provider handoff can run without approval.</p>
+        </div>
+        <button type="button"
+                data-approval-action="request"
+                aria-label="Request mock hold approval preview"
+                @onclick="OnRequestApproval">
+            Preview approval block
+        </button>
+    </article>
+}
+
+@code {
+    [Parameter]
+    public EndUserApprovalPlate? ApprovalPlate { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnRequestApproval { get; set; }
+}

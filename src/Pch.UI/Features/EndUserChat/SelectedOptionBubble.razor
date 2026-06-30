@@ -1,0 +1,27 @@
+<div class="selected-option-bubble candidate-card candidate-card--@Bubble.MoodTone"
+     data-selected-option-card="true"
+     data-candidate-id="@Bubble.CandidateId"
+     data-candidate-category="@Bubble.Category"
+     data-candidate-mood="@Bubble.Mood"
+     data-candidate-state="@Bubble.State"
+     data-media-asset-id="@Bubble.Media.AssetId"
+     data-media-state="@Bubble.Media.State"
+     data-media-source-class="@Bubble.Media.SourceClass"
+     data-evidence-ids="@string.Join(',', Bubble.EvidenceIds)">
+    <img class="candidate-media"
+         src="@Bubble.Media.Path"
+         alt="@Bubble.Media.Alt"
+         data-media-image="selected-option"
+         data-media-asset-id="@Bubble.Media.AssetId"
+         data-media-mood="@Bubble.Media.Mood"
+         data-media-state="@Bubble.Media.State"
+         data-media-license="@Bubble.Media.License" />
+    <span>@Bubble.Mood.Replace('-', ' ')</span>
+    <h3>@Bubble.Title</h3>
+    <p>@Bubble.Summary</p>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public EndUserSelectedOptionBubble Bubble { get; set; } = default!;
+}
