@@ -259,6 +259,7 @@ function sendPrompt() {
         "data-ask-drawer": "closed",
         "data-provider-outcome": "deterministic_fallback_active",
     });
+    toggleDrawer(false);
     appendTurn("turn-user-1", "user", "prompt", "submitted", `Trip request accepted with ${promptLength} characters. Raw prompt text is kept out of transcript storage.`, "prompt_received");
     appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active; live provider roles are disabled for this run.", "model_role_status_ready");
     appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
@@ -307,12 +308,20 @@ function requestApproval() {
     ensurePlanningTimeline();
     document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-approval-blocked", "task", "approval", "blocked", "Mock hold blocked", "Approval is required before mock hold work can continue.", "turn-approval-blocked", mediaAsset("logistics_transit"), 'data-task-id="task-approval" data-decision-id="decision-approval-preview" data-evidence-id="evidence-chat-approval" hidden'));
 }
+function setAskTabVisible(visible) {
+    document.querySelectorAll("[data-ask-action='open']").forEach((button) => {
+        button.toggleAttribute("hidden", !visible);
+        button.setAttribute("aria-hidden", String(!visible));
+    });
+}
 function toggleDrawer(open) {
     setRootState({ "data-ask-drawer": open ? "open" : "closed", "data-composer-state": open ? "collapsed_drawer_open" : "collapsed_drawer" });
     document.querySelector("[data-ask-drawer-panel]")?.remove();
+    setAskTabVisible(!open);
     if (!open)
         return;
     document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<aside class="ask-drawer" data-ask-drawer-panel="open" aria-label="Ask drawer"><div><h2>Ask the agent</h2><button type="button" data-ask-action="close" aria-label="Close Ask drawer">Close</button></div><label for="trip-prompt-drawer">Follow-up prompt</label><textarea id="trip-prompt-drawer" data-prompt-entry="trip-drawer" aria-label="Follow-up trip prompt" placeholder="Ask, refine, or describe edits" rows="5"></textarea><button type="button" class="send-button" data-send-action="deterministic-drawer" aria-label="Send deterministic follow-up prompt">Send</button></aside>`);
+    window.requestAnimationFrame(() => document.querySelector("[data-prompt-entry='trip-drawer']")?.focus());
 }
 function moveDeck(direction) {
     const deck = document.querySelector("[data-candidate-deck='reflective-culture']");
@@ -354,6 +363,27 @@ function focusOriginTurn(turnId) {
 }
 function closestAction(target, selector) {
     return target instanceof HTMLElement ? target.closest(selector) : null;
+}
+function closeDrawerAfterFocusLeaves(target) {
+    const drawer = closestAction(target, "[data-ask-drawer-panel]");
+    if (!drawer)
+        return;
+    window.setTimeout(() => {
+        if (!drawer.isConnected)
+            return;
+        const activeElement = document.activeElement;
+        if (activeElement instanceof HTMLElement && drawer.contains(activeElement))
+            return;
+        toggleDrawer(false);
+    }, 0);
+}
+function closeDrawerOnOutsidePointer(target) {
+    const drawer = document.querySelector("[data-ask-drawer-panel]");
+    if (!drawer)
+        return;
+    if (target instanceof HTMLElement && (drawer.contains(target) || target.closest("[data-ask-action='open']")))
+        return;
+    toggleDrawer(false);
 }
 const chatActionSelector = [
     "[data-send-action]",
@@ -423,6 +453,8 @@ function handleChatInteraction(target) {
     }
 }
 document.documentElement.dataset.endUserChatHelper = "ready";
+document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);
+document.addEventListener("pointerdown", (event) => closeDrawerOnOutsidePointer(event.target), true);
 document.addEventListener("pointerup", interceptChatAction, true);
 document.addEventListener("click", interceptChatAction, true);
 document.addEventListener("keydown", (event) => {
