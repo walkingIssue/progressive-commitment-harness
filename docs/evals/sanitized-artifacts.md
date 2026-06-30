@@ -27,4 +27,6 @@ Fidelity eval artifacts follow this same policy for Stage 6 bake-off rows: accep
 
 Availability preview artifacts also follow this policy: quote-ready rows may persist trusted packet candidate ids/categories, allowlisted status enums, safe counts, and accepted provider metadata, while blocked/error rows omit provider metadata, quote references, fare refs, and result candidate details.
 
+Model role guardrail artifacts follow the same policy: ready rows may persist trusted safe eval ids plus role/mode/availability enums and allowlisted status codes, while blocked/error rows use fixed row identifiers and omit raw config text, provider payloads, credentials, prompts, raw errors, and result metadata.
+
 Optional live smoke paths remain skipped or blocked by default. A live smoke must be key and health/credit guarded where applicable, use strict timeout/error handling, and must not fall back to another paid provider when blocked.
