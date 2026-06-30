@@ -35,4 +35,6 @@ Media source registry artifacts follow the same policy: accepted rows may persis
 
 Repair posture artifacts follow the same policy: accepted rows may persist trusted node ids/kinds, fixed repair mode and reason-code enums, node/suggestion/affected counts, response length, and accepted provider metadata. Rejected rows use fixed row identifiers and omit raw prompts, provider payloads, raw completions, candidate display text, approval tokens, hold references, credentials, API keys, raw exception text, and provider result metadata.
 
+Live preflight artifacts follow the same policy: accepted rows may persist role enums, probe ids, configured model ids, provider kind enums, allowlisted structured-output status, counts, response length, and accepted provider metadata. Rejected rows use fixed row identifiers and omit raw request bodies, raw provider responses, raw completions, prompt text, API keys, credentials, approval tokens, hold references, candidate display values, raw exception text, and provider result metadata.
+
 Optional live smoke paths remain skipped or blocked by default. A live smoke must be key and health/credit guarded where applicable, use strict timeout/error handling, and must not fall back to another paid provider when blocked.
