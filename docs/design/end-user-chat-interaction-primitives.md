@@ -152,8 +152,10 @@ Controls:
 
 Selection echo:
 
-- When the user selects an option, the selected option is copied into the transcript as a compact user interaction bubble.
-- The echoed bubble should include the option title/category and trusted ids in `data-*` attributes, not raw provider payloads.
+- When the user selects an option, the selected option card is copied into the transcript as a compact user interaction bubble.
+- Do not replace the selected card with plain text like "I choose X".
+- The echoed bubble should render a card receipt: thumbnail/backdrop or mood swatch, title, category/mood, key safe facts, and selected state.
+- The echoed card must include trusted ids in `data-*` attributes, not raw provider payloads.
 - The original option remains in the assistant work card with selected state.
 
 ### Candidate Option Card

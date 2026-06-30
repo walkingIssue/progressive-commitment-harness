@@ -109,7 +109,7 @@ Deliverables:
 - Add a slim left navigation rail and a dark right task rail matching the primary visual direction.
 - Preserve the evidence/plan trail visual element from the generated concepts as a browsable strip of planned/selected cards, accepted facts, pending confirmations, availability/quote states, and approval/hold states.
 - Make the agent work area visually dominant after the first user prompt. The initial start screen may center the prompt input, but after first send the composer should collapse into a compact side `Ask` control that opens a slide-out drawer.
-- When a user selects an option, echo that selected option into the transcript as a compact user interaction bubble while keeping the original card selected in the assistant work area.
+- When a user selects an option, echo the selected option card into the transcript as a compact user interaction bubble while keeping the original card selected in the assistant work area. Do not degrade the selection into plain text.
 - Add mood/feel-backed candidate cards and support stacked, floaty, horizontally scrollable decks for multiple options in the same mood.
 - Add model/status strip with deterministic/live mode, model role selection, provider health, credit/fallback state, and last sanitized provider failure.
 - Add light/dark theme tokens, remove the default Bootstrap feel from the primary end-user surface, and keep Stage Cockpit as an engineering surface below or behind a clear affordance.
@@ -140,7 +140,7 @@ Verification:
 
 - A user can type a prompt, press Send, and visibly advance the transcript.
 - After first send, the prompt input collapses into a side/drawer affordance so the agent interaction is front and center.
-- Selected options appear as user interaction bubbles and retain trusted ids in the DOM.
+- Selected options appear as compact card receipts inside user interaction bubbles and retain trusted ids in the DOM.
 - Candidate choices can communicate mood/feel with distinct backdrops and same-mood options can be browsed as a stacked deck.
 - The user can scroll or browse the evidence/plan trail to review what has already been planned and selected, with provenance preserved in stable `data-*` attributes.
 - The UI clearly says whether the run is deterministic/offline or live-model-backed.
