@@ -16,6 +16,7 @@ Design reference:
 
 - `docs/design/end-user-chat-interaction-primitives.md`
 - `docs/design/assets/sprint-016-end-user-chat-concept.png`
+- `docs/design/assets/sprint-016-agent-first-interaction-concept.png`
 
 ## Non-Negotiable Fix
 
@@ -104,6 +105,9 @@ Deliverables:
 - Replace the current boilerplate chat shell with the primitive system from `docs/design/end-user-chat-interaction-primitives.md`.
 - Add central transcript rendering with assistant work bubbles, form cards, choice cards, candidate option cards, approval plates, provider failure notices, and an evidence strip.
 - Add right-side decomposed task rail with collapsible rows and status lights.
+- Make the agent work area visually dominant after the first user prompt. The initial start screen may center the prompt input, but after first send the composer should collapse into a compact side `Ask` control that opens a slide-out drawer.
+- When a user selects an option, echo that selected option into the transcript as a compact user interaction bubble while keeping the original card selected in the assistant work area.
+- Add mood/feel-backed candidate cards and support stacked, floaty, horizontally scrollable decks for multiple options in the same mood.
 - Add model/status strip with deterministic/live mode, model role selection, provider health, credit/fallback state, and last sanitized provider failure.
 - Add light/dark theme tokens, remove the default Bootstrap feel from the primary end-user surface, and keep Stage Cockpit as an engineering surface below or behind a clear affordance.
 - Keep stable `data-*` markers for candidate ids, evidence ids, turn ids, task ids, model role state, provider outcome, approval state, and raw absence.
@@ -132,6 +136,9 @@ Verification:
 ## Exit Criteria
 
 - A user can type a prompt, press Send, and visibly advance the transcript.
+- After first send, the prompt input collapses into a side/drawer affordance so the agent interaction is front and center.
+- Selected options appear as user interaction bubbles and retain trusted ids in the DOM.
+- Candidate choices can communicate mood/feel with distinct backdrops and same-mood options can be browsed as a stacked deck.
 - The UI clearly says whether the run is deterministic/offline or live-model-backed.
 - With live mode configured, at least one read-only planning/model call reaches the provider and returns a sanitized transcript state.
 - Provider failures are visible as typed, sanitized UI states rather than silent no-ops.

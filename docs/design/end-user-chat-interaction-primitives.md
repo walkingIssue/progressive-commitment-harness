@@ -1,6 +1,9 @@
 # End-User Chat Interaction Primitives
 
-Sprint 016 design reference: `docs/design/assets/sprint-016-end-user-chat-concept.png`.
+Sprint 016 design references:
+
+- `docs/design/assets/sprint-016-end-user-chat-concept.png`
+- `docs/design/assets/sprint-016-agent-first-interaction-concept.png`
 
 The end-user UI should feel like a live planning assistant, not an engineering fixture board. The harness remains typed and constrained, but the user should see a conversation that carries structured work objects inside it.
 
@@ -21,6 +24,21 @@ The end-user UI should feel like a live planning assistant, not an engineering f
 - **Model/status strip:** shows deterministic/live mode, selected model roles, provider health, credit guard state, and last provider failure. It should be honest and compact.
 - **Stage Cockpit:** remains below or behind an engineering affordance, not the first thing an end user has to understand.
 
+## Agent-First Interaction Rule
+
+The start screen may center the user prompt because no task exists yet. After the first prompt is sent, the UI should shift visual priority to the agent's work.
+
+Required behavior:
+
+- The large text composer collapses after first submit.
+- The collapsed composer becomes a compact side button or rail control, such as `Ask`.
+- Pressing the collapsed control slides the composer out as a drawer.
+- The transcript remains visible while the drawer is open.
+- The agent work bubble stays visually dominant after the first turn.
+- The task rail remains visible as the user's mental map of decomposed work.
+
+The user should feel that the agent is actively planning and occasionally asking for guidance, not that the user is filling out a long form.
+
 ## Primitives
 
 ### Composer
@@ -29,6 +47,8 @@ Purpose: collect the user's free-text planning prompt or correction.
 
 Required states:
 
+- expanded_start
+- collapsed_drawer
 - idle
 - sending
 - model_running
@@ -40,6 +60,8 @@ Required controls:
 
 - text input
 - send button
+- collapsed `Ask` button after first turn
+- slide-out drawer open/close
 - deterministic/live mode indicator
 - optional model role picker
 - optional attachment/search toggle later
@@ -94,6 +116,12 @@ Controls:
 - compare/details
 - ask for more
 
+Selection echo:
+
+- When the user selects an option, the selected option is copied into the transcript as a compact user interaction bubble.
+- The echoed bubble should include the option title/category and trusted ids in `data-*` attributes, not raw provider payloads.
+- The original option remains in the assistant work card with selected state.
+
 ### Candidate Option Card
 
 Purpose: visually represent a concrete candidate, such as a meal, lodging, activity, transit, or downtime option.
@@ -104,6 +132,15 @@ Rules:
 - It must keep `candidate_id` visible to the DOM through `data-candidate-id`.
 - Display names must come from trusted provider/candidate data or sanitized model output.
 - It should make selected, deferred, unavailable, and needs-review states visually distinct.
+
+Mood and feel treatment:
+
+- Candidate cards may use colored scenic or abstract backdrops to communicate feel, such as calm morning, lively food, reflective culture, soft nature, focused logistics, or restorative downtime.
+- Mood color is a visual hint, not a source of truth; it must not imply unsupported facts.
+- Cards in the same mood can be grouped as a floaty stacked deck.
+- The stacked deck should show partial card overlap and horizontal scroll/swipe controls.
+- The active card must remain keyboard reachable and screen-reader identifiable.
+- Each card in a deck must preserve its own candidate id and evidence ids.
 
 ### Approval Plate
 
