@@ -1,4 +1,6 @@
-using Pch.Providers.Mock;
+using Pch.Harness;
+using Pch.Providers.LivePreflight;
+using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
 
 namespace Pch.UI.Features.EndUserChat;
@@ -7,26 +9,31 @@ public sealed class EndUserLiveModelTurnService
 {
     public const string PreflightDeterministic = "deterministic_default";
     public const string PreflightBlockedByGuard = "blocked_by_guard";
+    public const string PreflightBlocked = "preflight_blocked";
     public const string PreflightPassed = "preflight_passed";
+    public const string PreflightReady = "preflight_ready";
     public const string LatestDeterministic = "deterministic_fallback";
-    public const string LatestLiveAccepted = "live_model_output";
+    public const string LatestLiveAccepted = "live_preflight_accepted";
     public const string ProviderRequestNotAttempted = "not_attempted";
     public const string ProviderRequestAttempted = "attempted";
 
     private readonly Func<IReadOnlyDictionary<string, string?>> _environmentFactory;
-    private readonly LiveModelRoleRunner _runner;
+    private readonly LivePreflightEvaluator _preflightEvaluator;
+    private readonly LiveSessionConductor _conductor;
 
     public EndUserLiveModelTurnService()
-        : this(ReadProcessEnvironment, new LiveModelRoleRunner(new MockModelCompletionClient(), new MockModelCompletionClient()))
+        : this(ReadProcessEnvironment, CreateDefaultPreflightEvaluator(), new LiveSessionConductor())
     {
     }
 
     public EndUserLiveModelTurnService(
         Func<IReadOnlyDictionary<string, string?>> environmentFactory,
-        LiveModelRoleRunner? runner = null)
+        LivePreflightEvaluator? preflightEvaluator = null,
+        LiveSessionConductor? conductor = null)
     {
         _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
-        _runner = runner ?? new LiveModelRoleRunner(new MockModelCompletionClient(), new MockModelCompletionClient());
+        _preflightEvaluator = preflightEvaluator ?? CreateDefaultPreflightEvaluator();
+        _conductor = conductor ?? new LiveSessionConductor();
     }
 
     public EndUserLiveModelSnapshot CreateSnapshot(string selectedRole)
@@ -37,11 +44,11 @@ public sealed class EndUserLiveModelTurnService
             return EndUserLiveModelSnapshot.Deterministic();
         }
 
-        var options = LiveModelRunnerOptions.FromEnvironment(_environmentFactory());
+        var options = LivePreflightOptions.FromEnvironment(_environmentFactory());
         var role = ToLiveRole(normalizedRole);
         var modelId = ModelIdFor(options, role);
-        var preflightState = options.LiveModeEnabled && options.ApiKeyAvailable
-            ? PreflightPassed
+        var preflightState = options.Enabled && options.ApiKeyAvailable
+            ? PreflightReady
             : PreflightBlockedByGuard;
 
         return new EndUserLiveModelSnapshot(
@@ -50,12 +57,12 @@ public sealed class EndUserLiveModelTurnService
             preflightState,
             LatestDeterministic,
             ProviderRequestNotAttempted,
-            options.LiveModeEnabled ? "live_config_present" : "live_guard_disabled",
+            options.Enabled ? "live_config_present" : "live_guard_disabled",
             options.ApiKeyAvailable ? "key_available" : "key_unavailable",
             options.CreditGuardEnabled ? "credit_guard_enabled" : "credit_guard_skipped",
-            options.LiveModeEnabled
-                ? options.ApiKeyAvailable ? "none" : LiveModelRoleRunner.OutcomeKeyMissing
-                : LiveModelRoleRunner.OutcomeLiveModeDisabled,
+            options.Enabled
+                ? options.ApiKeyAvailable ? "none" : LivePreflightRunner.OutcomeKeyMissing
+                : LivePreflightRunner.OutcomeDisabled,
             modelId,
             null,
             preflightState == PreflightBlockedByGuard ? "PCH_UI_LIVE_MODEL_GUARDED" : null,
@@ -75,45 +82,43 @@ public sealed class EndUserLiveModelTurnService
             return EndUserLiveModelSnapshot.Deterministic();
         }
 
-        var options = LiveModelRunnerOptions.FromEnvironment(_environmentFactory());
+        var options = LivePreflightOptions.FromEnvironment(_environmentFactory());
         var role = ToLiveRole(normalizedRole);
         var modelId = ModelIdFor(options, role);
-        if (!options.LiveModeEnabled || !options.ApiKeyAvailable)
+        if (!options.Enabled || !options.ApiKeyAvailable)
         {
-            var outcome = options.LiveModeEnabled
-                ? LiveModelRoleRunner.OutcomeKeyMissing
-                : LiveModelRoleRunner.OutcomeLiveModeDisabled;
+            var outcome = options.Enabled
+                ? LivePreflightRunner.OutcomeKeyMissing
+                : LivePreflightRunner.OutcomeDisabled;
             return BlockedByGuard(normalizedRole, options, modelId, outcome);
         }
 
-        var packet = new LiveModelRunPacket(
-            "packet-end-user-live-model-turn",
-            role,
-            prompt,
-            ["assistant_work_bubble", "candidate_option_cards", "pending_confirmation"],
+        var packet = new LivePreflightPacket(
+            "packet-end-user-live-preflight",
+            [new LivePreflightRoleProbe(role, $"probe-{normalizedRole}")],
             "en-US",
-            RequiresFallback: false,
             ContextDigest: "end-user-chat-live-model-read-only");
 
-        var result = await _runner.RunAsync(
-            packet,
-            new LiveModelRunOptions(options),
-            cancellationToken).ConfigureAwait(false);
+        var row = (await _preflightEvaluator.EvaluateAsync(
+            [new LivePreflightEvalCase("end-user-live-preflight", packet)],
+            options,
+            cancellationToken).ConfigureAwait(false)).Single();
 
-        if (result.IsAccepted)
+        if (row.Passed)
         {
+            var conductor = RunConductorFallback(prompt);
             return new EndUserLiveModelSnapshot(
                 normalizedRole,
-                result.Provider ?? options.Provider,
+                row.Provider ?? options.Provider,
                 PreflightPassed,
                 LatestLiveAccepted,
                 ProviderRequestAttempted,
-                result.OutcomeCode,
-                "live_provider_accepted",
-                "credit_guard_checked",
+                row.OutcomeCode,
+                $"harness_conductor_{conductor.Code}",
+                CreditStateFor(row.OutcomeCode, options),
                 "none",
-                result.ModelId ?? modelId,
-                result.RequestId,
+                row.Model ?? modelId,
+                row.RequestId,
                 null,
                 null,
                 new EndUserChatTurn(
@@ -121,8 +126,8 @@ public sealed class EndUserLiveModelTurnService
                     "provider",
                     "live-model",
                     "applied",
-                    "Live model turn returned a sanitized accepted result. Raw completion text is not stored in the UI transcript.",
-                    result.OutcomeCode,
+                    "Live provider preflight accepted structured output; the harness conductor kept this planning turn on deterministic fallback.",
+                    row.OutcomeCode,
                     "evidence-chat-live-model",
                     null),
                 null);
@@ -131,32 +136,32 @@ public sealed class EndUserLiveModelTurnService
         return new EndUserLiveModelSnapshot(
             normalizedRole,
             options.Provider,
-            PreflightPassed,
+            IsGuardOutcome(row.OutcomeCode) ? PreflightBlockedByGuard : PreflightBlocked,
             LatestDeterministic,
-            ProviderRequestAttempted,
-            result.OutcomeCode,
-            "live_provider_blocked",
-            "credit_guard_checked",
-            result.OutcomeCode,
-            result.ModelId ?? modelId,
-            result.RequestId,
+            ProviderRequestStateFor(row.OutcomeCode),
+            row.OutcomeCode,
+            "live_preflight_blocked",
+            CreditStateFor(row.OutcomeCode, options),
+            row.OutcomeCode,
+            row.Model ?? modelId,
+            row.RequestId,
             "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE",
-            result.OutcomeCode,
+            row.OutcomeCode,
             new EndUserChatTurn(
                 "turn-live-model-run",
                 "provider",
                 "live-model",
                 "blocked",
-                "Live model turn was blocked with a sanitized provider outcome. Deterministic fallback remains available.",
-                result.OutcomeCode,
+                "Live provider preflight was blocked with a sanitized outcome. Deterministic fallback remains available.",
+                row.OutcomeCode,
                 "evidence-chat-live-model",
                 "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE"),
-            LiveFailureNotice(result.OutcomeCode));
+            LiveFailureNotice(row.OutcomeCode));
     }
 
     private static EndUserLiveModelSnapshot BlockedByGuard(
         string normalizedRole,
-        LiveModelRunnerOptions options,
+        LivePreflightOptions options,
         string modelId,
         string outcome) =>
         new(
@@ -193,13 +198,59 @@ public sealed class EndUserLiveModelTurnService
             CanRetry: false,
             CanContinueDeterministic: true);
 
+    private LivePlanningTurnResult RunConductorFallback(string prompt)
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        return _conductor.RunTurn(session, new LivePlanningTurnRequest(
+            session.SessionId,
+            prompt,
+            "en-US",
+            ["end-user-chat"],
+            LiveModelProposalEnvelope.Fallback()));
+    }
+
     private static LiveModelRole ToLiveRole(string selectedRole) =>
         selectedRole == EndUserModelRoleSelection.StrongPlanner
             ? LiveModelRole.StrongPlanner
             : LiveModelRole.InHarnessActionGenerator;
 
-    private static string ModelIdFor(LiveModelRunnerOptions options, LiveModelRole role) =>
+    private static string ModelIdFor(LivePreflightOptions options, LiveModelRole role) =>
         role == LiveModelRole.StrongPlanner ? options.StrongPlannerModelId : options.InHarnessModelId;
+
+    private static string ProviderRequestStateFor(string outcome) =>
+        IsGuardOutcome(outcome)
+            ? ProviderRequestNotAttempted
+            : ProviderRequestAttempted;
+
+    private static string CreditStateFor(string outcome, LivePreflightOptions options)
+    {
+        if (!options.CreditGuardEnabled)
+        {
+            return "credit_guard_skipped";
+        }
+
+        return outcome switch
+        {
+            LivePreflightRunner.OutcomeDisabled or
+            LivePreflightRunner.OutcomeKeyMissing or
+            LivePreflightRunner.OutcomeSchemaUnsupported or
+            LivePreflightRunner.OutcomeFallbackDisabled => "credit_guard_not_run",
+            LivePreflightRunner.OutcomeCreditExhausted => "credit_exhausted",
+            _ => "credit_guard_checked"
+        };
+    }
+
+    private static bool IsGuardOutcome(string outcome) =>
+        outcome is LivePreflightRunner.OutcomeDisabled
+            or LivePreflightRunner.OutcomeKeyMissing
+            or LivePreflightRunner.OutcomeSchemaUnsupported
+            or LivePreflightRunner.OutcomeFallbackDisabled;
+
+    private static LivePreflightEvaluator CreateDefaultPreflightEvaluator()
+    {
+        var client = new DisabledLivePreflightClient();
+        return new LivePreflightEvaluator(new LivePreflightRunner(client, client));
+    }
 
     private static IReadOnlyDictionary<string, string?> ReadProcessEnvironment()
     {
@@ -211,6 +262,18 @@ public sealed class EndUserLiveModelTurnService
         }
 
         return environment;
+    }
+
+    private sealed class DisabledLivePreflightClient : IModelCompletionClient, IProviderCreditClient
+    {
+        public Task<ModelCompletionResponse> CompleteAsync(
+            ModelCompletionRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ModelCompletionResponse>(
+                new InvalidOperationException("Live preflight client is not configured."));
+
+        public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderCreditStatus(null, null, null, IsExhausted: true));
     }
 }
 

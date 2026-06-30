@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Pch.Harness;
+using Pch.Providers.LivePreflight;
+using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
 using Pch.UI.Features.EndUserChat;
 using Xunit;
@@ -121,17 +123,59 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("blocked_by_guard", state.LivePreflightState);
         Assert.Equal("deterministic_fallback", state.LatestTurnSource);
         Assert.Equal("not_attempted", state.ProviderRequestState);
-        Assert.Equal("live_model_disabled", state.ProviderOutcome);
+        Assert.Equal("live_preflight_disabled", state.ProviderOutcome);
         Assert.Equal("live_guard_blocked", state.ProviderHealth);
         Assert.Equal("PCH_UI_LIVE_MODEL_GUARDED", state.ErrorCode);
-        Assert.Equal("live_model_disabled", state.BlockedReason);
-        Assert.Equal("live_model_disabled", state.LastProviderFailureCode);
+        Assert.Equal("live_preflight_disabled", state.BlockedReason);
+        Assert.Equal("live_preflight_disabled", state.LastProviderFailureCode);
         Assert.Equal("notice-live-model-guard", state.ProviderFailure?.NoticeId);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.Kind == "live-model"
             && turn.State == "blocked"
-            && turn.OutcomeCode == "live_model_disabled"
+            && turn.OutcomeCode == "live_preflight_disabled"
             && turn.ErrorCode == "PCH_UI_LIVE_MODEL_GUARDED");
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-final"
+            && turn.State == "applied"
+            && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
+        AssertChatRawTextAbsent(serialized);
+    }
+
+    [Fact]
+    public async Task LiveRoleWithConfiguredPreflightRunsCanonicalProviderPreflightAndConductorFallback()
+    {
+        var completion = new PreflightCompletionClient();
+        var credit = new PreflightCreditClient();
+        var service = new EndUserChatService(
+            new GoldenTurnTraceRunner(),
+            new ModelRoleStatusEvaluator(new Pch.Providers.Mock.MockModelRoleStatusSource()),
+            new EndUserLiveModelTurnService(
+                () => new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["PCH_LIVE_MODEL_ENABLED"] = "true",
+                    ["PCH_LIVE_MODEL_KEY_AVAILABLE"] = "true",
+                    ["PCH_LIVE_MODEL_PROVIDER"] = "openrouter",
+                    ["PCH_LIVE_IN_HARNESS_MODEL"] = "qwen/qwen3-14b"
+                },
+                new LivePreflightEvaluator(new LivePreflightRunner(completion, credit))));
+
+        var state = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with live preflight.",
+            EndUserModelRoleSelection.InHarnessActionGenerator);
+        var serialized = Serialize(state);
+
+        Assert.Equal("in-harness-action-generator", state.SelectedModelRole);
+        Assert.Equal("openrouter", state.SelectedProvider);
+        Assert.Equal("preflight_passed", state.LivePreflightState);
+        Assert.Equal("live_preflight_accepted", state.LatestTurnSource);
+        Assert.Equal("attempted", state.ProviderRequestState);
+        Assert.Equal("live_preflight_accepted", state.ProviderOutcome);
+        Assert.Equal("credit_guard_checked", state.CreditState);
+        Assert.Equal("none", state.LastProviderFailureCode);
+        Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", completion.LastUserMessage, StringComparison.Ordinal);
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
+            && turn.Kind == "live-model"
+            && turn.State == "applied"
+            && turn.OutcomeCode == "live_preflight_accepted");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-final"
             && turn.State == "applied"
             && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
@@ -328,5 +372,43 @@ public sealed class EndUserChatServiceTests
         Assert.DoesNotContain("RAW_CANDIDATE_DISPLAY_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("SECRET_SENTINEL", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("live booking", serialized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class PreflightCompletionClient : IModelCompletionClient
+    {
+        public string LastUserMessage { get; private set; } = string.Empty;
+
+        public Task<ModelCompletionResponse> CompleteAsync(
+            ModelCompletionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            LastUserMessage = request.Messages.Last(message => message.Role == ModelMessageRole.User).Content;
+            var content = JsonSerializer.Serialize(new
+            {
+                packetId = "packet-end-user-live-preflight",
+                roles = new[]
+                {
+                    new
+                    {
+                        role = "in_harness_action_generator",
+                        probeId = "probe-in-harness-action-generator",
+                        modelId = "qwen/qwen3-14b",
+                        outputKind = "structured_output_ready"
+                    }
+                }
+            }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            return Task.FromResult(new ModelCompletionResponse(
+                "qwen/qwen3-14b",
+                content,
+                "openrouter",
+                RequestId: "request-preflight-safe"));
+        }
+    }
+
+    private sealed class PreflightCreditClient : IProviderCreditClient
+    {
+        public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderCreditStatus(1m, 0m, 1m, IsExhausted: false));
     }
 }

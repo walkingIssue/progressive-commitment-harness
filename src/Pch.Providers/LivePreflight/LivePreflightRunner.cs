@@ -161,7 +161,7 @@ public sealed class LivePreflightRunner
     {
         var roles = packet.Roles.Select(role => new
         {
-            role.Role,
+            Role = RoleName(role.Role),
             role.ProbeId,
             ModelId = options.ModelFor(role.Role),
             options.ProviderKind
@@ -181,6 +181,14 @@ public sealed class LivePreflightRunner
             "in_harness_action_generator" => LiveModelRole.InHarnessActionGenerator,
             "strong_planner" => LiveModelRole.StrongPlanner,
             _ => (LiveModelRole)999
+        };
+
+    private static string RoleName(LiveModelRole role) =>
+        role switch
+        {
+            LiveModelRole.InHarnessActionGenerator => "in_harness_action_generator",
+            LiveModelRole.StrongPlanner => "strong_planner",
+            _ => "unknown"
         };
 
     private static CancellationTokenSource? CreateTimeoutSource(

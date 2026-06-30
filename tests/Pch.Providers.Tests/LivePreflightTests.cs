@@ -63,8 +63,10 @@ public sealed class LivePreflightTests
         });
         Assert.Contains(row.Roles, role => role.Role == LiveModelRole.StrongPlanner);
         Assert.Equal("live_preflight_probe", client.LastRequest?.JsonSchemaName);
+        Assert.Contains("in_harness_action_generator", client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
+        Assert.Contains("strong_planner", client.LastRequest.Messages.Last().Content, StringComparison.Ordinal);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
-        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(client.LastRequest!.Messages, SensitiveSentinels);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(client.LastRequest.Messages, SensitiveSentinels);
     }
 
     [Theory]

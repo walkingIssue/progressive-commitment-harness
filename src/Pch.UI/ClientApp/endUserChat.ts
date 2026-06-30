@@ -344,18 +344,18 @@ function sendPrompt(): void {
     "data-final-state": "applied",
     "data-composer-state": "collapsed_drawer",
     "data-ask-drawer": "closed",
-    "data-provider-outcome": liveSelected ? "live_model_disabled" : "deterministic_fallback_active",
+    "data-provider-outcome": liveSelected ? "live_preflight_disabled" : "deterministic_fallback_active",
     "data-live-preflight-state": liveSelected ? "blocked_by_guard" : "deterministic_default",
     "data-latest-turn-source": "deterministic_fallback",
     "data-provider-request-state": "not_attempted",
     "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",
-    "data-blocked-reason": liveSelected ? "live_model_disabled" : "",
+    "data-blocked-reason": liveSelected ? "live_preflight_disabled" : "",
   });
   toggleDrawer(false);
   appendTurn("turn-user-1", "user", "prompt", "submitted", `Trip request accepted with ${promptLength} characters. Raw prompt text is kept out of transcript storage.`, "prompt_received");
   appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active; live provider roles are disabled for this run.", "model_role_status_ready");
   if (liveSelected) {
-    appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.", "live_model_disabled", "evidence-chat-live-model");
+    appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.", "live_preflight_disabled", "evidence-chat-live-model");
   }
   appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
   ensureWorkObjects();
