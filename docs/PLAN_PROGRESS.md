@@ -534,6 +534,27 @@ Sprint 018 should make the end-user planner easier to understand and safer to re
 - add provider-local repair posture/eval artifacts for model-assisted repair suggestions while keeping required tests deterministic/offline and redacted.
 - allow guarded live OpenRouter/OpenAI/Grok-compatible exploration during development/smoke, with sanitized per-lane failure reports documenting what real model-attached runs expose.
 
+## Sprint 019 Result
+
+Sprint 019 attached the first guarded live-model spine but stopped short of full model-generated planning.
+
+- `LiveSessionConductor` now gives the harness a UI-agnostic live turn boundary that composes prompt intake, mission proposal validation, runtime action application, itinerary compilation, live turn projection, and edit impact analysis.
+- Provider `LivePreflightRunner` can perform guarded role probes through `IModelCompletionClient` plus optional credit checks, with fixed sanitized outcomes for disabled, key-missing, credit, timeout, empty, malformed, packet mismatch, provider unavailable, and accepted paths.
+- The end-user UI now exposes live/deterministic posture, model role controls, preflight state, provider request state, and deterministic fallback state without hiding whether a turn is truly live.
+- A guarded OpenRouter/Qwen preflight smoke was attempted by the provider lane and returned `live_preflight_accepted`; the UI lane stayed deterministic because explicit live provider configuration was not enabled in that checkout.
+- Raw prompts, raw completions, provider payloads, API keys, approval tokens, hold references, candidate display sentinels, credentials, booking/payment references, and raw exception text remain out of rendered or serialized state.
+
+## Sprint 020 Target
+
+Sprint 020 should turn live preflight into one real model proposal applied through the harness.
+
+- add a provider-local live mission proposal runner with strict structured output, credit/key/timeout guards, fake HTTP coverage, and optional guarded OpenRouter/OpenAI/Grok-compatible smoke;
+- map accepted provider output into a provider-agnostic `LiveModelProposalEnvelope` shape without introducing provider dependencies into `Pch.Harness`;
+- have `LiveSessionConductor` apply or reject that proposal through canonical mission proposal, mission intake, itinerary compilation, and live turn projection boundaries;
+- make the end-user UI send one guarded live mission proposal turn when configured, while defaulting to deterministic/offline tests and displaying honest live accepted/live blocked/fallback state;
+- preserve the current end-user interaction surface, media hooks, selected-card echoes, compact timeline, `/trip` route, and `/stage-cockpit` route split;
+- record sanitized live/failure reports for provider, harness, and UI lanes describing what the real model path accepted, blocked, or could not yet express.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
