@@ -66,7 +66,28 @@ public sealed class CardMediaProvenanceBoundaryTests
         Assert.DoesNotContain("RAW_CREDENTIAL_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_HOLD_REFERENCE_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.Equal("local://card-media/redacted", result.Media!.Uri);
+        Assert.Null(result.Media.Attribution.SourceUri);
         Assert.Contains("redacted", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DisallowedUriSchemesAreSanitizedBeforeUiRendering()
+    {
+        var result = new CardMediaProvenanceBoundary().Validate(Reference() with
+        {
+            Uri = "javascript:alert(1)",
+            Attribution = Reference().Attribution with
+            {
+                SourceUri = "file:///C:/unsafe-media-source",
+                LicenseUri = "data:text/plain,unsafe"
+            }
+        });
+
+        Assert.True(result.IsAccepted);
+        Assert.Equal("local://card-media/redacted", result.Media!.Uri);
+        Assert.Null(result.Media.Attribution.SourceUri);
+        Assert.Null(result.Media.Attribution.LicenseUri);
     }
 
     [Theory]

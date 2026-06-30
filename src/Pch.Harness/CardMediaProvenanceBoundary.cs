@@ -18,6 +18,7 @@ public sealed class CardMediaProvenanceBoundary
     private const int MaxEvidenceIds = 8;
     private const int MinImagePixels = 16;
     private const int MaxImagePixels = 4096;
+    private const string RedactedMediaUri = "local://card-media/redacted";
 
     private static readonly Regex ColorTokenPattern = new("^[a-z][a-z0-9-]{1,31}$", RegexOptions.Compiled);
 
@@ -246,12 +247,29 @@ public sealed class CardMediaProvenanceBoundary
 
     private static string SafeUri(string value)
     {
-        return SafeText(value, MaxUriLength);
+        var text = SafeText(value, MaxUriLength);
+        if (text == "redacted" || !Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        {
+            return RedactedMediaUri;
+        }
+
+        return uri.Scheme is "https" or "local" ? text : RedactedMediaUri;
     }
 
     private static string? SafeOptionalUri(string? value)
     {
-        return string.IsNullOrWhiteSpace(value) ? null : SafeUri(value);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var text = SafeText(value, MaxUriLength);
+        if (text == "redacted" || !Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        return uri.Scheme == "https" ? text : null;
     }
 
     private static string? SafeOptionalText(string? value, int maxLength)
