@@ -123,3 +123,29 @@ Verification:
 - No live provider, search, booking, payment, credential, API key, or provider-credit dependency is introduced in the default path.
 - No raw prompt text, provider payload, proposal JSON, credential, approval-token value, payment data, live booking reference, candidate display value, raw exception text, or secret-like sentinel is persisted or rendered outside intentionally transient in-memory request channels.
 
+## Result
+
+Sprint 015 is complete.
+
+Lane A added `GoldenTurnTraceRunner`, deterministic happy and blocked/safety scripts, sanitized golden fixtures under `tests/fixtures/golden-turn-traces`, and regression tests proving stable output and raw-sentinel absence.
+
+Lane B added provider-local model-role guardrail DTOs, `ModelRoleStatusEvaluator`, deterministic `MockModelRoleStatusSource`, sanitized status/eval rows, and docs for deterministic/offline, small-model, strong-model, live-provider-disabled, and fallback-disabled posture.
+
+Lane C added the first-screen `EndUserChat` UI above Stage Cockpit. The chat shell uses `GoldenTurnTraceRunner` for happy and blocked/safety transcript paths and `ModelRoleStatusEvaluator` for deterministic offline model-role posture. It keeps Stage Cockpit available as the engineering dashboard while giving end users a direct "try it" surface.
+
+Pending confirmation remains a lightweight UI-local state derived from the canonical happy trace because Sprint 015 did not add a canonical pending-confirmation golden trace.
+
+## Verification Result
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 53 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 347 tests across core, harness, providers, and UI.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator HTTP/browser smoke on `http://127.0.0.1:5181/`: passed for the end-user chat marker, deterministic offline mode, prompt entry, send action, and raw-absence marker.
+
+## Security Notes
+
+- Required flows remain deterministic/offline by default.
+- No live provider, search, booking, payment, API-key, credential, or provider-credit dependency was introduced.
+- The chat UI and golden trace artifacts do not render or persist raw prompt text, provider payloads, proposal JSON, credentials, approval-token values, hold references, candidate display sentinels, raw exception text, or secret-like sentinels.

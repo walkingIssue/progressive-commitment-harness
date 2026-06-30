@@ -447,6 +447,31 @@ Sprint 015 should make the project testable by an end user while preserving dete
 - add provider/model role guardrails for the end-user shell: deterministic offline mode by default, explicit model-role labels, no live provider calls unless configured, and clear fallback behavior;
 - keep Stage Cockpit as the engineering dashboard, but let the new end-user UI become the primary "try it" surface for happy path and blocked/safety paths.
 
+## Sprint 015 Result
+
+Sprint 015 added the first end-user-facing deterministic trip chat surface and tied it to canonical trace/model-role contracts.
+
+- `GoldenTurnTraceRunner` now executes sanitized happy-path and blocked/safety turn scripts through the canonical harness boundaries, with stable golden JSON fixtures under `tests/fixtures/golden-turn-traces`.
+- Golden trace artifacts include fixed turn ids, actor/kind/stage/code metadata, bounded evidence refs, prompt metadata, deterministic hashes, and no serialized raw prompt/provider/approval/hold/candidate-display sentinels.
+- Provider model-role guardrails now expose deterministic/offline, small-model, strong-model, and live-provider-disabled posture rows through `ModelRoleStatusEvaluator` and `MockModelRoleStatusSource`.
+- The new `EndUserChat` first-screen UI lets a user enter a prompt, send it through deterministic offline paths, and read a chat-style transcript without navigating Stage Cockpit internals.
+- The UI consumes canonical `GoldenTurnTraceRunner` output and provider `ModelRoleStatusEvaluator` posture by default; pending-confirmation remains a small UI-local state until a canonical pending golden trace is added.
+- Stage Cockpit remains available below the new chat surface for engineering inspection.
+
+Security/default-mode guarantees preserved:
+
+- no live provider, search, booking, payment, API-key, credential, or provider-credit dependency in required tests or default smoke;
+- raw prompt text, provider payloads, proposal JSON, credentials, approval-token values, hold references, candidate display sentinels, raw exception text, and secret-like sentinels are not rendered or persisted by the new chat UI or trace artifacts.
+
+## Sprint 015 Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 53 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 347 tests across core, harness, providers, and UI.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator HTTP/browser smoke on `http://127.0.0.1:5181/`: passed for `data-end-user-chat="v0"`, deterministic offline mode, prompt entry, send action, and raw-absence marker.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
