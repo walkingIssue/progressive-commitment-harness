@@ -8,6 +8,8 @@ public sealed record EndUserChatState(
     string SelectedModelRole,
     string SelectedProvider,
     string LivePreflightState,
+    string LiveProposalState,
+    string HarnessValidationState,
     string LatestTurnSource,
     string ProviderRequestState,
     string ProviderOutcome,
@@ -179,4 +181,15 @@ public static class EndUserModelRoleSelection
             StrongPlanner => StrongPlanner,
             _ => DeterministicOffline
         };
+}
+
+public static class EndUserLiveProposalMarkers
+{
+    public const string NotRequested = "not_requested";
+    public const string NotRun = "not_run";
+    public const string DeferredUntilRunner = "proposal_runner_deferred";
+    public const string Accepted = "live_model_proposal_accepted";
+    public const string Blocked = "live_model_proposal_blocked";
+    public const string HarnessValidationBlocked = "harness_validation_blocked";
+    public const string DeterministicFallback = "deterministic_fallback";
 }

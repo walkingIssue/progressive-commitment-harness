@@ -8,6 +8,8 @@
          data-selected-model-role="@Chat.SelectedModelRole"
          data-selected-provider="@Chat.SelectedProvider"
          data-live-preflight-state="@Chat.LivePreflightState"
+         data-live-proposal-state="@Chat.LiveProposalState"
+         data-harness-validation-state="@Chat.HarnessValidationState"
          data-latest-turn-source="@Chat.LatestTurnSource"
          data-provider-request-state="@Chat.ProviderRequestState"
          data-role-status="@Chat.RoleStatusOutcome"
@@ -205,7 +207,11 @@
             SelectedModelRole = SelectedModelRole,
             LivePreflightState = SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
                 ? EndUserLiveModelTurnService.PreflightDeterministic
-                : EndUserLiveModelTurnService.PreflightBlockedByGuard
+                : EndUserLiveModelTurnService.PreflightBlockedByGuard,
+            LiveProposalState = SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
+                ? EndUserLiveProposalMarkers.NotRequested
+                : EndUserLiveProposalMarkers.NotRun,
+            HarnessValidationState = EndUserLiveProposalMarkers.NotRun
         };
     }
 

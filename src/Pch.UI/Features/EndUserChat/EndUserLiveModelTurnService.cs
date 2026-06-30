@@ -13,13 +13,17 @@ public sealed class EndUserLiveModelTurnService
     public const string PreflightPassed = "preflight_passed";
     public const string PreflightReady = "preflight_ready";
     public const string LatestDeterministic = "deterministic_fallback";
-    public const string LatestLiveAccepted = "live_preflight_accepted";
+    public const string LatestLivePreflight = "live_preflight";
+    public const string LatestLiveAccepted = "live_model_proposal_accepted";
+    public const string LatestLiveBlocked = "live_model_proposal_blocked";
+    public const string LatestHarnessValidationBlocked = "harness_validation_blocked";
     public const string ProviderRequestNotAttempted = "not_attempted";
     public const string ProviderRequestAttempted = "attempted";
 
     private readonly Func<IReadOnlyDictionary<string, string?>> _environmentFactory;
     private readonly LivePreflightEvaluator _preflightEvaluator;
     private readonly LiveSessionConductor _conductor;
+    private readonly IEndUserLiveProposalGateway _proposalGateway;
 
     public EndUserLiveModelTurnService()
         : this(ReadProcessEnvironment, CreateDefaultPreflightEvaluator(), new LiveSessionConductor())
@@ -29,11 +33,13 @@ public sealed class EndUserLiveModelTurnService
     public EndUserLiveModelTurnService(
         Func<IReadOnlyDictionary<string, string?>> environmentFactory,
         LivePreflightEvaluator? preflightEvaluator = null,
-        LiveSessionConductor? conductor = null)
+        LiveSessionConductor? conductor = null,
+        IEndUserLiveProposalGateway? proposalGateway = null)
     {
         _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
         _preflightEvaluator = preflightEvaluator ?? CreateDefaultPreflightEvaluator();
         _conductor = conductor ?? new LiveSessionConductor();
+        _proposalGateway = proposalGateway ?? EndUserLiveProposalGateway.Deferred;
     }
 
     public EndUserLiveModelSnapshot CreateSnapshot(string selectedRole)
@@ -55,6 +61,10 @@ public sealed class EndUserLiveModelTurnService
             normalizedRole,
             options.Provider,
             preflightState,
+            preflightState == PreflightBlockedByGuard
+                ? EndUserLiveProposalMarkers.NotRun
+                : EndUserLiveProposalMarkers.DeferredUntilRunner,
+            EndUserLiveProposalMarkers.NotRun,
             LatestDeterministic,
             ProviderRequestNotAttempted,
             options.Enabled ? "live_config_present" : "live_guard_disabled",
@@ -106,37 +116,49 @@ public sealed class EndUserLiveModelTurnService
 
         if (row.Passed)
         {
-            var conductor = RunConductorFallback(prompt);
+            var proposal = await _proposalGateway.BuildAsync(
+                prompt,
+                normalizedRole,
+                options,
+                cancellationToken).ConfigureAwait(false);
+            var conductor = RunConductor(prompt, proposal.Envelope);
+            var proposalState = ProposalStateFor(proposal, conductor);
+            var harnessValidation = HarnessValidationStateFor(conductor);
+            var latestTurn = LatestTurnSourceFor(proposalState, harnessValidation);
             return new EndUserLiveModelSnapshot(
                 normalizedRole,
                 row.Provider ?? options.Provider,
                 PreflightPassed,
-                LatestLiveAccepted,
+                proposalState,
+                harnessValidation,
+                latestTurn,
                 ProviderRequestAttempted,
-                row.OutcomeCode,
+                proposal.ProviderOutcomeCode ?? row.OutcomeCode,
                 $"harness_conductor_{conductor.Code}",
                 CreditStateFor(row.OutcomeCode, options),
-                "none",
+                proposal.FailureCode ?? "none",
                 row.Model ?? modelId,
                 row.RequestId,
-                null,
-                null,
+                conductor.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null,
+                conductor.IsBlocked ? conductor.Code : null,
                 new EndUserChatTurn(
                     "turn-live-model-run",
                     "provider",
                     "live-model",
-                    "applied",
-                    "Live provider preflight accepted structured output; the harness conductor kept this planning turn on deterministic fallback.",
-                    row.OutcomeCode,
+                    conductor.IsBlocked ? "blocked" : "applied",
+                    TurnTextFor(proposalState, harnessValidation),
+                    proposal.ProviderOutcomeCode ?? row.OutcomeCode,
                     "evidence-chat-live-model",
-                    null),
-                null);
+                    conductor.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null),
+                conductor.IsBlocked ? LiveFailureNotice(conductor.Code) : null);
         }
 
         return new EndUserLiveModelSnapshot(
             normalizedRole,
             options.Provider,
             IsGuardOutcome(row.OutcomeCode) ? PreflightBlockedByGuard : PreflightBlocked,
+            EndUserLiveProposalMarkers.NotRun,
+            EndUserLiveProposalMarkers.NotRun,
             LatestDeterministic,
             ProviderRequestStateFor(row.OutcomeCode),
             row.OutcomeCode,
@@ -168,6 +190,8 @@ public sealed class EndUserLiveModelTurnService
             normalizedRole,
             options.Provider,
             PreflightBlockedByGuard,
+            EndUserLiveProposalMarkers.NotRun,
+            EndUserLiveProposalMarkers.NotRun,
             LatestDeterministic,
             ProviderRequestNotAttempted,
             outcome,
@@ -198,7 +222,7 @@ public sealed class EndUserLiveModelTurnService
             CanRetry: false,
             CanContinueDeterministic: true);
 
-    private LivePlanningTurnResult RunConductorFallback(string prompt)
+    private LivePlanningTurnResult RunConductor(string prompt, LiveModelProposalEnvelope envelope)
     {
         var session = SyntheticTripFactory.CreateSession(3);
         return _conductor.RunTurn(session, new LivePlanningTurnRequest(
@@ -206,8 +230,79 @@ public sealed class EndUserLiveModelTurnService
             prompt,
             "en-US",
             ["end-user-chat"],
-            LiveModelProposalEnvelope.Fallback()));
+            envelope));
     }
+
+    private static string ProposalStateFor(EndUserLiveProposalCandidate proposal, LivePlanningTurnResult conductor)
+    {
+        if (proposal.Envelope.Kind is LiveModelProposalKind.DeterministicFallback)
+        {
+            return EndUserLiveProposalMarkers.DeferredUntilRunner;
+        }
+
+        if (proposal.Envelope.Kind is LiveModelProposalKind.ModelBlocked)
+        {
+            return EndUserLiveProposalMarkers.Blocked;
+        }
+
+        return conductor.Code is LiveSessionConductor.MissionProposalBlockedCode
+            ? EndUserLiveProposalMarkers.Accepted
+            : conductor.IsBlocked
+                ? EndUserLiveProposalMarkers.Blocked
+                : EndUserLiveProposalMarkers.Accepted;
+    }
+
+    private static string HarnessValidationStateFor(LivePlanningTurnResult conductor)
+    {
+        if (conductor.Code is LiveSessionConductor.DeterministicFallbackCode)
+        {
+            return EndUserLiveProposalMarkers.DeterministicFallback;
+        }
+
+        if (conductor.Code is LiveSessionConductor.MissionProposalBlockedCode or
+            LiveSessionConductor.UnsupportedLiveOperationCode or
+            LiveSessionConductor.DecodeBlockedCode or
+            LiveSessionConductor.IntakeBlockedCode)
+        {
+            return EndUserLiveProposalMarkers.HarnessValidationBlocked;
+        }
+
+        if (conductor.Code is LiveSessionConductor.ProviderModelBlockedCode)
+        {
+            return EndUserLiveProposalMarkers.NotRun;
+        }
+
+        return conductor.Code;
+    }
+
+    private static string LatestTurnSourceFor(string proposalState, string harnessValidation)
+    {
+        if (harnessValidation == EndUserLiveProposalMarkers.HarnessValidationBlocked)
+        {
+            return LatestHarnessValidationBlocked;
+        }
+
+        return proposalState switch
+        {
+            EndUserLiveProposalMarkers.Accepted => LatestLiveAccepted,
+            EndUserLiveProposalMarkers.Blocked => LatestLiveBlocked,
+            EndUserLiveProposalMarkers.DeferredUntilRunner => LatestLivePreflight,
+            _ => LatestDeterministic
+        };
+    }
+
+    private static string TurnTextFor(string proposalState, string harnessValidation) =>
+        proposalState switch
+        {
+            EndUserLiveProposalMarkers.Accepted when harnessValidation == EndUserLiveProposalMarkers.HarnessValidationBlocked =>
+                "Live model proposal was received, but the harness validation boundary blocked it with a sanitized outcome.",
+            EndUserLiveProposalMarkers.Accepted =>
+                "Live model proposal was accepted by the harness boundary and rendered through the existing planning primitives.",
+            EndUserLiveProposalMarkers.Blocked =>
+                "Live model proposal was blocked before application. The deterministic planner path remains available.",
+            _ =>
+                "Live provider preflight accepted structured output; the mission proposal runner is not integrated in this UI lane yet."
+        };
 
     private static LiveModelRole ToLiveRole(string selectedRole) =>
         selectedRole == EndUserModelRoleSelection.StrongPlanner
@@ -281,6 +376,8 @@ public sealed record EndUserLiveModelSnapshot(
     string SelectedModelRole,
     string SelectedProvider,
     string LivePreflightState,
+    string LiveProposalState,
+    string HarnessValidationState,
     string LatestTurnSource,
     string ProviderRequestState,
     string ProviderOutcome,
@@ -302,6 +399,8 @@ public sealed record EndUserLiveModelSnapshot(
             EndUserModelRoleSelection.DeterministicOffline,
             "none",
             EndUserLiveModelTurnService.PreflightDeterministic,
+            EndUserLiveProposalMarkers.NotRequested,
+            EndUserLiveProposalMarkers.NotRun,
             EndUserLiveModelTurnService.LatestDeterministic,
             EndUserLiveModelTurnService.ProviderRequestNotAttempted,
             EndUserChatService.ProviderOutcomeFallback,
@@ -314,4 +413,48 @@ public sealed record EndUserLiveModelSnapshot(
             null,
             null,
             null);
+}
+
+public interface IEndUserLiveProposalGateway
+{
+    Task<EndUserLiveProposalCandidate> BuildAsync(
+        string prompt,
+        string selectedRole,
+        LivePreflightOptions options,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record EndUserLiveProposalCandidate(
+    LiveModelProposalEnvelope Envelope,
+    string? ProviderOutcomeCode,
+    string? FailureCode);
+
+public sealed class EndUserLiveProposalGateway : IEndUserLiveProposalGateway
+{
+    public static EndUserLiveProposalGateway Deferred { get; } =
+        new(LiveModelProposalEnvelope.Fallback(), "live_model_proposal_deferred", null);
+
+    private readonly LiveModelProposalEnvelope _envelope;
+    private readonly string? _providerOutcomeCode;
+    private readonly string? _failureCode;
+
+    public EndUserLiveProposalGateway(
+        LiveModelProposalEnvelope envelope,
+        string? providerOutcomeCode,
+        string? failureCode)
+    {
+        _envelope = envelope ?? throw new ArgumentNullException(nameof(envelope));
+        _providerOutcomeCode = providerOutcomeCode;
+        _failureCode = failureCode;
+    }
+
+    public Task<EndUserLiveProposalCandidate> BuildAsync(
+        string prompt,
+        string selectedRole,
+        LivePreflightOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new EndUserLiveProposalCandidate(_envelope, _providerOutcomeCode, _failureCode));
+    }
 }
