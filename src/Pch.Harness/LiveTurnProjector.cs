@@ -88,6 +88,51 @@ public sealed class LiveTurnProjector
             turns);
     }
 
+    public LiveTurnProjectionResult FromMissionPendingConfirmations(
+        PromptIntakeResult result,
+        IReadOnlyList<MissionPendingConfirmation> pendingConfirmations)
+    {
+        if (result is null || !result.IsAccepted || result.Packet is null)
+        {
+            return BlockedResult(
+                ProviderModelBlockedCode,
+                "Prompt intake was blocked before planner execution.",
+                [BlockedTurn(1, ProviderModelBlockedCode, "Prompt intake was blocked before planner execution.", [])]);
+        }
+
+        var pending = (pendingConfirmations ?? [])
+            .Take(MaxFields)
+            .Select(item => new PromptPendingConfirmation(
+                item.FieldPath,
+                item.Source.ToString(),
+                item.ReasonCode,
+                item.EvidenceIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray()))
+            .ToArray();
+
+        var turns = new List<LiveTurn>
+        {
+            SummaryTurn(
+                1,
+                AcceptedCode,
+                "Prompt metadata accepted for planner execution.",
+                [result.Packet.PacketId, result.Packet.Prompt.Category],
+                result.Packet.EvidenceReferences),
+            FormTurn(
+                2,
+                AwaitingUserInputCode,
+                "Pending confirmations require user input.",
+                pending,
+                pending.SelectMany(item => item.EvidenceIds).Distinct(StringComparer.Ordinal).Take(MaxEvidenceReferences).ToArray())
+        };
+
+        return BuildResult(
+            IsAccepted: true,
+            IsBlocked: false,
+            AwaitingUserInputCode,
+            "Live turn is awaiting user input.",
+            turns);
+    }
+
     public LiveTurnProjectionResult FromSessionTurn(SessionTurnResult result)
     {
         if (result is null)
