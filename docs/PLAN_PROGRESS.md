@@ -14,9 +14,9 @@ Coordinator rule: Collin plans, dispatches, reviews, integrates, and updates doc
 
 Updated: 2026-06-30
 
-Latest integrated code before this progress update: `6a610ee94964dc016099622114c552e2b5f6dc09 Merge sprint-013 UI fidelity release dashboard`
+Latest integrated code before this progress update: `130e42803a122f3cfda9fcd36a76ec6a7e87075f Merge sprint-014 UI availability preview panel`
 
-Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, evidence-export, shared eval artifact redaction checks, provider-local fidelity eval rows, and a first canonical fidelity ownership matrix. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, final evidence export, release-smoke summary, and fidelity release dashboard. Stage 10 now has deterministic replay audit, cross-provider sanitized artifact policy, UI release-smoke/a11y markers, and fidelity release-gate markers. The next decisive gap is Stage 7: guarded availability/quote preview boundaries that can introduce real provider-shaped availability data without creating booking/payment side effects.
+Overall position: Stage 2/3 now have deterministic session traversal, approval-gated action intake, replayable trace events, a harness-owned external action decoder, a reusable runtime action application result, an authority-checked mission intake application, a validated provider-shaped mission proposal adapter, a prompt packet boundary with runtime-only raw prompt transfer, and canonical itinerary candidate application state. Stage 4/5 now have provider-local mission planner runtime handoff, mission-kind allowlisting, bounded mission memory projection into `StagePacket`, a guarded OpenAI/OpenRouter-compatible live mission planner client behind deterministic tests, provider-local candidate expansion for itinerary slots, and mock hold preparation. Stage 5/6 now have sanitized model-action, mission-planner, candidate-expansion, hold-preparation, evidence-export, shared eval artifact redaction checks, provider-local fidelity eval rows, and a first canonical fidelity ownership matrix. Stage 7 now has deterministic availability/quote preview boundaries across harness, provider, and UI without booking/payment side effects. Stage 8 now has a harness-owned itinerary slot compiler, slot-scoped candidate ownership, selected/deferred itinerary decisions, and projection counters. Stage 9 now has a deterministic end-to-end Stage Cockpit run from prompt packet through mission, itinerary, candidate application, approval-gated mock hold, trip-run snapshot, final evidence export, release-smoke summary, fidelity release dashboard, and availability preview. Stage 10 now has deterministic replay audit, cross-provider sanitized artifact policy, UI release-smoke/a11y markers, and fidelity release-gate markers. The next decisive gap is a real end-user-facing interaction shell: a chat/transcript UI that lets a person actually enter a trip prompt and watch the deterministic harness path unfold without needing to understand Stage Cockpit internals.
 
 ## Sprint Ledger
 
@@ -70,6 +70,9 @@ Overall position: Stage 2/3 now have deterministic session traversal, approval-g
 | 013 | Stage 6 | Fidelity ownership matrix | `FidelityMatrix` evaluates deterministic stage packets and replay cases for schema validity, faithfulness, candidate ids, fallback need, read-only behavior, and mutation safety | done |
 | 013 | Stage 5/6 | Provider fidelity eval artifacts | Provider-local fidelity eval rows compare harness-only, small-model, and strong-model candidates with trusted packet validation and sanitized persisted fields | done |
 | 013 | Stage 9/10 | Fidelity release dashboard | Stage Cockpit renders canonical fidelity matrix/eval artifact status, release gate state, ownership rows, and raw-absence markers with accessible row controls | done |
+| 014 | Stage 7 | Availability quote boundary | `AvailabilityQuotePreviewApplication` validates current compilation, snapshot, selected itinerary decision, slot-owned candidate, quote kind, and approval-required preview state | done |
+| 014 | Stage 6/7 | Provider availability preview adapter | Provider-local availability preview packets/results/eval rows validate trusted slot/candidate/category maps and sanitize rejected row identifiers | done |
+| 014 | Stage 9/10 | Availability preview panel | Stage Cockpit renders canonical quote-ready, unavailable, provider-blocked, harness-blocked, approval-required, and raw-absence availability preview paths | done |
 
 ## Sprint 001 Verification
 
@@ -407,20 +410,48 @@ Smoke verified:
 - representative row checks: Intake accepted, Posture accepted, ConflictVerify accepted, Logistics blocked with `PCH_UI_FIDELITY_RELEASE_REVIEW_REQUIRED`
 - raw prompt/provider payload/approval token/hold reference/candidate display/secret sentinels were absent from rendered UI.
 
-## Sprint 014 Target
+## Sprint 014 Result
 
-Sprint 014 should begin Stage 7 availability/search preview without introducing real booking, payment, or default live provider side effects.
+Sprint 014 began Stage 7 availability/search preview without introducing real booking, payment, or default live provider side effects.
 
-- add a harness-owned availability/quote preview boundary that validates itinerary slot and candidate ownership before any provider-shaped availability result can affect session state;
-- add provider-local availability/read-adapter DTOs and deterministic fake HTTP/mock sources for flight/hotel/activity quote previews, with live provider calls disabled or explicitly guarded by key, health, timeout, and no-paid-fallback checks;
-- extend Stage Cockpit with an availability preview panel showing quote-ready, unavailable, stale-packet, approval-required, and provider-blocked paths through canonical boundaries;
-- preserve the current redaction posture: no raw prompts, provider payloads, proposal JSON, credentials, approval-token values, payment data, live booking references, candidate display sentinels, or raw exception text in persisted rows or rendered UI.
+- `AvailabilityQuotePreviewApplication` validates current compilation fingerprint, trip-run snapshot id, selected itinerary decision, slot-associated candidate ownership, slot/candidate category, and quote kind before any preview is accepted.
+- Quote previews with spend-adjacent candidate cost/currency return `approval_required_preview` and never expose approval token values.
+- Provider availability preview eval rows derive accepted slot/candidate/category fields from trusted packets and use fixed sanitized identifiers on rejected/error rows.
+- Stage Cockpit now renders canonical quote-ready, unavailable, stale-packet/provider mismatch, wrong-slot/harness block, approval-required, and raw-absence availability preview paths.
+- Required tests and smoke remain deterministic/offline; no live provider, availability search, booking, payment, credentials, API key, or provider-credit dependency was added.
+
+## Sprint 014 Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: passed, 48 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 317 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- Coordinator in-app browser smoke on `http://127.0.0.1:5175/`: passed for all six availability controls and raw-sentinel absence.
+
+Smoke verified:
+
+- quote-ready: `availability_preview_quote_ready` plus `availability_quote_preview_accepted`
+- unavailable: `availability_preview_unavailable` plus `availability_quote_preview_unavailable`
+- provider mismatch: `availability_preview_packet_mismatch` with fixed `PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH`
+- harness ownership block: `candidate_ownership_mismatch` with fixed `PCH_UI_AVAILABILITY_WRONG_SLOT`
+- approval required: `approval_required_preview` with fixed `PCH_UI_AVAILABILITY_APPROVAL_REQUIRED`
+- raw prompt/provider payload/approval token/payment/hold reference/secret sentinels were absent from rendered UI.
+
+## Sprint 015 Target
+
+Sprint 015 should make the project testable by an end user while preserving deterministic safety rails.
+
+- add a real end-user chat/transcript UI shell that lets a person enter a trip prompt, see assistant/harness messages, inspect decisions, and continue through the deterministic trip flow without understanding internal Stage Cockpit panels;
+- add a golden turn-based trace harness that replays scripted user/assistant/harness turns through the canonical boundaries and writes sanitized, stable golden traces for regression;
+- add provider/model role guardrails for the end-user shell: deterministic offline mode by default, explicit model-role labels, no live provider calls unless configured, and clear fallback behavior;
+- keep Stage Cockpit as the engineering dashboard, but let the new end-user UI become the primary "try it" surface for happy path and blocked/safety paths.
 
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
 - Stage 5 true small-model structured itinerary generation beyond deterministic/mock runtime action loops.
 - Stage 6 live/model-backed fidelity scoring beyond Sprint 013's first deterministic harness/provider/UI pass.
-- Stage 7 real availability/pricing adapters beyond Sprint 014's planned guarded preview boundary.
+- Stage 7 real availability/pricing adapters beyond Sprint 014's guarded preview boundary.
 - Stage 8 full dependency propagation beyond the first day/slot compiler and candidate selection slices.
 - Stage 9 live/search-backed end-to-end UI run beyond the deterministic Sprint 012 release-smoke run.

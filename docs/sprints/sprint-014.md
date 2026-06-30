@@ -121,3 +121,29 @@ Verification:
 - The UI can show quote-ready and blocked preview states without implying booking/payment occurred.
 - Required tests remain offline and deterministic.
 - No raw prompt, provider payload, proposal JSON, credential, approval-token value, payment data, live booking reference, candidate display value, raw exception text, or secret-like sentinel is persisted or rendered.
+
+## Result
+
+Sprint 014 completed and was published as `130e42803a122f3cfda9fcd36a76ec6a7e87075f`.
+
+- Shellby delivered `AvailabilityQuotePreviewApplication`, binding previews to the current compiled itinerary fingerprint, trip-run snapshot id, selected itinerary decision, slot-owned candidate, quote kind, and approval-required preview state.
+- Kaneki delivered provider-local availability preview packets/results/eval rows, deterministic mocks, trusted slot/candidate/category validation, and repaired rejected/error row identifier sanitization.
+- Sarah delivered the Stage Cockpit availability preview panel over the canonical harness/provider boundaries, preserving quote-ready, unavailable, stale-packet/provider-blocked, wrong-slot/harness-blocked, approval-required, and raw-absence markers.
+
+## Verification
+
+- `npm run build:ui`: passed.
+- `dotnet build src/Pch.UI/Pch.UI.csproj`: passed, 0 warnings, 0 errors.
+- `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`: passed, 48 tests.
+- `dotnet test --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 317 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- In-app browser smoke on `http://127.0.0.1:5175/`: passed all six availability controls and raw sentinel absence.
+
+Smoke outcomes:
+
+- `availability.accepted`: quote ready, provider `availability_preview_quote_ready`, harness `availability_quote_preview_accepted`.
+- `availability.unavailable`: unavailable, fixed `PCH_UI_AVAILABILITY_UNAVAILABLE`.
+- `availability.stale-packet`: provider blocked with fixed `PCH_UI_AVAILABILITY_PROVIDER_PACKET_ID_MISMATCH`.
+- `availability.wrong-slot`: harness blocked with fixed `PCH_UI_AVAILABILITY_WRONG_SLOT`.
+- `availability.approval-required`: approval required with fixed `PCH_UI_AVAILABILITY_APPROVAL_REQUIRED`.
+- `availability.raw-sentinel`: quote ready with raw absence verified.
