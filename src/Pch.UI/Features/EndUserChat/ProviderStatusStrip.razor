@@ -1,19 +1,48 @@
 <div class="model-strip"
      data-model-status-strip="end-user"
      data-model-role-state="@Chat.RoleStatusActiveRole"
+     data-selected-model-role="@Chat.SelectedModelRole"
+     data-selected-provider="@Chat.SelectedProvider"
+     data-live-preflight-state="@Chat.LivePreflightState"
+     data-latest-turn-source="@Chat.LatestTurnSource"
+     data-provider-request-state="@Chat.ProviderRequestState"
      data-provider-health="@Chat.ProviderHealth"
      data-credit-state="@Chat.CreditState"
      data-last-provider-failure="@Chat.LastProviderFailureCode"
      data-live-guard-state="@LiveGuardState">
     <span data-live-mode-state="@Chat.ModeState">@Chat.ModeLabel</span>
     <span data-provider-outcome="@Chat.ProviderOutcome">@Chat.ProviderOutcome.Replace('_', ' ')</span>
+    <span data-live-preflight-indicator="@Chat.LivePreflightState">@Chat.LivePreflightState.Replace('_', ' ')</span>
+    <span data-latest-turn-source="@Chat.LatestTurnSource">@Chat.LatestTurnSource.Replace('_', ' ')</span>
     <span data-live-provider-state="@LiveGuardState">@LiveGuardLabel</span>
     <span data-raw-absence-state="@Chat.RawAbsenceState">Raw absence @Chat.RawAbsenceState</span>
+    <div class="model-strip__roles" role="group" aria-label="Model role">
+        @foreach (var role in Roles)
+        {
+            <button type="button"
+                    data-model-role-option="@role.Role"
+                    data-model-role-selected="@(Chat.SelectedModelRole == role.Role ? "true" : "false")"
+                    aria-pressed="@(Chat.SelectedModelRole == role.Role)"
+                    @onclick="() => SelectRole(role.Role)">
+                @role.Label
+            </button>
+        }
+    </div>
 </div>
 
 @code {
     [Parameter, EditorRequired]
     public EndUserChatState Chat { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<string> OnModelRoleChanged { get; set; }
+
+    private static readonly IReadOnlyList<(string Role, string Label)> Roles =
+    [
+        (EndUserModelRoleSelection.DeterministicOffline, "Deterministic"),
+        (EndUserModelRoleSelection.InHarnessActionGenerator, "In-harness"),
+        (EndUserModelRoleSelection.StrongPlanner, "Strong planner")
+    ];
 
     private string LiveGuardState => Chat.ProviderHealth == "offline_ready"
         ? "blocked_by_guard"
@@ -22,4 +51,7 @@
     private string LiveGuardLabel => Chat.ProviderHealth == "offline_ready"
         ? "Live guarded"
         : "Live configured";
+
+    private Task SelectRole(string role) =>
+        OnModelRoleChanged.InvokeAsync(role);
 }

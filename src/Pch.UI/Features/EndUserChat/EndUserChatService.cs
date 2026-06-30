@@ -24,20 +24,24 @@ public sealed class EndUserChatService
 
     private readonly GoldenTurnTraceRunner _traceRunner;
     private readonly ModelRoleStatusEvaluator _roleStatusEvaluator;
+    private readonly EndUserLiveModelTurnService _liveModelTurnService;
 
     public EndUserChatService()
         : this(
             new GoldenTurnTraceRunner(),
-            new ModelRoleStatusEvaluator(new MockModelRoleStatusSource()))
+            new ModelRoleStatusEvaluator(new MockModelRoleStatusSource()),
+            new EndUserLiveModelTurnService())
     {
     }
 
     public EndUserChatService(
         GoldenTurnTraceRunner traceRunner,
-        ModelRoleStatusEvaluator roleStatusEvaluator)
+        ModelRoleStatusEvaluator roleStatusEvaluator,
+        EndUserLiveModelTurnService? liveModelTurnService = null)
     {
         _traceRunner = traceRunner ?? throw new ArgumentNullException(nameof(traceRunner));
         _roleStatusEvaluator = roleStatusEvaluator ?? throw new ArgumentNullException(nameof(roleStatusEvaluator));
+        _liveModelTurnService = liveModelTurnService ?? new EndUserLiveModelTurnService();
     }
 
     public EndUserChatState CreateInitialState()
@@ -47,6 +51,11 @@ public sealed class EndUserChatService
             ModeState,
             ModelRoleStatusEvaluator.OutcomeReady,
             ActiveRoleMarker(ModelRoleKind.DeterministicOffline),
+            EndUserModelRoleSelection.DeterministicOffline,
+            "none",
+            EndUserLiveModelTurnService.PreflightDeterministic,
+            EndUserLiveModelTurnService.LatestDeterministic,
+            EndUserLiveModelTurnService.ProviderRequestNotAttempted,
             ProviderOutcomeFallback,
             "offline_ready",
             "credits_not_used",
@@ -88,26 +97,40 @@ public sealed class EndUserChatService
             []);
     }
 
-    public async Task<EndUserChatState> SendAsync(string prompt, CancellationToken cancellationToken = default)
+    public async Task<EndUserChatState> SendAsync(
+        string prompt,
+        string selectedModelRole = EndUserModelRoleSelection.DeterministicOffline,
+        CancellationToken cancellationToken = default)
     {
         var normalizedPrompt = NormalizePrompt(prompt);
+        var normalizedRole = EndUserModelRoleSelection.Normalize(selectedModelRole);
+        var liveSnapshot = await _liveModelTurnService
+            .TryRunAsync(normalizedPrompt, normalizedRole, cancellationToken)
+            .ConfigureAwait(false);
         var scenario = SelectScenario(normalizedPrompt);
         var trace = _traceRunner.Run(ScriptFor(scenario));
         var roleStatus = await EvaluateRoleStatus(cancellationToken).ConfigureAwait(false);
-        var turns = BuildTraceTurns(normalizedPrompt, scenario, trace, roleStatus);
+        var turns = BuildTraceTurns(normalizedPrompt, scenario, trace, roleStatus, liveSnapshot);
         var finalState = FinalStateFor(scenario, trace);
-        var errorCode = ErrorCodeFor(scenario, trace);
-        var blockedReason = trace.IsBlocked ? trace.Code : null;
+        var errorCode = ErrorCodeFor(scenario, trace) ?? liveSnapshot.ErrorCode;
+        var blockedReason = trace.IsBlocked ? trace.Code : liveSnapshot.BlockedReason;
 
         return new(
-            ModeLabel,
-            ModeState,
+            ModeLabelFor(liveSnapshot),
+            ModeStateFor(liveSnapshot),
             roleStatus.OutcomeCode,
-            ActiveRoleMarker(roleStatus.ActiveRole),
-            ProviderOutcomeFallback,
-            "offline_ready",
-            "credits_not_used",
-            "none",
+            normalizedRole == EndUserModelRoleSelection.DeterministicOffline
+                ? ActiveRoleMarker(roleStatus.ActiveRole)
+                : normalizedRole,
+            liveSnapshot.SelectedModelRole,
+            liveSnapshot.SelectedProvider,
+            liveSnapshot.LivePreflightState,
+            liveSnapshot.LatestTurnSource,
+            liveSnapshot.ProviderRequestState,
+            liveSnapshot.ProviderOutcome,
+            liveSnapshot.ProviderHealth,
+            liveSnapshot.CreditState,
+            liveSnapshot.LastProviderFailureCode,
             "not_requested",
             RawAbsenceState,
             string.Empty,
@@ -120,7 +143,7 @@ public sealed class EndUserChatService
             FormCard("draft"),
             ChoiceSet("active", null, null),
             ApprovalPlate("not_requested", null),
-            FallbackNotice(),
+            liveSnapshot.FailureNotice ?? FallbackNotice(),
             EvidenceFrom(trace),
             PlanTrailFrom(trace, null, null),
             TimelineFrom(trace, null, null));
@@ -244,7 +267,8 @@ public sealed class EndUserChatService
         string normalizedPrompt,
         EndUserChatScenario scenario,
         GoldenTurnTraceResult trace,
-        SanitizedModelRoleStatusEvalRow roleStatus)
+        SanitizedModelRoleStatusEvalRow roleStatus,
+        EndUserLiveModelSnapshot liveSnapshot)
     {
         var turns = new List<EndUserChatTurn>
         {
@@ -267,6 +291,11 @@ public sealed class EndUserChatService
                 null,
                 roleStatus.ErrorCode)
         };
+
+        if (liveSnapshot.Turn is not null)
+        {
+            turns.Add(liveSnapshot.Turn);
+        }
 
         turns.AddRange(trace.Turns.Select(turn => new EndUserChatTurn(
             turn.TurnId,
@@ -695,6 +724,18 @@ public sealed class EndUserChatService
             ModelRoleKind.LiveProviderDisabled => "live-provider-disabled",
             _ => "none"
         };
+
+    private static string ModeLabelFor(EndUserLiveModelSnapshot liveSnapshot) =>
+        liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
+            ? ModeLabel
+            : "Live guarded with deterministic fallback";
+
+    private static string ModeStateFor(EndUserLiveModelSnapshot liveSnapshot) =>
+        liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
+            ? ModeState
+            : liveSnapshot.IsLiveAccepted()
+                ? "live-model-attached"
+                : "live-guarded-fallback";
 
     private enum EndUserChatScenario
     {

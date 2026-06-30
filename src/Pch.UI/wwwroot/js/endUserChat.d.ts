@@ -31,6 +31,8 @@ declare function transcript(): HTMLElement | null;
 declare function chatMain(): HTMLElement | null;
 declare function scheduleFallback(shouldRun: () => boolean, action: () => void): void;
 declare function setRootState(attrs: Record<string, string>): void;
+declare function selectedModelRole(): string;
+declare function setModelRole(role: string): void;
 declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
 declare function candidateCard(candidate: (typeof candidates)[number], state?: string): string;
 declare function timelineItem(id: string, mode: string, kind: string, state: string, title: string, summary: string, originTurnId: string, media: MediaAsset, attrs?: string): string;

@@ -5,6 +5,11 @@
          data-chat-interactive="true"
          data-deterministic-mode="@Chat.ModeState"
          data-model-role-state="@Chat.RoleStatusActiveRole"
+         data-selected-model-role="@Chat.SelectedModelRole"
+         data-selected-provider="@Chat.SelectedProvider"
+         data-live-preflight-state="@Chat.LivePreflightState"
+         data-latest-turn-source="@Chat.LatestTurnSource"
+         data-provider-request-state="@Chat.ProviderRequestState"
          data-role-status="@Chat.RoleStatusOutcome"
          data-provider-outcome="@Chat.ProviderOutcome"
          data-approval-state="@Chat.ApprovalState"
@@ -28,7 +33,7 @@
                 <p class="eyebrow">Japan Adventure</p>
                 <h1 id="trip-chat-title">Plan with the agent</h1>
             </div>
-            <ProviderStatusStrip Chat="Chat" />
+            <ProviderStatusStrip Chat="Chat" OnModelRoleChanged="SetModelRole" />
         </header>
 
         <ComposerDrawer Prompt="@Prompt"
@@ -107,6 +112,7 @@
     private int DeckIndex { get; set; }
     private string TimelineMode { get; set; } = "day";
     private string? FocusedTurnId { get; set; }
+    private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.DeterministicOffline;
 
     private string ComposerState => HasSubmitted
         ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
@@ -143,7 +149,8 @@
 
     private async Task SendPromptAsync()
     {
-        Chat = await ChatService.SendAsync(Prompt);
+        Chat = await ChatService.SendAsync(Prompt, SelectedModelRole);
+        SelectedModelRole = Chat.SelectedModelRole;
         Prompt = Chat.Prompt;
         HasSubmitted = true;
         DrawerOpen = false;
@@ -188,6 +195,18 @@
     private void SetTimelineMode(string mode)
     {
         TimelineMode = mode == "task" ? "task" : "day";
+    }
+
+    private void SetModelRole(string role)
+    {
+        SelectedModelRole = EndUserModelRoleSelection.Normalize(role);
+        Chat = Chat with
+        {
+            SelectedModelRole = SelectedModelRole,
+            LivePreflightState = SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
+                ? EndUserLiveModelTurnService.PreflightDeterministic
+                : EndUserLiveModelTurnService.PreflightBlockedByGuard
+        };
     }
 
     private void FocusTurn(string turnId)
