@@ -25,6 +25,7 @@ The end-user UI should feel like a live planning assistant, not an engineering f
 - **Assistant work area:** assistant turns can contain structured forms, choice cards, approval plates, evidence summaries, or blocked notices.
 - **Right task rail:** a deep, high-contrast rail for decomposed tasks, progress, consensus, and blockers. Rows are collapsible and can light up green only when the user and model/harness have reached a stable accepted state.
 - **Commitment/status strip:** shows commitment risk, deterministic/live mode, selected model roles, provider health, credit guard state, and last provider failure. It should be honest and compact.
+- **Evidence/plan trail:** a browsable strip or rail of selected/planned cards that lets the user review what has been decided and why.
 - **Stage Cockpit:** remains below or behind an engineering affordance, not the first thing an end user has to understand.
 
 ## Agent-First Interaction Rule
@@ -58,6 +59,7 @@ Keep:
 - centered active option card with partial neighboring cards visible;
 - selected state as a clear chip on the chosen card;
 - selected option echoed back as a user bubble;
+- a persistent evidence/plan trail from the generated concepts, adapted to the visual style here;
 - low-commitment/commitment-risk chip near the top;
 - floating `Ask` button after the main prompt has collapsed;
 - task rail progress lines, status pills, and `Ask` actions for future steps;
@@ -232,6 +234,35 @@ Rules:
 - Bounded evidence refs.
 - No raw prompt/provider payloads.
 - Claim provenance remains available in `data-*` attributes and detail drawers.
+
+### Evidence And Plan Trail
+
+Purpose: give the user a visually browsable history of what has been planned, selected, deferred, or blocked.
+
+This should feel like a living itinerary memory, not a debug trace.
+
+Required contents:
+
+- selected option cards;
+- accepted mission facts;
+- pending confirmations;
+- availability/quote preview states;
+- mock hold/approval states;
+- evidence ids and claim provenance through stable `data-*` attributes;
+- sanitized "why this is here" text.
+
+Interaction:
+
+- horizontally scrollable or carousel-like;
+- can sit below the assistant work card, between major transcript turns, or as a compact strip in the main canvas;
+- selected cards can be revisited to open a detail drawer;
+- each item should show whether it came from user-stated data, trusted harness state, provider data, or model inference pending confirmation.
+
+Rules:
+
+- Do not render raw prompts, provider payloads, approval tokens, secrets, or exception text.
+- Do not make the trail look like the active task rail; it is memory/evidence, not the current to-do list.
+- Use softer surfaces than active choice cards, but keep it visibly valuable.
 
 ### Provider Failure Notice
 

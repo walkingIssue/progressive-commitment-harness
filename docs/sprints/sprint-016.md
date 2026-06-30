@@ -107,6 +107,7 @@ Deliverables:
 - Add central transcript rendering with assistant work bubbles, form cards, choice cards, candidate option cards, approval plates, provider failure notices, and an evidence strip.
 - Add right-side decomposed task rail with collapsible rows and status lights.
 - Add a slim left navigation rail and a dark right task rail matching the primary visual direction.
+- Preserve the evidence/plan trail visual element from the generated concepts as a browsable strip of planned/selected cards, accepted facts, pending confirmations, availability/quote states, and approval/hold states.
 - Make the agent work area visually dominant after the first user prompt. The initial start screen may center the prompt input, but after first send the composer should collapse into a compact side `Ask` control that opens a slide-out drawer.
 - When a user selects an option, echo that selected option into the transcript as a compact user interaction bubble while keeping the original card selected in the assistant work area.
 - Add mood/feel-backed candidate cards and support stacked, floaty, horizontally scrollable decks for multiple options in the same mood.
@@ -141,6 +142,7 @@ Verification:
 - After first send, the prompt input collapses into a side/drawer affordance so the agent interaction is front and center.
 - Selected options appear as user interaction bubbles and retain trusted ids in the DOM.
 - Candidate choices can communicate mood/feel with distinct backdrops and same-mood options can be browsed as a stacked deck.
+- The user can scroll or browse the evidence/plan trail to review what has already been planned and selected, with provenance preserved in stable `data-*` attributes.
 - The UI clearly says whether the run is deterministic/offline or live-model-backed.
 - With live mode configured, at least one read-only planning/model call reaches the provider and returns a sanitized transcript state.
 - Provider failures are visible as typed, sanitized UI states rather than silent no-ops.
