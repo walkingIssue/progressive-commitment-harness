@@ -1656,6 +1656,92 @@ body {
     opacity: 1;
 }
 
+.chat-shell--v18 .ask-drawer {
+    left: clamp(6rem, 9vw, 10rem);
+    right: calc(24rem + 1.25rem);
+    bottom: 1rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .55rem;
+    width: auto;
+    min-height: 4.35rem;
+    max-height: none;
+    padding: .5rem .55rem;
+    border: 1px solid rgba(255, 255, 255, .26);
+    border-radius: 999px;
+    background:
+        linear-gradient(135deg, rgba(25, 31, 43, .58), rgba(26, 43, 54, .46)),
+        linear-gradient(180deg, rgba(255, 255, 255, .14), rgba(255, 255, 255, .04));
+    box-shadow:
+        0 30px 110px rgba(12, 18, 31, .42),
+        0 12px 44px rgba(15, 139, 141, .2),
+        inset 0 1px 0 rgba(255, 255, 255, .22);
+    backdrop-filter: blur(26px) saturate(1.22);
+}
+
+.chat-shell--v18 .ask-drawer > div {
+    display: block;
+}
+
+.chat-shell--v18 .ask-drawer h2,
+.chat-shell--v18 .ask-drawer label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.chat-shell--v18 .ask-drawer > div button,
+.chat-shell--v18 .ask-drawer .send-button {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    min-height: 3rem;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .14);
+    color: rgba(255, 255, 255, .9);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+    font-size: 0;
+    padding: 0;
+}
+
+.chat-shell--v18 .ask-drawer > div button::after {
+    content: "+";
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.chat-shell--v18 .ask-drawer .send-button {
+    background: rgba(255, 255, 255, .2);
+}
+
+.chat-shell--v18 .ask-drawer .send-button::after {
+    content: "\2191";
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.chat-shell--v18 .ask-drawer textarea {
+    min-height: 3rem;
+    height: 3rem;
+    max-height: 3rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, .94);
+    padding: .8rem .25rem;
+    resize: none;
+    outline: none;
+}
+
+.chat-shell--v18 .ask-drawer textarea::placeholder {
+    color: rgba(255, 255, 255, .68);
+}
+
 .chat-shell--v18 .work-bubble[data-work-bubble="choices"] {
     width: 100%;
     max-width: none;
@@ -1823,5 +1909,11 @@ body {
     .chat-shell--v18 .ask-tab {
         right: 1rem;
         bottom: .55rem;
+    }
+
+    .chat-shell--v18 .ask-drawer {
+        left: 1rem;
+        right: 1rem;
+        bottom: .75rem;
     }
 }
