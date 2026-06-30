@@ -1,0 +1,86 @@
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@inject EndUserChatService ChatService
+@rendermode InteractiveServer
+
+<section class="chat-shell"
+         data-end-user-chat="v0"
+         data-deterministic-mode="@Chat.ModeState"
+         data-final-state="@Chat.FinalState"
+         data-error-code="@Chat.ErrorCode"
+         data-blocked-reason="@Chat.BlockedReason"
+         data-raw-absence-state="@Chat.RawAbsenceState"
+         aria-labelledby="trip-chat-title">
+    <div class="chat-header">
+        <div>
+            <p class="eyebrow">Trip planner</p>
+            <h1 id="trip-chat-title">Plan a trip with the deterministic assistant</h1>
+        </div>
+        <span class="mode-pill"
+              data-offline-mode="@Chat.ModeState"
+              data-raw-absence-state="@Chat.RawAbsenceState">
+            @Chat.ModeLabel
+        </span>
+    </div>
+
+    <div class="chat-layout">
+        <div class="chat-compose" data-chat-form="prompt">
+            <label for="trip-prompt">Trip prompt</label>
+            <textarea id="trip-prompt"
+                      data-prompt-entry="trip"
+                      aria-label="Trip prompt"
+                      @bind="Prompt"
+                      @bind:event="oninput"
+                      rows="5"></textarea>
+            <div class="chat-compose__footer">
+                <span data-raw-absence-marker="@Chat.RawAbsenceState">Raw text redaction verified</span>
+                <button type="button"
+                        class="send-button"
+                        data-send-action="deterministic"
+                        aria-label="Send deterministic trip prompt"
+                        @onclick="SendPrompt">
+                    Send
+                </button>
+            </div>
+        </div>
+
+        <section class="transcript-panel"
+                 data-transcript="trip"
+                 data-turn-count="@Chat.Turns.Count"
+                 aria-label="Trip planning transcript">
+            @foreach (var turn in Chat.Turns)
+            {
+                <article class="chat-turn"
+                         data-turn-id="@turn.TurnId"
+                         data-turn-role="@turn.Role"
+                         data-turn-kind="@turn.Kind"
+                         data-turn-state="@turn.State"
+                         data-outcome-code="@turn.OutcomeCode"
+                         data-evidence-id="@turn.EvidenceId"
+                         data-error-code="@turn.ErrorCode">
+                    <div>
+                        <span>@turn.Role</span>
+                        <strong>@turn.Kind</strong>
+                    </div>
+                    <p>@turn.Text</p>
+                </article>
+            }
+        </section>
+    </div>
+</section>
+
+@code {
+    private EndUserChatState Chat { get; set; } = default!;
+    private string Prompt { get; set; } = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        Chat = ChatService.CreateInitialState();
+        Prompt = Chat.Prompt;
+    }
+
+    private void SendPrompt()
+    {
+        Chat = ChatService.Send(Prompt);
+        Prompt = Chat.Prompt;
+    }
+}
