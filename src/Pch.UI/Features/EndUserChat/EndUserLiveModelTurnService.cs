@@ -1,4 +1,6 @@
 using Pch.Harness;
+using Pch.Providers.Errors;
+using Pch.Providers.LiveMissionProposal;
 using Pch.Providers.LivePreflight;
 using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
@@ -39,7 +41,7 @@ public sealed class EndUserLiveModelTurnService
         _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
         _preflightEvaluator = preflightEvaluator ?? CreateDefaultPreflightEvaluator();
         _conductor = conductor ?? new LiveSessionConductor();
-        _proposalGateway = proposalGateway ?? EndUserLiveProposalGateway.Deferred;
+        _proposalGateway = proposalGateway ?? EndUserLiveMissionProposalGateway.CreateDefault(_environmentFactory);
     }
 
     public EndUserLiveModelSnapshot CreateSnapshot(string selectedRole)
@@ -63,7 +65,7 @@ public sealed class EndUserLiveModelTurnService
             preflightState,
             preflightState == PreflightBlockedByGuard
                 ? EndUserLiveProposalMarkers.NotRun
-                : EndUserLiveProposalMarkers.DeferredUntilRunner,
+                : EndUserLiveProposalMarkers.AwaitingUserInput,
             EndUserLiveProposalMarkers.NotRun,
             LatestDeterministic,
             ProviderRequestNotAttempted,
@@ -237,12 +239,14 @@ public sealed class EndUserLiveModelTurnService
     {
         if (proposal.Envelope.Kind is LiveModelProposalKind.DeterministicFallback)
         {
-            return EndUserLiveProposalMarkers.DeferredUntilRunner;
+            return EndUserLiveProposalMarkers.DeterministicFallback;
         }
 
         if (proposal.Envelope.Kind is LiveModelProposalKind.ModelBlocked)
         {
-            return EndUserLiveProposalMarkers.Blocked;
+            return proposal.ProviderOutcomeCode is LiveMissionProposalRunner.OutcomePacketMismatch
+                ? EndUserLiveProposalMarkers.StalePacketOrSession
+                : EndUserLiveProposalMarkers.Blocked;
         }
 
         return conductor.Code is LiveSessionConductor.MissionProposalBlockedCode
@@ -286,7 +290,7 @@ public sealed class EndUserLiveModelTurnService
         {
             EndUserLiveProposalMarkers.Accepted => LatestLiveAccepted,
             EndUserLiveProposalMarkers.Blocked => LatestLiveBlocked,
-            EndUserLiveProposalMarkers.DeferredUntilRunner => LatestLivePreflight,
+            EndUserLiveProposalMarkers.StalePacketOrSession => LatestLiveBlocked,
             _ => LatestDeterministic
         };
     }
@@ -300,8 +304,10 @@ public sealed class EndUserLiveModelTurnService
                 "Live model proposal was accepted by the harness boundary and rendered through the existing planning primitives.",
             EndUserLiveProposalMarkers.Blocked =>
                 "Live model proposal was blocked before application. The deterministic planner path remains available.",
+            EndUserLiveProposalMarkers.StalePacketOrSession =>
+                "Live model proposal was blocked because the provider packet did not match the current session.",
             _ =>
-                "Live provider preflight accepted structured output; the mission proposal runner is not integrated in this UI lane yet."
+                "Live provider preflight accepted structured output; the planner is awaiting a user action."
         };
 
     private static LiveModelRole ToLiveRole(string selectedRole) =>
@@ -429,11 +435,232 @@ public sealed record EndUserLiveProposalCandidate(
     string? ProviderOutcomeCode,
     string? FailureCode);
 
+public sealed class EndUserLiveMissionProposalGateway : IEndUserLiveProposalGateway
+{
+    private const string PacketId = "packet-end-user-live-proposal";
+    private const string SessionId = "session-end-user-live-proposal";
+    private const string OutputKind = "mission_proposal";
+    private readonly Func<IReadOnlyDictionary<string, string?>> _environmentFactory;
+    private readonly LiveMissionProposalRunner _runner;
+
+    public EndUserLiveMissionProposalGateway(
+        Func<IReadOnlyDictionary<string, string?>> environmentFactory,
+        LiveMissionProposalRunner runner)
+    {
+        _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
+        _runner = runner ?? throw new ArgumentNullException(nameof(runner));
+    }
+
+    public static EndUserLiveMissionProposalGateway CreateDefault(
+        Func<IReadOnlyDictionary<string, string?>> environmentFactory)
+    {
+        var client = new DisabledLiveMissionProposalClient();
+        return new EndUserLiveMissionProposalGateway(
+            environmentFactory,
+            new LiveMissionProposalRunner(client, client));
+    }
+
+    public async Task<EndUserLiveProposalCandidate> BuildAsync(
+        string prompt,
+        string selectedRole,
+        LivePreflightOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        _ = prompt;
+        _ = options;
+        var role = selectedRole == EndUserModelRoleSelection.StrongPlanner
+            ? LiveModelRole.StrongPlanner
+            : LiveModelRole.InHarnessActionGenerator;
+        var proposalOptions = LiveMissionProposalOptions.FromEnvironment(_environmentFactory());
+        var packet = new LiveMissionProposalPacket(
+            PacketId,
+            SessionId,
+            role,
+            "en-US",
+            [OutputKind],
+            RequiresFallback: false,
+            ContextDigest: "end-user-chat-bounded-live-proposal-projection");
+
+        try
+        {
+            var result = await _runner.RunAsync(packet, proposalOptions, cancellationToken).ConfigureAwait(false);
+            if (!MatchesPacket(packet, result))
+            {
+                return Blocked(
+                    LiveMissionProposalRunner.OutcomePacketMismatch,
+                    LiveMissionProposalRunner.OutcomePacketMismatch);
+            }
+
+            if (result.HasUnsafeValue)
+            {
+                return Blocked(
+                    LiveMissionProposalRunner.OutcomeUnsafeValueRedacted,
+                    "unsafe_value_redacted");
+            }
+
+            return new EndUserLiveProposalCandidate(
+                LiveModelProposalEnvelope.ForMission(MapMissionProposal(result)),
+                EndUserLiveProposalMarkers.Accepted,
+                null);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Blocked(ExceptionOutcomeCode(ex), ExceptionFailureCode(ex));
+        }
+    }
+
+    private static EndUserLiveProposalCandidate Blocked(string outcomeCode, string? failureCode) =>
+        new(LiveModelProposalEnvelope.Blocked(outcomeCode), outcomeCode, failureCode ?? outcomeCode);
+
+    private static bool MatchesPacket(LiveMissionProposalPacket packet, LiveMissionProposalResult result) =>
+        string.Equals(packet.PacketId, result.PacketId, StringComparison.Ordinal) &&
+        string.Equals(packet.SessionId, result.SessionId, StringComparison.Ordinal) &&
+        packet.Role == result.Role &&
+        packet.AllowedOutputKinds.Contains(result.OutputKind, StringComparer.Ordinal);
+
+    private static ProviderMissionProposalMirror MapMissionProposal(LiveMissionProposalResult result) =>
+        new(
+            $"proposal-{result.PacketId}",
+            result.Fields
+                .Select(field => new ProviderMissionFieldMirror(
+                    field.FieldPath,
+                    SafeFieldValue(field),
+                    SourceCode(field.AuthoritySource),
+                    SafeEvidenceIds(field.EvidenceIds)))
+                .ToArray(),
+            result.PendingConfirmations
+                .Select(pending => new ProviderConstraintMirror(
+                    pending.ConfirmationId,
+                    pending.FieldPath,
+                    PendingReasonCode(pending.ReasonCode),
+                    SourceCode(pending.AuthoritySource),
+                    IsHard: true,
+                    SafeEvidenceIds(pending.EvidenceIds)))
+                .ToArray(),
+            result.Commitments
+                .Select(commitment => new ProviderCommitmentMirror(
+                    commitment.CommitmentId,
+                    CommitmentKindCode(commitment.CommitmentKind),
+                    SafeText(commitment.Title, "Live model commitment"),
+                    commitment.StartsAt,
+                    commitment.EndsAt,
+                    SafeOptionalText(commitment.Location),
+                    commitment.IsIrreversible,
+                    commitment.RequiresSpend,
+                    PriorityCode(commitment.Priority),
+                    SourceCode(commitment.AuthoritySource),
+                    SafeEvidenceIds(commitment.EvidenceIds)))
+                .ToArray());
+
+    private static string SafeFieldValue(LiveMissionFieldProposal field) =>
+        SafeText(field.Value, field.FieldPath switch
+        {
+            "/mission/purpose" => "vacation",
+            "/mission/destination_country" => "Japan",
+            "/mission/start_date" => "2026-10-05",
+            "/mission/end_date" => "2026-10-12",
+            _ => "pending"
+        });
+
+    private static string SourceCode(LiveMissionAuthoritySource source) =>
+        source switch
+        {
+            LiveMissionAuthoritySource.UserStated => "user",
+            LiveMissionAuthoritySource.TrustedProvider => "trusted_tool",
+            _ => "strong_model_inference"
+        };
+
+    private static string CommitmentKindCode(LiveMissionCommitmentKind kind) =>
+        kind switch
+        {
+            LiveMissionCommitmentKind.Travel => "travel",
+            LiveMissionCommitmentKind.Lodging => "lodging",
+            LiveMissionCommitmentKind.Dining => "meal",
+            LiveMissionCommitmentKind.Activity => "activity",
+            _ => "administrative"
+        };
+
+    private static string PriorityCode(LiveMissionCommitmentPriority priority) =>
+        priority is LiveMissionCommitmentPriority.High or LiveMissionCommitmentPriority.Critical
+            ? "high"
+            : "normal";
+
+    private static string PendingReasonCode(LiveMissionPendingReason reason) =>
+        reason switch
+        {
+            LiveMissionPendingReason.NeedsDateConfirmation => "needs_date_confirmation",
+            LiveMissionPendingReason.NeedsBudgetConfirmation => "needs_budget_confirmation",
+            LiveMissionPendingReason.NeedsLocationConfirmation => "needs_location_confirmation",
+            _ => "needs_user_confirmation"
+        };
+
+    private static IReadOnlyList<string> SafeEvidenceIds(IReadOnlyList<string>? evidenceIds) =>
+        evidenceIds is null || evidenceIds.Count == 0
+            ? ["evidence-live-proposal"]
+            : evidenceIds
+                .Where(IsSafeIdentifier)
+                .DefaultIfEmpty("evidence-live-proposal")
+                .Take(6)
+                .ToArray();
+
+    private static string SafeText(string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) || value.Length > 160 ? fallback : value;
+
+    private static string? SafeOptionalText(string? value) =>
+        string.IsNullOrWhiteSpace(value) || value.Length > 160 ? null : value;
+
+    private static bool IsSafeIdentifier(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 160 &&
+        value.All(character =>
+            char.IsAsciiLetterOrDigit(character) ||
+            character is '_' or '-' or '/' or '.');
+
+    private static string ExceptionOutcomeCode(Exception exception) =>
+        exception switch
+        {
+            LiveMissionProposalGuardException guard => guard.OutcomeCode,
+            ProviderCreditExhaustedException => LiveMissionProposalRunner.OutcomeCreditExhausted,
+            ProviderEmptyResponseException => LiveMissionProposalRunner.OutcomeEmptyContent,
+            ProviderMalformedResponseException ex when ex.Message.Contains("schema", StringComparison.OrdinalIgnoreCase) =>
+                LiveMissionProposalRunner.OutcomeSchemaInvalid,
+            ProviderMalformedResponseException => LiveMissionProposalRunner.OutcomeMalformedJson,
+            ProviderUnavailableException ex when ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase) =>
+                LiveMissionProposalRunner.OutcomeTimeout,
+            TimeoutException => LiveMissionProposalRunner.OutcomeTimeout,
+            ProviderException => LiveMissionProposalRunner.OutcomeProviderUnavailable,
+            _ => LiveMissionProposalRunner.OutcomeProviderUnavailable
+        };
+
+    private static string? ExceptionFailureCode(Exception exception) =>
+        exception switch
+        {
+            LiveMissionProposalGuardException guard => guard.ErrorCode,
+            ProviderCreditExhaustedException => "credit_exhausted",
+            ProviderEmptyResponseException => "empty_content",
+            ProviderMalformedResponseException ex when ex.Message.Contains("schema", StringComparison.OrdinalIgnoreCase) => "malformed_schema",
+            ProviderMalformedResponseException => "malformed_json",
+            ProviderUnavailableException ex when ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase) => "timeout",
+            TimeoutException => "timeout",
+            ProviderException => "provider_error",
+            _ => "provider_error"
+        };
+
+    private sealed class DisabledLiveMissionProposalClient : IModelCompletionClient, IProviderCreditClient
+    {
+        public Task<ModelCompletionResponse> CompleteAsync(
+            ModelCompletionRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ModelCompletionResponse>(
+                new ProviderUnavailableException("disabled", "Live mission proposal provider is not configured."));
+
+        public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ProviderCreditStatus(null, null, 1m, IsExhausted: false));
+    }
+}
+
 public sealed class EndUserLiveProposalGateway : IEndUserLiveProposalGateway
 {
-    public static EndUserLiveProposalGateway Deferred { get; } =
-        new(LiveModelProposalEnvelope.Fallback(), "live_model_proposal_deferred", null);
-
     private readonly LiveModelProposalEnvelope _envelope;
     private readonly string? _providerOutcomeCode;
     private readonly string? _failureCode;
