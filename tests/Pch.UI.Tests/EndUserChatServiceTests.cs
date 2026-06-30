@@ -46,9 +46,18 @@ public sealed class EndUserChatServiceTests
         Assert.NotNull(state.ChoiceSet);
         Assert.NotNull(state.ApprovalPlate);
         Assert.Contains(state.ChoiceSet.Candidates, candidate => candidate.CandidateId == "candidate-japan-classic-highlights"
-            && candidate.Mood == "reflective-culture");
+            && candidate.Mood == "reflective-culture"
+            && candidate.Media.AssetId == "reflective_culture"
+            && candidate.Media.State == "ready");
+        Assert.All(state.ChoiceSet.Candidates, candidate =>
+        {
+            Assert.StartsWith("/media/japan-card-pack/", candidate.Media.Path, StringComparison.Ordinal);
+            Assert.Equal("generated_local", candidate.Media.SourceClass);
+            Assert.Equal("project-generated", candidate.Media.License);
+        });
         Assert.Contains(state.PlanTrail, item => item.TrailId == "trail-mission-facts"
-            && item.State == "accepted");
+            && item.State == "accepted"
+            && item.Media?.AssetId == "calm_morning");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-user-1"
             && turn.Role == "user"
             && turn.Kind == "prompt"
@@ -88,7 +97,8 @@ public sealed class EndUserChatServiceTests
             && turn.CandidateCategory == "trip-style");
         Assert.Contains(selected.PlanTrail, item => item.TrailId == "trail-selected-option"
             && item.CandidateId == "candidate-japan-classic-highlights"
-            && item.OutcomeCode == "choice_candidate_selected");
+            && item.OutcomeCode == "choice_candidate_selected"
+            && item.Media?.AssetId == "reflective_culture");
         Assert.Equal("blocked", blocked.FinalState);
         Assert.Equal("blocked_missing_approval", blocked.ApprovalState);
         Assert.Equal("approval_required_preview", blocked.ApprovalPlate?.BlockedReason);
@@ -108,7 +118,53 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("candidate-japan-scenic-explorer", deferred.ChoiceSet?.DeferredCandidateId);
         Assert.Contains(deferred.PlanTrail, item => item.TrailId == "trail-deferred-option"
             && item.CandidateId == "candidate-japan-scenic-explorer"
-            && item.OutcomeCode == "choice_candidate_deferred");
+            && item.OutcomeCode == "choice_candidate_deferred"
+            && item.Media?.AssetId == "soft_nature");
+    }
+
+    [Fact]
+    public async Task MissingCandidateMediaFallsBackToCommittedPlaceholder()
+    {
+        var service = new EndUserChatService();
+        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+
+        var fallbackCandidate = Assert.Single(sent.ChoiceSet!.Candidates, candidate => candidate.CandidateId == "candidate-japan-transit-rhythm");
+
+        Assert.Equal("mood_placeholder", fallbackCandidate.Media.AssetId);
+        Assert.Equal("fallback", fallbackCandidate.Media.State);
+        Assert.Equal("/media/japan-card-pack/mood-placeholder.svg", fallbackCandidate.Media.Path);
+        AssertChatRawTextAbsent(Serialize(sent));
+    }
+
+    [Fact]
+    public void JapanMediaManifestCoversRequiredMoodPack()
+    {
+        using var manifest = JsonDocument.Parse(File.ReadAllText(FindManifestPath()));
+        var assets = manifest.RootElement.GetProperty("assets").EnumerateArray().ToArray();
+        var assetIds = assets.Select(asset => asset.GetProperty("assetId").GetString()).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var required in new[]
+        {
+            "cultural_immersive",
+            "scenic_relaxed",
+            "lively_food",
+            "calm_morning",
+            "reflective_culture",
+            "soft_nature",
+            "restorative_downtime",
+            "logistics_transit",
+            "mood_placeholder"
+        })
+        {
+            Assert.Contains(required, assetIds);
+        }
+
+        Assert.All(assets, asset =>
+        {
+            Assert.Equal("generated_local", asset.GetProperty("sourceClass").GetString());
+            Assert.Equal("project-generated", asset.GetProperty("license").GetString());
+            Assert.StartsWith("/media/japan-card-pack/", asset.GetProperty("path").GetString(), StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -166,6 +222,23 @@ public sealed class EndUserChatServiceTests
 
     private static string Serialize(EndUserChatState state) =>
         JsonSerializer.Serialize(state);
+
+    private static string FindManifestPath()
+    {
+        var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, "src", "Pch.UI", "wwwroot", "media", "japan-card-pack", "manifest.json");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("Could not find Japan card media manifest.");
+    }
 
     private static void AssertChatRawTextAbsent(string serialized)
     {

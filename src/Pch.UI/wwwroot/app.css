@@ -373,33 +373,64 @@ body {
     gap: .75rem;
     max-width: 100%;
     overflow-x: auto;
-    padding: .45rem .15rem .8rem;
+    padding: .65rem 1.5rem 1rem .25rem;
     scroll-snap-type: x proximity;
 }
 
 .candidate-deck .candidate-card {
     flex: 0 0 min(18rem, 82vw);
+    margin-right: -2.2rem;
     scroll-snap-align: start;
+    transform: rotate(-1.2deg);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.candidate-deck .candidate-card:nth-child(2n) {
+    transform: translateY(.45rem) rotate(1deg);
+}
+
+.candidate-deck .candidate-card:hover,
+.candidate-deck .candidate-card:focus-within {
+    z-index: 2;
+    transform: translateY(-.35rem);
 }
 
 .candidate-card {
     display: grid;
     gap: .65rem;
-    min-height: 12rem;
+    min-height: 18rem;
     margin-top: .25rem;
-    padding: 1rem;
+    padding: .65rem;
     border: 1px solid rgba(255, 255, 255, .65);
     border-radius: 8px;
     color: #122033;
     box-shadow: 0 16px 32px rgba(33, 37, 41, .13);
 }
 
+.candidate-media {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, .56);
+    object-fit: cover;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .55);
+}
+
 .candidate-card--culture {
-    background: linear-gradient(135deg, #fed7aa, #f9a8d4 45%, #99f6e4);
+    background: linear-gradient(135deg, #fde2c3, #f4a7bb 48%, #a7e7df);
 }
 
 .candidate-card--nature {
     background: linear-gradient(135deg, #bbf7d0, #bae6fd 48%, #fef3c7);
+}
+
+.candidate-card--transit {
+    background: linear-gradient(135deg, #e8f0f8, #d6f2ed 48%, #f6efd8);
+}
+
+.candidate-card[data-media-state="fallback"] {
+    border-style: dashed;
+    background: linear-gradient(135deg, #fff8ea, #e8f5f2 54%, #f0eef8);
 }
 
 .candidate-card[data-candidate-state="selected"] {
@@ -434,7 +465,7 @@ body {
 
 .selected-option-bubble {
     min-width: min(18rem, 70vw);
-    min-height: 9rem;
+    min-height: 13rem;
     text-align: left;
 }
 
@@ -472,6 +503,14 @@ body {
     border-radius: 8px;
     padding: .65rem;
     scroll-snap-align: start;
+}
+
+.plan-trail__media {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 6px;
+    object-fit: cover;
+    opacity: .9;
 }
 
 .ask-tab {

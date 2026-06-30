@@ -94,7 +94,18 @@
                              data-candidate-category="@SelectedBubble.Category"
                              data-candidate-mood="@SelectedBubble.Mood"
                              data-candidate-state="@SelectedBubble.State"
+                             data-media-asset-id="@SelectedBubble.Media.AssetId"
+                             data-media-state="@SelectedBubble.Media.State"
+                             data-media-source-class="@SelectedBubble.Media.SourceClass"
                              data-evidence-ids="@string.Join(',', SelectedBubble.EvidenceIds)">
+                            <img class="candidate-media"
+                                 src="@SelectedBubble.Media.Path"
+                                 alt="@SelectedBubble.Media.Alt"
+                                 data-media-image="selected-option"
+                                 data-media-asset-id="@SelectedBubble.Media.AssetId"
+                                 data-media-mood="@SelectedBubble.Media.Mood"
+                                 data-media-state="@SelectedBubble.Media.State"
+                                 data-media-license="@SelectedBubble.Media.License" />
                             <span>@SelectedBubble.Mood.Replace('-', ' ')</span>
                             <h3>@SelectedBubble.Title</h3>
                             <p>@SelectedBubble.Summary</p>
@@ -148,9 +159,9 @@
                                 <p>@Chat.ChoiceSet.Prompt</p>
                             </div>
                             <div class="deck-controls" data-deck-controls="mood-deck">
-                                <button type="button" data-deck-control="previous" aria-label="Show previous culture option" @onclick="PreviousDeckCard">‹</button>
+                                <button type="button" data-deck-control="previous" aria-label="Show previous culture option" @onclick="PreviousDeckCard">Prev</button>
                                 <span data-deck-index="@DeckIndex">@DeckIndexDisplay</span>
-                                <button type="button" data-deck-control="next" aria-label="Show next culture option" @onclick="NextDeckCard">›</button>
+                                <button type="button" data-deck-control="next" aria-label="Show next culture option" @onclick="NextDeckCard">Next</button>
                             </div>
                         </div>
 
@@ -166,7 +177,18 @@
                                          data-candidate-category="@candidate.Category"
                                          data-candidate-mood="@candidate.Mood"
                                          data-candidate-state="@candidate.State"
+                                         data-media-asset-id="@candidate.Media.AssetId"
+                                         data-media-state="@candidate.Media.State"
+                                         data-media-source-class="@candidate.Media.SourceClass"
                                          data-evidence-ids="@string.Join(',', candidate.EvidenceIds)">
+                                    <img class="candidate-media"
+                                         src="@candidate.Media.Path"
+                                         alt="@candidate.Media.Alt"
+                                         data-media-image="candidate"
+                                         data-media-asset-id="@candidate.Media.AssetId"
+                                         data-media-mood="@candidate.Media.Mood"
+                                         data-media-state="@candidate.Media.State"
+                                         data-media-license="@candidate.Media.License" />
                                     <span>@candidate.Mood.Replace('-', ' ')</span>
                                     <h3>@candidate.Title</h3>
                                     <p>@candidate.Summary</p>
@@ -197,7 +219,18 @@
                                      data-candidate-category="@candidate.Category"
                                      data-candidate-mood="@candidate.Mood"
                                      data-candidate-state="@candidate.State"
+                                     data-media-asset-id="@candidate.Media.AssetId"
+                                     data-media-state="@candidate.Media.State"
+                                     data-media-source-class="@candidate.Media.SourceClass"
                                      data-evidence-ids="@string.Join(',', candidate.EvidenceIds)">
+                                <img class="candidate-media"
+                                     src="@candidate.Media.Path"
+                                     alt="@candidate.Media.Alt"
+                                     data-media-image="candidate"
+                                     data-media-asset-id="@candidate.Media.AssetId"
+                                     data-media-mood="@candidate.Media.Mood"
+                                     data-media-state="@candidate.Media.State"
+                                     data-media-license="@candidate.Media.License" />
                                 <span>@candidate.Mood.Replace('-', ' ')</span>
                                 <h3>@candidate.Title</h3>
                                 <p>@candidate.Summary</p>
@@ -283,7 +316,20 @@
                                  data-plan-trail-state="@item.State"
                                  data-candidate-id="@item.CandidateId"
                                  data-evidence-id="@item.EvidenceId"
+                                 data-media-asset-id="@item.Media?.AssetId"
+                                 data-media-state="@item.Media?.State"
                                  data-trace-outcome="@item.OutcomeCode">
+                            @if (item.Media is not null)
+                            {
+                                <img class="plan-trail__media"
+                                     src="@item.Media.Path"
+                                     alt="@item.Media.Alt"
+                                     data-plan-trail-media="true"
+                                     data-media-asset-id="@item.Media.AssetId"
+                                     data-media-mood="@item.Media.Mood"
+                                     data-media-state="@item.Media.State"
+                                     data-media-license="@item.Media.License" />
+                            }
                             <span>@item.Kind.Replace('-', ' ')</span>
                             <strong>@item.Label</strong>
                         </article>
@@ -388,7 +434,7 @@
             var selected = Chat.ChoiceSet?.Candidates.SingleOrDefault(candidate => candidate.CandidateId == Chat.ChoiceSet.SelectedCandidateId);
             return selected is null
                 ? null
-                : new(selected.CandidateId, selected.Category, selected.Mood, selected.MoodTone, selected.Title, selected.Summary, "selected", selected.EvidenceIds);
+                : new(selected.CandidateId, selected.Category, selected.Mood, selected.MoodTone, selected.Title, selected.Summary, "selected", selected.Media, selected.EvidenceIds);
         }
     }
 

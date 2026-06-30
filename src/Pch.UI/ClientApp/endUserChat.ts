@@ -10,12 +10,103 @@ const RAW_SENTINELS = [
   "BOOKING_REF",
 ];
 
-const candidates = [
+type MediaAsset = {
+  id: string;
+  mood: string;
+  path: string;
+  alt: string;
+  state: string;
+  sourceClass: string;
+  license: string;
+};
+
+type CandidateOption = {
+  id: string;
+  title: string;
+  mood: string;
+  tone: string;
+  media: MediaAsset;
+  summary: string;
+  evidence: string;
+};
+
+const mediaAssets: Record<string, MediaAsset> = {
+  cultural_immersive: {
+    id: "cultural_immersive",
+    mood: "cultural_immersive",
+    path: "/media/japan-card-pack/cultural-immersive.svg",
+    alt: "Abstract lanterns and temple lines for an immersive cultural Japan card.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  reflective_culture: {
+    id: "reflective_culture",
+    mood: "reflective_culture",
+    path: "/media/japan-card-pack/reflective-culture.svg",
+    alt: "Cherry, indigo, paper, and lantern glow for a reflective culture card.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  soft_nature: {
+    id: "soft_nature",
+    mood: "soft_nature",
+    path: "/media/japan-card-pack/soft-nature.svg",
+    alt: "Soft mountain, moss, and water shapes for a quiet nature card.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  calm_morning: {
+    id: "calm_morning",
+    mood: "calm_morning",
+    path: "/media/japan-card-pack/calm-morning.svg",
+    alt: "Pale sun and soft green morning fields for a calm morning card.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  restorative_downtime: {
+    id: "restorative_downtime",
+    mood: "restorative_downtime",
+    path: "/media/japan-card-pack/restorative-downtime.svg",
+    alt: "Lavender grey, warm wood, and bathhouse steam for restorative downtime.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  logistics_transit: {
+    id: "logistics_transit",
+    mood: "logistics_transit",
+    path: "/media/japan-card-pack/logistics-transit.svg",
+    alt: "Crisp transit linework with blue, charcoal, and signal green.",
+    state: "ready",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+  mood_placeholder: {
+    id: "mood_placeholder",
+    mood: "fallback",
+    path: "/media/japan-card-pack/mood-placeholder.svg",
+    alt: "Deterministic fallback mood art used when media is missing.",
+    state: "fallback",
+    sourceClass: "generated_local",
+    license: "project-generated",
+  },
+};
+
+function mediaAsset(assetId: string): MediaAsset {
+  return mediaAssets[assetId] ?? mediaAssets.mood_placeholder!;
+}
+
+const candidates: CandidateOption[] = [
   {
     id: "candidate-japan-classic-highlights",
     title: "Classic Japan highlights",
     mood: "reflective-culture",
     tone: "culture",
+    media: mediaAsset("reflective_culture"),
     summary: "Tokyo, Kyoto, and Osaka with cultural landmarks and local favorites.",
     evidence: "evidence-chat-route-a",
   },
@@ -24,6 +115,7 @@ const candidates = [
     title: "Temple mornings and neighborhood evenings",
     mood: "reflective-culture",
     tone: "culture",
+    media: mediaAsset("cultural_immersive"),
     summary: "A slower cultural route with calm mornings and local evening walks.",
     evidence: "evidence-chat-route-c",
   },
@@ -32,12 +124,25 @@ const candidates = [
     title: "Scenic Japan explorer",
     mood: "soft-nature",
     tone: "nature",
+    media: mediaAsset("soft_nature"),
     summary: "Mountains, hot springs, and coastal towns for a quieter route.",
     evidence: "evidence-chat-route-b",
+  },
+  {
+    id: "candidate-japan-transit-rhythm",
+    title: "Transit rhythm and easy transfers",
+    mood: "logistics-transit",
+    tone: "transit",
+    media: mediaAsset("mood_placeholder"),
+    summary: "Clean route timing and low-friction station changes.",
+    evidence: "evidence-chat-route-transit",
   },
 ];
 
 const scenicCandidate = candidates[2]!;
+const fallbackCandidate = candidates[3]!;
+const calmMorningMedia = mediaAsset("calm_morning");
+const restorativeDowntimeMedia = mediaAsset("restorative_downtime");
 const FALLBACK_DELAY_MS = 350;
 
 function sanitizeText(value: string): string {
@@ -108,7 +213,11 @@ function candidateCard(candidate: (typeof candidates)[number], state = "availabl
       data-candidate-category="trip-style"
       data-candidate-mood="${candidate.mood}"
       data-candidate-state="${state}"
+      data-media-asset-id="${candidate.media.id}"
+      data-media-state="${candidate.media.state}"
+      data-media-source-class="${candidate.media.sourceClass}"
       data-evidence-ids="evidence-chat-candidate,${candidate.evidence}">
+      <img class="candidate-media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-media-image="candidate" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" />
       <span>${candidate.mood.replaceAll("-", " ")}</span>
       <h3>${candidate.title}</h3>
       <p>${candidate.summary}</p>
@@ -139,9 +248,10 @@ function ensureWorkObjects(): void {
     <article class="work-bubble" data-work-bubble="choices" data-choice-set-id="choice-japan-style" data-choice-state="active">
       <p class="work-lead">Here are option decks grouped by feel.</p>
       <section class="choice-card">
-        <div class="choice-card__header"><h2>Choose an itinerary direction</h2><div class="deck-controls" data-deck-controls="mood-deck"><button type="button" data-deck-control="previous" aria-label="Show previous culture option">‹</button><span data-deck-index="0">1/2</span><button type="button" data-deck-control="next" aria-label="Show next culture option">›</button></div></div>
+        <div class="choice-card__header"><h2>Choose an itinerary direction</h2><div class="deck-controls" data-deck-controls="mood-deck"><button type="button" data-deck-control="previous" aria-label="Show previous culture option">Prev</button><span data-deck-index="0">1/2</span><button type="button" data-deck-control="next" aria-label="Show next culture option">Next</button></div></div>
         <div class="candidate-deck" data-candidate-deck="reflective-culture" data-deck-index="0" tabindex="0">${candidates.slice(0, 2).map((candidate) => candidateCard(candidate)).join("")}</div>
         ${candidateCard(scenicCandidate)}
+        ${candidateCard(fallbackCandidate)}
       </section>
     </article>
     <article class="approval-plate" data-approval-id="approval-preview-mock-hold" data-approval-state="not_requested" data-approval-outcome="not_requested">
@@ -150,8 +260,8 @@ function ensureWorkObjects(): void {
     </article>
     <aside class="provider-notice" data-provider-failure-notice="notice-deterministic-fallback" data-provider-outcome="deterministic_fallback_active" data-provider-state="deterministic"><strong>Provider status</strong><p>Live provider calls are disabled for required smoke; the deterministic transcript remains available.</p></aside>
     <section class="plan-trail" data-plan-trail="chat" tabindex="0" aria-label="Evidence and plan trail">
-      <article data-plan-trail-item="trail-mission-facts" data-plan-trail-kind="mission" data-plan-trail-state="accepted" data-evidence-id="evidence-chat-purpose" data-trace-outcome="golden_trace_complete"><span>mission</span><strong>Mission facts accepted</strong></article>
-      <article data-plan-trail-item="trail-pending-confirmations" data-plan-trail-kind="confirmation" data-plan-trail-state="pending" data-evidence-id="evidence-chat-style" data-trace-outcome="end_user_chat_pending_confirmation"><span>confirmation</span><strong>Travel style and dates pending</strong></article>
+      <article data-plan-trail-item="trail-mission-facts" data-plan-trail-kind="mission" data-plan-trail-state="accepted" data-evidence-id="evidence-chat-purpose" data-media-asset-id="${calmMorningMedia.id}" data-media-state="${calmMorningMedia.state}" data-trace-outcome="golden_trace_complete"><img class="plan-trail__media" src="${calmMorningMedia.path}" alt="${calmMorningMedia.alt}" data-plan-trail-media="true" data-media-asset-id="${calmMorningMedia.id}" data-media-mood="${calmMorningMedia.mood}" data-media-state="${calmMorningMedia.state}" data-media-license="${calmMorningMedia.license}" /><span>mission</span><strong>Mission facts accepted</strong></article>
+      <article data-plan-trail-item="trail-pending-confirmations" data-plan-trail-kind="confirmation" data-plan-trail-state="pending" data-evidence-id="evidence-chat-style" data-media-asset-id="${restorativeDowntimeMedia.id}" data-media-state="${restorativeDowntimeMedia.state}" data-trace-outcome="end_user_chat_pending_confirmation"><img class="plan-trail__media" src="${restorativeDowntimeMedia.path}" alt="${restorativeDowntimeMedia.alt}" data-plan-trail-media="true" data-media-asset-id="${restorativeDowntimeMedia.id}" data-media-mood="${restorativeDowntimeMedia.mood}" data-media-state="${restorativeDowntimeMedia.state}" data-media-license="${restorativeDowntimeMedia.license}" /><span>confirmation</span><strong>Travel style and dates pending</strong></article>
     </section>`,
   );
 }
@@ -193,16 +303,16 @@ function selectCandidate(candidateId: string): void {
   const article = appendTurn("turn-choice-selected", "user", "choice", "selected", "", "choice_candidate_selected", "evidence-chat-candidate", candidateId);
   if (article) {
     article.dataset.candidateCategory = "trip-style";
-    article.innerHTML = `<div class="chat-turn__meta"><span>user</span><strong>choice</strong></div><div class="selected-option-bubble candidate-card candidate-card--${candidate.tone}" data-selected-option-card="true" data-candidate-id="${candidate.id}" data-candidate-category="trip-style" data-candidate-mood="${candidate.mood}" data-candidate-state="selected" data-evidence-ids="evidence-chat-candidate,${candidate.evidence}"><span>${candidate.mood.replaceAll("-", " ")}</span><h3>${candidate.title}</h3><p>${candidate.summary}</p></div>`;
+    article.innerHTML = `<div class="chat-turn__meta"><span>user</span><strong>choice</strong></div><div class="selected-option-bubble candidate-card candidate-card--${candidate.tone}" data-selected-option-card="true" data-candidate-id="${candidate.id}" data-candidate-category="trip-style" data-candidate-mood="${candidate.mood}" data-candidate-state="selected" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-media-source-class="${candidate.media.sourceClass}" data-evidence-ids="evidence-chat-candidate,${candidate.evidence}"><img class="candidate-media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-media-image="selected-option" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>${candidate.mood.replaceAll("-", " ")}</span><h3>${candidate.title}</h3><p>${candidate.summary}</p></div>`;
   }
-  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-selected-option" data-plan-trail-kind="selected-option" data-plan-trail-state="selected" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-trace-outcome="choice_candidate_selected"><span>selected option</span><strong>${candidate.title}</strong></article>`);
+  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-selected-option" data-plan-trail-kind="selected-option" data-plan-trail-state="selected" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-trace-outcome="choice_candidate_selected"><img class="plan-trail__media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-plan-trail-media="true" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>selected option</span><strong>${candidate.title}</strong></article>`);
 }
 
 function deferCandidate(candidateId: string): void {
   const candidate = candidates.find((item) => item.id === candidateId);
   if (!candidate) return;
   setRootState({ "data-final-state": "candidate_deferred" });
-  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-deferred-option" data-plan-trail-kind="deferred-option" data-plan-trail-state="deferred" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-trace-outcome="choice_candidate_deferred"><span>deferred option</span><strong>${candidate.title}</strong></article>`);
+  document.querySelector("[data-plan-trail='chat']")?.insertAdjacentHTML("beforeend", `<article data-plan-trail-item="trail-deferred-option" data-plan-trail-kind="deferred-option" data-plan-trail-state="deferred" data-candidate-id="${candidate.id}" data-evidence-id="${candidate.evidence}" data-media-asset-id="${candidate.media.id}" data-media-state="${candidate.media.state}" data-trace-outcome="choice_candidate_deferred"><img class="plan-trail__media" src="${candidate.media.path}" alt="${candidate.media.alt}" data-plan-trail-media="true" data-media-asset-id="${candidate.media.id}" data-media-mood="${candidate.media.mood}" data-media-state="${candidate.media.state}" data-media-license="${candidate.media.license}" /><span>deferred option</span><strong>${candidate.title}</strong></article>`);
 }
 
 function requestApproval(): void {

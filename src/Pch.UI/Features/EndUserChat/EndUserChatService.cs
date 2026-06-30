@@ -20,6 +20,7 @@ public sealed class EndUserChatService
     private const string CandidateClassic = "candidate-japan-classic-highlights";
     private const string CandidateScenic = "candidate-japan-scenic-explorer";
     private const string CandidateCulture = "candidate-japan-reflective-culture";
+    private const string CandidateTransit = "candidate-japan-transit-rhythm";
 
     private readonly GoldenTurnTraceRunner _traceRunner;
     private readonly ModelRoleStatusEvaluator _roleStatusEvaluator;
@@ -221,7 +222,7 @@ public sealed class EndUserChatService
             ApprovalState = "blocked_missing_approval",
             ApprovalPlate = ApprovalPlate("blocked_missing_approval", ApprovalRequiredCode),
             Tasks = UpdateTask(state.Tasks, "task-approval", "blocked", 35, "Approval required"),
-            PlanTrail = AppendPlanTrail(state.PlanTrail, new("trail-approval-blocked", "approval", "blocked", "Mock hold approval blocked", null, "evidence-chat-approval", ApprovalRequiredCode)),
+            PlanTrail = AppendPlanTrail(state.PlanTrail, new("trail-approval-blocked", "approval", "blocked", "Mock hold approval blocked", null, "evidence-chat-approval", MediaAsset("logistics_transit"), ApprovalRequiredCode)),
             Turns = AppendTurn(state.Turns, new(
                 "turn-approval-blocked",
                 "harness",
@@ -361,15 +362,17 @@ public sealed class EndUserChatService
             selectedCandidateId,
             deferredCandidateId,
             [
-                Candidate(CandidateClassic, "reflective-culture", "culture", "Classic Japan highlights", "Tokyo, Kyoto, and Osaka with cultural landmarks and local favorites.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-a"]),
-                Candidate(CandidateCulture, "reflective-culture", "culture", "Temple mornings and neighborhood evenings", "A slower cultural route with calm mornings and local evening walks.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-c"]),
-                Candidate(CandidateScenic, "soft-nature", "nature", "Scenic Japan explorer", "Mountains, hot springs, and coastal towns for a quieter route.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-b"])
+                Candidate(CandidateClassic, "reflective-culture", "culture", "reflective_culture", "Classic Japan highlights", "Tokyo, Kyoto, and Osaka with cultural landmarks and local favorites.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-a"]),
+                Candidate(CandidateCulture, "reflective-culture", "culture", "cultural_immersive", "Temple mornings and neighborhood evenings", "A slower cultural route with calm mornings and local evening walks.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-c"]),
+                Candidate(CandidateScenic, "soft-nature", "nature", "soft_nature", "Scenic Japan explorer", "Mountains, hot springs, and coastal towns for a quieter route.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-b"]),
+                Candidate(CandidateTransit, "logistics-transit", "transit", "missing_provider_media", "Transit rhythm and easy transfers", "Clean route timing and low-friction station changes.", selectedCandidateId, deferredCandidateId, ["evidence-chat-candidate", "evidence-chat-route-transit"])
             ]);
 
     private static EndUserCandidateOption Candidate(
         string candidateId,
         string mood,
         string tone,
+        string mediaAssetId,
         string title,
         string summary,
         string? selectedCandidateId,
@@ -381,7 +384,7 @@ public sealed class EndUserChatService
             : string.Equals(candidateId, deferredCandidateId, StringComparison.Ordinal)
                 ? "deferred"
                 : "available";
-        return new(candidateId, "itinerary", "trip-style", mood, tone, title, summary, state, "deterministic-fixture", evidenceIds);
+        return new(candidateId, "itinerary", "trip-style", mood, tone, title, summary, state, "deterministic-fixture", MediaAsset(mediaAssetId), evidenceIds);
     }
 
     private static EndUserApprovalPlate ApprovalPlate(string state, string? blockedReason) =>
@@ -421,19 +424,19 @@ public sealed class EndUserChatService
     {
         var items = new List<EndUserPlanTrailItem>
         {
-            new("trail-mission-facts", "mission", "accepted", "Mission facts accepted", null, trace.EvidenceReferences.FirstOrDefault(), trace.Code),
-            new("trail-pending-confirmations", "confirmation", "pending", "Travel style and dates pending confirmation", null, "evidence-chat-style", PendingConfirmationCode),
-            new("trail-availability", "availability", trace.IsBlocked ? "blocked" : "quote-ready", "Availability preview remains gated", null, "evidence-chat-approval", trace.IsBlocked ? trace.Code : "availability_preview_ready")
+            new("trail-mission-facts", "mission", "accepted", "Mission facts accepted", null, trace.EvidenceReferences.FirstOrDefault(), MediaAsset("calm_morning"), trace.Code),
+            new("trail-pending-confirmations", "confirmation", "pending", "Travel style and dates pending confirmation", null, "evidence-chat-style", MediaAsset("restorative_downtime"), PendingConfirmationCode),
+            new("trail-availability", "availability", trace.IsBlocked ? "blocked" : "quote-ready", "Availability preview remains gated", null, "evidence-chat-approval", MediaAsset("logistics_transit"), trace.IsBlocked ? trace.Code : "availability_preview_ready")
         };
 
         if (selected is not null)
         {
-            items.Add(new("trail-selected-option", "selected-option", "selected", selected.Title, selected.CandidateId, selected.EvidenceIds.FirstOrDefault(), "choice_candidate_selected"));
+            items.Add(new("trail-selected-option", "selected-option", "selected", selected.Title, selected.CandidateId, selected.EvidenceIds.FirstOrDefault(), selected.Media, "choice_candidate_selected"));
         }
 
         if (deferred is not null)
         {
-            items.Add(new("trail-deferred-option", "deferred-option", "deferred", deferred.Title, deferred.CandidateId, deferred.EvidenceIds.FirstOrDefault(), "choice_candidate_deferred"));
+            items.Add(new("trail-deferred-option", "deferred-option", "deferred", deferred.Title, deferred.CandidateId, deferred.EvidenceIds.FirstOrDefault(), deferred.Media, "choice_candidate_deferred"));
         }
 
         return items;
@@ -449,7 +452,7 @@ public sealed class EndUserChatService
         var trailId = stateName == "selected" ? "trail-selected-option" : "trail-deferred-option";
         return AppendPlanTrail(
             state.PlanTrail.Where(item => item.TrailId != trailId).ToArray(),
-            new(trailId, kind, stateName, candidate.Title, candidate.CandidateId, candidate.EvidenceIds.FirstOrDefault(), outcome));
+            new(trailId, kind, stateName, candidate.Title, candidate.CandidateId, candidate.EvidenceIds.FirstOrDefault(), candidate.Media, outcome));
     }
 
     private static IReadOnlyList<EndUserPlanTrailItem> AppendPlanTrail(
@@ -504,8 +507,32 @@ public sealed class EndUserChatService
     [
         CandidateClassic,
         CandidateCulture,
-        CandidateScenic
+        CandidateScenic,
+        CandidateTransit
     ];
+
+    private static EndUserMediaAsset MediaAsset(string assetId)
+    {
+        var assets = MediaManifest();
+        return assets.TryGetValue(assetId, out var asset)
+            ? asset
+            : assets["mood_placeholder"];
+    }
+
+    private static IReadOnlyDictionary<string, EndUserMediaAsset> MediaManifest() =>
+        new Dictionary<string, EndUserMediaAsset>(StringComparer.Ordinal)
+        {
+            ["cultural_immersive"] = new("cultural_immersive", "cultural_immersive", "/media/japan-card-pack/cultural-immersive.svg", "Abstract lanterns and temple lines for an immersive cultural Japan card.", "#25163f", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["scenic_relaxed"] = new("scenic_relaxed", "scenic_relaxed", "/media/japan-card-pack/scenic-relaxed.svg", "Mist, moss, sky, and coastline shapes for a relaxed scenic Japan card.", "#78b9a5", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["lively_food"] = new("lively_food", "lively_food", "/media/japan-card-pack/lively-food.svg", "Warm food market colors with lanterns and ceramic blue accents.", "#d94c3d", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["calm_morning"] = new("calm_morning", "calm_morning", "/media/japan-card-pack/calm-morning.svg", "Pale sun and soft green morning fields for a calm morning card.", "#f7ecd5", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["reflective_culture"] = new("reflective_culture", "reflective_culture", "/media/japan-card-pack/reflective-culture.svg", "Cherry, indigo, paper, and lantern glow for a reflective culture card.", "#182340", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["soft_nature"] = new("soft_nature", "soft_nature", "/media/japan-card-pack/soft-nature.svg", "Soft mountain, moss, and water shapes for a quiet nature card.", "#8fd3ca", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["restorative_downtime"] = new("restorative_downtime", "restorative_downtime", "/media/japan-card-pack/restorative-downtime.svg", "Lavender grey, warm wood, and bathhouse steam for restorative downtime.", "#d8d3e8", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["logistics_transit"] = new("logistics_transit", "logistics_transit", "/media/japan-card-pack/logistics-transit.svg", "Crisp transit linework with blue, charcoal, and signal green.", "#102235", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
+            ["mood_placeholder"] = new("mood_placeholder", "fallback", "/media/japan-card-pack/mood-placeholder.svg", "Deterministic fallback mood art used when media is missing.", "#f7efe1", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "fallback"),
+            ["missing_provider_media"] = new("mood_placeholder", "fallback", "/media/japan-card-pack/mood-placeholder.svg", "Deterministic fallback mood art used when media is missing.", "#f7efe1", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "fallback")
+        };
 
     private static EndUserChatScenario SelectScenario(string normalizedPrompt)
     {

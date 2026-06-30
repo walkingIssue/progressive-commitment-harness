@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Fallback mood art</title>
+  <desc id="desc">Deterministic fallback card art for missing media.</desc>
+  <rect width="640" height="420" fill="#f7efe1"/>
+  <path d="M80 300c100-60 178-60 278 0 67 40 132 40 202 0v120H80z" fill="#d8ded9"/>
+  <path d="M116 104h408v176H116z" fill="#ffffff" stroke="#9aa6a0" stroke-width="12"/>
+  <path d="M168 224h304M168 184h224M168 144h266" stroke="#0f8b8d" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="476" cy="132" r="28" fill="#f2b84b"/>
+</svg>

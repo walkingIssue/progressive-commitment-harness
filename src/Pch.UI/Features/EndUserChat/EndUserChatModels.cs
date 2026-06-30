@@ -45,6 +45,7 @@ public sealed record EndUserSelectedOptionBubble(
     string Title,
     string Summary,
     string State,
+    EndUserMediaAsset Media,
     IReadOnlyList<string> EvidenceIds);
 
 public sealed record EndUserTask(
@@ -96,6 +97,7 @@ public sealed record EndUserCandidateOption(
     string Summary,
     string State,
     string Source,
+    EndUserMediaAsset Media,
     IReadOnlyList<string> EvidenceIds);
 
 public sealed record EndUserApprovalPlate(
@@ -127,4 +129,16 @@ public sealed record EndUserPlanTrailItem(
     string Label,
     string? CandidateId,
     string? EvidenceId,
+    EndUserMediaAsset? Media,
     string OutcomeCode);
+
+public sealed record EndUserMediaAsset(
+    string AssetId,
+    string Mood,
+    string Path,
+    string Alt,
+    string DominantColor,
+    string SourceClass,
+    string License,
+    string Attribution,
+    string State);

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Restorative downtime mood art</title>
+  <desc id="desc">Lavender grey, warm wood, and bathhouse steam shapes.</desc>
+  <rect width="640" height="420" fill="#d8d3e8"/>
+  <path d="M0 276h640v144H0z" fill="#a77958"/>
+  <path d="M102 198h436v108H102z" fill="#f4e5d0"/>
+  <path d="M146 198v108M224 198v108M302 198v108M380 198v108M458 198v108" stroke="#8b6047" stroke-width="8" opacity=".65"/>
+  <path d="M190 96c-48 40 42 58-5 102M318 74c-56 48 51 64-5 122M446 96c-48 40 42 58-5 102" fill="none" stroke="#fff8f0" stroke-width="15" stroke-linecap="round" opacity=".85"/>
+  <circle cx="92" cy="78" r="36" fill="#f2d6a2"/>
+</svg>

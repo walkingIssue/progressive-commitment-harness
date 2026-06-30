@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Reflective culture mood art</title>
+  <desc id="desc">Cherry tones, indigo paper, and lantern glow.</desc>
+  <rect width="640" height="420" fill="#182340"/>
+  <path d="M0 286c128-82 216-67 322-24 95 38 189 39 318-24v182H0z" fill="#f6a8b8"/>
+  <path d="M0 338c132-48 256-44 373 5 83 35 171 34 267-2v79H0z" fill="#fbe7d4"/>
+  <circle cx="514" cy="92" r="46" fill="#f4c36d"/>
+  <path d="M166 118h204l-36 44H202zM194 162h148v108H194z" fill="#26385f"/>
+  <path d="M85 95c27 12 39 34 39 66M85 95c-4 46-22 74-54 92" stroke="#f7c2cd" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="67" cy="142" r="11" fill="#ffe1e8"/><circle cx="112" cy="172" r="9" fill="#ffe1e8"/><circle cx="42" cy="196" r="8" fill="#ffe1e8"/>
+</svg>

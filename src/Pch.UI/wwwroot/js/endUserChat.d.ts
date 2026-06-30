@@ -1,20 +1,29 @@
 declare const RAW_SENTINELS: string[];
-declare const candidates: {
+type MediaAsset = {
+    id: string;
+    mood: string;
+    path: string;
+    alt: string;
+    state: string;
+    sourceClass: string;
+    license: string;
+};
+type CandidateOption = {
     id: string;
     title: string;
     mood: string;
     tone: string;
-    summary: string;
-    evidence: string;
-}[];
-declare const scenicCandidate: {
-    id: string;
-    title: string;
-    mood: string;
-    tone: string;
+    media: MediaAsset;
     summary: string;
     evidence: string;
 };
+declare const mediaAssets: Record<string, MediaAsset>;
+declare function mediaAsset(assetId: string): MediaAsset;
+declare const candidates: CandidateOption[];
+declare const scenicCandidate: CandidateOption;
+declare const fallbackCandidate: CandidateOption;
+declare const calmMorningMedia: MediaAsset;
+declare const restorativeDowntimeMedia: MediaAsset;
 declare const FALLBACK_DELAY_MS = 350;
 declare function sanitizeText(value: string): string;
 declare function root(): HTMLElement | null;

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Logistics transit mood art</title>
+  <desc id="desc">Crisp transit linework with blue, charcoal, and signal green.</desc>
+  <rect width="640" height="420" fill="#102235"/>
+  <path d="M78 262h484c22 0 40 18 40 40v28H38v-28c0-22 18-40 40-40z" fill="#e9f4ff"/>
+  <path d="M118 214h404l40 48H78z" fill="#4ea3d8"/>
+  <path d="M152 236h84M278 236h84M404 236h84" stroke="#102235" stroke-width="18" stroke-linecap="round"/>
+  <path d="M76 348h488" stroke="#43d982" stroke-width="12" stroke-linecap="round"/>
+  <path d="M118 112h390M152 144h288M196 176h360" stroke="#e9f4ff" stroke-width="12" stroke-linecap="round" opacity=".85"/>
+</svg>
