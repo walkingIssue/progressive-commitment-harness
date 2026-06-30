@@ -1,0 +1,89 @@
+{
+  "isAccepted": true,
+  "isBlocked": false,
+  "code": "awaiting_user_input",
+  "summary": "Live turn is awaiting user input.",
+  "transcript": {
+    "transcriptId": "live-turn-pending-confirmation",
+    "scenario": "pending_confirmation",
+    "code": "awaiting_user_input",
+    "summary": "Live turn is awaiting user input.",
+    "observedAt": "2026-06-30T00:00:00+00:00",
+    "turns": [
+      {
+        "turnId": "turn-01",
+        "actor": "assistant",
+        "kind": "summary",
+        "stage": "live",
+        "outcomeCode": "accepted",
+        "summary": "Prompt metadata accepted for planner execution.",
+        "workItem": {
+          "workItemId": "work-01-summary",
+          "kind": "summary",
+          "status": "accepted",
+          "fields": [],
+          "choices": [],
+          "approval": null,
+          "blocked": null,
+          "summary": {
+            "markers": [
+              "prompt-packet-session-7-day-intake",
+              "general"
+            ]
+          },
+          "evidence": null,
+          "providerFailure": null
+        },
+        "evidenceReferences": [
+          "evidence-pending-country"
+        ],
+        "markers": [
+          "prompt-packet-session-7-day-intake",
+          "general"
+        ]
+      },
+      {
+        "turnId": "turn-02",
+        "actor": "assistant",
+        "kind": "form",
+        "stage": "live",
+        "outcomeCode": "awaiting_user_input",
+        "summary": "Pending confirmations require user input.",
+        "workItem": {
+          "workItemId": "work-pending-confirmations",
+          "kind": "form",
+          "status": "awaiting_user_input",
+          "fields": [
+            {
+              "fieldId": "-mission-destination_country",
+              "label": "/mission/destination_country",
+              "fieldType": "confirmation",
+              "required": true,
+              "options": [
+                "confirm",
+                "correct",
+                "defer"
+              ]
+            }
+          ],
+          "choices": [],
+          "approval": null,
+          "blocked": null,
+          "summary": null,
+          "evidence": null,
+          "providerFailure": null
+        },
+        "evidenceReferences": [
+          "evidence-pending-country"
+        ],
+        "markers": [
+          "pending_confirmation"
+        ]
+      }
+    ],
+    "evidenceReferences": [
+      "evidence-pending-country"
+    ],
+    "transcriptHash": "d3d27a2c02ad5b2cabc7e8694b512e389e510d9f20dd312cbaec08a3bcfa66e7"
+  }
+}
