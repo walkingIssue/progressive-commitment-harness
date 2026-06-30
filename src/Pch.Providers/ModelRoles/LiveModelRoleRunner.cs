@@ -33,8 +33,8 @@ public sealed class LiveModelRoleRunner
     }
 
     public async Task<LiveModelRunResult> RunAsync(
-        LiveModelRunPacket packet,
-        LiveModelRunOptions options,
+        LiveModelRunPacket? packet,
+        LiveModelRunOptions? options,
         CancellationToken cancellationToken = default)
     {
         var malformed = ValidatePacket(packet);
@@ -43,9 +43,15 @@ public sealed class LiveModelRoleRunner
             return malformed;
         }
 
-        var runnerOptions = options.RunnerOptions ?? throw new ArgumentNullException(nameof(options));
+        if (options?.RunnerOptions is null)
+        {
+            return Rejected(OutcomeMalformedSchema);
+        }
+
+        var runnerOptions = options.RunnerOptions;
         var registry = options.Registry ?? LiveModelRoleRegistry.FromOptions(runnerOptions);
-        var role = registry.Resolve(packet.Role);
+        var validPacket = packet!;
+        var role = registry.Resolve(validPacket.Role);
         if (role is null || !role.IsConfigured)
         {
             return Rejected(OutcomeMalformedSchema);
@@ -61,10 +67,12 @@ public sealed class LiveModelRoleRunner
             return Rejected(OutcomeKeyMissing, role.Role, role.ModelId);
         }
 
-        if (packet.RequiresFallback && runnerOptions.FallbackPolicy == LiveModelFallbackPolicy.Disabled)
+        if (validPacket.RequiresFallback && runnerOptions.FallbackPolicy == LiveModelFallbackPolicy.Disabled)
         {
             return Rejected(OutcomeFallbackDisabled, role.Role, role.ModelId);
         }
+
+        using var timeout = CreateTimeoutSource(runnerOptions.Timeout, cancellationToken, out var operationToken);
 
         if (runnerOptions.CreditGuardEnabled)
         {
@@ -72,11 +80,15 @@ public sealed class LiveModelRoleRunner
             {
                 var credits = _creditClient is null
                     ? new ProviderCreditStatus(null, null, null, IsExhausted: true)
-                    : await _creditClient.GetCreditStatusAsync(cancellationToken).ConfigureAwait(false);
+                    : await _creditClient.GetCreditStatusAsync(operationToken).ConfigureAwait(false);
                 if (credits.IsExhausted)
                 {
                     return Rejected(OutcomeCreditExhausted, role.Role, role.ModelId, "credit_exhausted");
                 }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return Rejected(OutcomeTimeout, role.Role, role.ModelId, "timeout");
             }
             catch (ProviderCreditExhaustedException)
             {
@@ -94,16 +106,20 @@ public sealed class LiveModelRoleRunner
                 new ModelCompletionRequest(
                     [
                         new ModelMessage(ModelMessageRole.System, "Return strict JSON for the provider-local live model role runner. Do not include raw provider payloads."),
-                        new ModelMessage(ModelMessageRole.User, packet.Prompt)
+                        new ModelMessage(ModelMessageRole.User, validPacket.Prompt)
                     ],
                     role.ModelId,
                     "live_model_role_output",
                     LiveModelRoleJsonSchema.Schema,
                     runnerOptions.Temperature,
                     runnerOptions.MaxTokens),
-                cancellationToken).ConfigureAwait(false);
+                operationToken).ConfigureAwait(false);
 
-            return ParseCompletion(packet, role, completion);
+            return ParseCompletion(validPacket, role, completion);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return Rejected(OutcomeTimeout, role.Role, role.ModelId, "timeout");
         }
         catch (ProviderCreditExhaustedException)
         {
@@ -129,6 +145,23 @@ public sealed class LiveModelRoleRunner
         {
             return Rejected(OutcomeProviderUnavailable, role.Role, role.ModelId, "provider_error");
         }
+    }
+
+    private static CancellationTokenSource? CreateTimeoutSource(
+        TimeSpan? timeout,
+        CancellationToken callerToken,
+        out CancellationToken operationToken)
+    {
+        if (timeout is null || timeout.Value <= TimeSpan.Zero)
+        {
+            operationToken = callerToken;
+            return null;
+        }
+
+        var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+        timeoutSource.CancelAfter(timeout.Value);
+        operationToken = timeoutSource.Token;
+        return timeoutSource;
     }
 
     private static LiveModelRunResult? ValidatePacket(LiveModelRunPacket? packet)
@@ -198,7 +231,7 @@ public sealed class LiveModelRoleRunner
             completion.RequestId);
     }
 
-    private static LiveModelRunResult Rejected(
+    internal static LiveModelRunResult Rejected(
         string outcomeCode,
         LiveModelRole? role = null,
         string? modelId = null,
@@ -249,34 +282,48 @@ public sealed class LiveModelRunEvaluator
     }
 
     public async Task<IReadOnlyList<SanitizedLiveModelRunEvalRow>> EvaluateAsync(
-        IReadOnlyList<LiveModelRunEvalCase> cases,
-        LiveModelRunOptions options,
+        IReadOnlyList<LiveModelRunEvalCase?>? cases,
+        LiveModelRunOptions? options,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(cases);
+        if (cases is null)
+        {
+            return [ToRow(LiveModelRoleRunner.Rejected(LiveModelRoleRunner.OutcomeMalformedSchema), null)];
+        }
 
         var rows = new List<SanitizedLiveModelRunEvalRow>(cases.Count);
         foreach (var evalCase in cases)
         {
+            if (evalCase is null)
+            {
+                rows.Add(ToRow(LiveModelRoleRunner.Rejected(LiveModelRoleRunner.OutcomeMalformedSchema), null));
+                continue;
+            }
+
             var result = await _runner.RunAsync(evalCase.Packet, options, cancellationToken).ConfigureAwait(false);
-            rows.Add(new SanitizedLiveModelRunEvalRow(
-                result.IsAccepted ? evalCase.Name : result.Name,
-                result.IsAccepted ? evalCase.Packet.PacketId : result.PacketId,
-                result.IsAccepted,
-                result.OutcomeCode,
-                result.ErrorCode,
-                result.Role,
-                result.ModelId,
-                result.OutputKind,
-                result.UiMood,
-                result.ResponseContentLength,
-                result.Provider,
-                result.Model,
-                result.RequestId));
+            rows.Add(ToRow(result, evalCase));
         }
 
         return rows;
     }
+
+    private static SanitizedLiveModelRunEvalRow ToRow(
+        LiveModelRunResult result,
+        LiveModelRunEvalCase? evalCase) =>
+        new(
+            result.IsAccepted && evalCase is not null ? evalCase.Name : result.Name,
+            result.IsAccepted && evalCase is not null ? evalCase.Packet.PacketId : result.PacketId,
+            result.IsAccepted,
+            result.OutcomeCode,
+            result.ErrorCode,
+            result.Role,
+            result.ModelId,
+            result.OutputKind,
+            result.UiMood,
+            result.ResponseContentLength,
+            result.Provider,
+            result.Model,
+            result.RequestId);
 }
 
 internal static class LiveModelRoleJsonSchema

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Pch.Providers.ModelRoles;
 
@@ -97,6 +98,7 @@ public sealed record LiveModelRunResult(
     string? ModelId,
     string? OutputKind,
     LiveModelUiMood? UiMood,
+    [property: JsonIgnore]
     JsonElement? Arguments,
     int? ResponseContentLength,
     string? Provider,

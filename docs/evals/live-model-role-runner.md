@@ -12,6 +12,8 @@ Accepted rows may persist:
 - response content length
 - provider/model/request metadata returned by the completion client
 
+`LiveModelRunResult.Arguments` is an in-memory runtime payload only and is JSON-ignored. Eval rows do not include argument JSON.
+
 Rejected rows use fixed identifiers:
 
 - row name `live_model_run_rejected`

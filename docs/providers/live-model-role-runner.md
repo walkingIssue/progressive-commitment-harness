@@ -21,6 +21,9 @@ The runner uses `IModelCompletionClient` and requests strict JSON schema output 
 Guard behavior:
 
 - Live mode disabled, missing key, disabled fallback, missing/exhausted credits, provider unavailable, timeout, empty content, malformed schema, packet mismatch, and unsupported output all return fixed outcome codes.
+- `LiveModelRunnerOptions.Timeout` is enforced around credit checks and completion calls. Caller-requested cancellation remains cooperative, while runner timeout maps to `live_model_timeout`.
+- Parsed argument JSON is available only as in-memory runtime data and is JSON-ignored on `LiveModelRunResult`; eval/status rows never persist raw argument values.
+- Null or malformed packets, options, runner options, eval cases, and eval case packets become fixed `live_model_malformed_schema` rows with redacted row identifiers.
 - No blocked/error result persists raw prompts, provider payloads, exception messages, credentials, keys, context digests, or model prose.
 - No fallback to another paid provider is attempted by this provider-local runner.
 

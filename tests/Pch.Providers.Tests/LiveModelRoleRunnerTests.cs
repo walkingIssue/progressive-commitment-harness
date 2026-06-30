@@ -201,6 +201,111 @@ public sealed class LiveModelRoleRunnerTests
     }
 
     [Fact]
+    public async Task TimeoutDuringCreditGuardMapsToFixedTimeoutRow()
+    {
+        var client = new CountingCompletionClient(CreateContent("packet-live", "harness_action"));
+        var evaluator = new LiveModelRunEvaluator(new LiveModelRoleRunner(client, new DelayedCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveModelRunEvalCase($"{RawPrompt}-{Credential}", CreatePacket())],
+            CreateOptions(new LiveModelRunnerOptions(
+                LiveModeEnabled: true,
+                ApiKeyAvailable: true,
+                Timeout: TimeSpan.FromMilliseconds(1)))));
+
+        AssertRejected(row, LiveModelRoleRunner.OutcomeTimeout, "timeout");
+        Assert.Equal(0, client.CallCount);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task TimeoutDuringCompletionMapsToFixedTimeoutRow()
+    {
+        var evaluator = new LiveModelRunEvaluator(new LiveModelRoleRunner(
+            new DelayedCompletionClient(),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveModelRunEvalCase($"{RawPrompt}-{Credential}", CreatePacket())],
+            CreateOptions(new LiveModelRunnerOptions(
+                LiveModeEnabled: true,
+                ApiKeyAvailable: true,
+                Timeout: TimeSpan.FromMilliseconds(1)))));
+
+        AssertRejected(row, LiveModelRoleRunner.OutcomeTimeout, "timeout");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task CallerCancellationPropagatesWithoutProviderUnavailableMapping()
+    {
+        var evaluator = new LiveModelRunEvaluator(new LiveModelRoleRunner(
+            new DelayedCompletionClient(),
+            new StaticCreditClient()));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            evaluator.EvaluateAsync(
+                [new LiveModelRunEvalCase("cancelled", CreatePacket())],
+                CreateOptions(new LiveModelRunnerOptions(
+                    LiveModeEnabled: true,
+                    ApiKeyAvailable: true,
+                    Timeout: TimeSpan.FromSeconds(10))),
+                cts.Token));
+    }
+
+    [Fact]
+    public async Task RuntimeArgumentsAreJsonIgnoredAndEvalRowsDoNotPersistRawArgumentValues()
+    {
+        var content = JsonSerializer.Serialize(new
+        {
+            packetId = "packet-live",
+            outputKind = "harness_action",
+            uiMood = "logistics",
+            arguments = new { raw = RawProviderPayload, credential = Credential, sentinel = SecretSentinel },
+            summary = "safe structured output"
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var runner = new LiveModelRoleRunner(new StaticCompletionClient(content), new StaticCreditClient());
+
+        var result = await runner.RunAsync(CreatePacket(), CreateOptions());
+        var row = Assert.Single(await new LiveModelRunEvaluator(runner).EvaluateAsync(
+            [new LiveModelRunEvalCase("live-success", CreatePacket())],
+            CreateOptions()));
+
+        Assert.True(result.IsAccepted);
+        Assert.NotNull(result.Arguments);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(result, SensitiveSentinels);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task MalformedApiInputsReturnFixedSanitizedRows()
+    {
+        var evaluator = new LiveModelRunEvaluator(new LiveModelRoleRunner(
+            new CountingCompletionClient(CreateContent("packet-live", "harness_action")),
+            new StaticCreditClient()));
+
+        var nullCasesRow = Assert.Single(await evaluator.EvaluateAsync(null!, CreateOptions()));
+        var nullEvalCaseRow = Assert.Single(await evaluator.EvaluateAsync([null], CreateOptions()));
+        var nullPacketRow = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveModelRunEvalCase($"{RawPrompt}-{Credential}", null!)],
+            CreateOptions()));
+        var nullOptionsRow = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveModelRunEvalCase($"{RawPrompt}-{Credential}", CreatePacket())],
+            null!));
+        var nullRunnerOptionsRow = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveModelRunEvalCase($"{RawPrompt}-{Credential}", CreatePacket())],
+            new LiveModelRunOptions(null!)));
+
+        foreach (var row in new[] { nullCasesRow, nullEvalCaseRow, nullPacketRow, nullOptionsRow, nullRunnerOptionsRow })
+        {
+            AssertRejected(row, LiveModelRoleRunner.OutcomeMalformedSchema);
+            SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+        }
+    }
+
+    [Fact]
     public void OptionsLoadSafeEnvControlsWithoutSecrets()
     {
         var options = LiveModelRunnerOptions.FromEnvironment(new Dictionary<string, string?>
@@ -314,10 +419,30 @@ public sealed class LiveModelRoleRunnerTests
             Task.FromException<ModelCompletionResponse>(exception);
     }
 
+    private sealed class DelayedCompletionClient : IModelCompletionClient
+    {
+        public async Task<ModelCompletionResponse> CompleteAsync(
+            ModelCompletionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("unreachable delayed completion");
+        }
+    }
+
     private sealed class StaticCreditClient(
         ProviderCreditStatus? status = null) : IProviderCreditClient
     {
         public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(status ?? new ProviderCreditStatus(40, 1, 39, IsExhausted: false));
+    }
+
+    private sealed class DelayedCreditClient : IProviderCreditClient
+    {
+        public async Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("unreachable delayed credits");
+        }
     }
 }
