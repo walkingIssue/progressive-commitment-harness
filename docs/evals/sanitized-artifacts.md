@@ -31,4 +31,6 @@ Model role guardrail artifacts follow the same policy: ready rows may persist tr
 
 Live model role runner artifacts follow the same policy: accepted rows may persist trusted packet ids, role enums, configured model ids, allowlisted output kinds, allowlisted mood enums, response length, and accepted provider metadata. Runtime argument JSON is JSON-ignored and never persisted in eval rows. Rejected rows use fixed row identifiers and omit raw prompts, provider payloads, raw completion JSON, raw arguments, credentials, context digests, exception text, and untrusted mood prose.
 
+Media source registry artifacts follow the same policy: accepted rows may persist trusted slot/candidate/category ids, media ids, source class/id/provider name, license class/name, attribution fields, dimensions, response length, and accepted provider metadata. Rejected rows use fixed row identifiers and omit raw search queries, image URLs, thumbnail URLs, source URLs, alt text, provider payloads, API keys, credentials, raw exception text, candidate display values, and failed-response metadata.
+
 Optional live smoke paths remain skipped or blocked by default. A live smoke must be key and health/credit guarded where applicable, use strict timeout/error handling, and must not fall back to another paid provider when blocked.
