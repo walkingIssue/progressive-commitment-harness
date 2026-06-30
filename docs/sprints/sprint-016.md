@@ -15,6 +15,7 @@ Sprint 016 should fix the current browser click failure, replace the boilerplate
 Design reference:
 
 - `docs/design/end-user-chat-interaction-primitives.md`
+- `docs/design/assets/sprint-016-web-gpt-reference.png` (primary visual direction)
 - `docs/design/assets/sprint-016-end-user-chat-concept.png`
 - `docs/design/assets/sprint-016-agent-first-interaction-concept.png`
 
@@ -105,6 +106,7 @@ Deliverables:
 - Replace the current boilerplate chat shell with the primitive system from `docs/design/end-user-chat-interaction-primitives.md`.
 - Add central transcript rendering with assistant work bubbles, form cards, choice cards, candidate option cards, approval plates, provider failure notices, and an evidence strip.
 - Add right-side decomposed task rail with collapsible rows and status lights.
+- Add a slim left navigation rail and a dark right task rail matching the primary visual direction.
 - Make the agent work area visually dominant after the first user prompt. The initial start screen may center the prompt input, but after first send the composer should collapse into a compact side `Ask` control that opens a slide-out drawer.
 - When a user selects an option, echo that selected option into the transcript as a compact user interaction bubble while keeping the original card selected in the assistant work area.
 - Add mood/feel-backed candidate cards and support stacked, floaty, horizontally scrollable decks for multiple options in the same mood.

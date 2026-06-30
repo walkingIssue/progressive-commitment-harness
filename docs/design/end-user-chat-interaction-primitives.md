@@ -2,6 +2,7 @@
 
 Sprint 016 design references:
 
+- Primary visual direction: `docs/design/assets/sprint-016-web-gpt-reference.png`
 - `docs/design/assets/sprint-016-end-user-chat-concept.png`
 - `docs/design/assets/sprint-016-agent-first-interaction-concept.png`
 
@@ -18,10 +19,12 @@ The end-user UI should feel like a live planning assistant, not an engineering f
 
 ## Layout
 
-- **Main conversation column:** transcript turns flow top-to-bottom; the active composer is pinned near the bottom.
+- **Slim navigation rail:** a narrow left rail with mode icons and user/session affordance. It should not compete with the task rail or chat.
+- **Main agent canvas:** wide, calm center area where the agent's current work is the visual priority.
+- **Transcript rhythm:** user bubbles are compact and right-aligned; assistant work bubbles are larger and left/center-aligned.
 - **Assistant work area:** assistant turns can contain structured forms, choice cards, approval plates, evidence summaries, or blocked notices.
-- **Right task rail:** decomposed tasks show status, progress, consensus, and blockers. Rows are collapsible and can light up green only when the user and model/harness have reached a stable accepted state.
-- **Model/status strip:** shows deterministic/live mode, selected model roles, provider health, credit guard state, and last provider failure. It should be honest and compact.
+- **Right task rail:** a deep, high-contrast rail for decomposed tasks, progress, consensus, and blockers. Rows are collapsible and can light up green only when the user and model/harness have reached a stable accepted state.
+- **Commitment/status strip:** shows commitment risk, deterministic/live mode, selected model roles, provider health, credit guard state, and last provider failure. It should be honest and compact.
 - **Stage Cockpit:** remains below or behind an engineering affordance, not the first thing an end user has to understand.
 
 ## Agent-First Interaction Rule
@@ -38,6 +41,35 @@ Required behavior:
 - The task rail remains visible as the user's mental map of decomposed work.
 
 The user should feel that the agent is actively planning and occasionally asking for guidance, not that the user is filling out a long form.
+
+## Primary Visual Reference Notes
+
+The `sprint-016-web-gpt-reference.png` screenshot is the closest current visual target. Match its product grammar, not its exact pixels.
+
+Keep:
+
+- spacious off-white planning canvas;
+- narrow icon rail on the far left;
+- dark navy task rail on the right;
+- compact right-aligned user prompt bubbles;
+- large assistant work bubble with a friendly lead sentence;
+- strong heading hierarchy inside assistant work;
+- destination/mood sections with illustrated or scenic backdrops;
+- centered active option card with partial neighboring cards visible;
+- selected state as a clear chip on the chosen card;
+- selected option echoed back as a user bubble;
+- low-commitment/commitment-risk chip near the top;
+- floating `Ask` button after the main prompt has collapsed;
+- task rail progress lines, status pills, and `Ask` actions for future steps;
+- reassuring control copy such as "You're in control. We'll only move forward when you're ready."
+
+Avoid:
+
+- generic Bootstrap card stacks;
+- oversized always-visible prompt textarea after the first turn;
+- making every metadata element look clickable;
+- dark task rail consuming the whole page;
+- raw debug labels in the end-user surface.
 
 ## Primitives
 
@@ -181,6 +213,14 @@ Rules:
 - Red means blocked.
 - Grey means deferred/not started.
 - Metadata rows should not look like buttons unless expandable.
+
+Visual direction:
+
+- Use a deep navy/marine background.
+- Active and completed groups can sit in raised translucent rows.
+- Progress substeps use a vertical line with small status nodes.
+- Status pills should be compact: ready, in progress, ask, blocked.
+- A bottom reassurance panel can remind the user that no forward move happens without confirmation.
 
 ### Evidence And Claim Strip
 
