@@ -690,3 +690,43 @@ Target outcomes:
 - the task rail is derived from validated model/harness task primitives, not static arrays;
 - answer submission sends actual values and updated harness state to a second provider turn;
 - real in-context browser testing proves two different starter prompts produce different visible validated content and at least one provider reaches a second turn, or the sprint is explicitly BLOCKED with fixed provider/harness/browser failure codes.
+
+## Sprint 023 Result
+
+Sprint 023 is integrated on `main` through merge commit `adf2671`.
+
+Delivered:
+
+- Harness dynamic primitive contracts now carry model-authored options, defaults, help text, validation rules, renderer hints, task refs, tool context refs, primitive hashes, provider output hashes, answer ids, and safe lineage.
+- `PlanningSessionContext` and `PlannerTurnContextBuilder` keep server-side planning context across turns, including prompt length/hash/category, accepted facts, submitted answer values, validated turn summaries, and tool context refs without persisting raw prompt text.
+- Provider planner primitive requests now include transient raw prompt, allowed manifest data, allowed field paths, mood/media tokens, submitted answer values for follow-up turns, and sanitized context/tool refs in the server-side model request.
+- Provider validation/logging rejects generic/static output, invalid field paths, invalid tool refs, unsafe text, malformed JSON, schema-invalid output, and unsupported primitive structures with fixed sanitized outcomes.
+- UI planning sessions now persist harness context, pass provider-authored primitive output through harness validation, render validated dynamic primitive data, submit cards/decks through the same `PrimitiveAnswerDto` contract as forms, and preserve answer values into the second provider turn.
+- Static live defaults such as hard-coded Japan/date/pace/budget values were removed from the live primitive projection path. Deterministic/golden content remains explicit deterministic mode only.
+
+Real browser/live proof:
+
+- In-app browser transport still used the HTTP planning session fallback because the Blazor circuit reported disconnected, but no DOM-only fake live mutation was counted.
+- OpenAI live planner primitive config produced prompt-specific validated forms:
+  - Osaka food-first prompt rendered fields including `destination_country`, `exclude_temples_confirm_1`, `late_night_ramen_preferences_1`, and `market_preferences_1`.
+  - Iceland quiet-trip prompt rendered different fields including `destination_country`, `start_date`, `trip_focus_input_1`, and `quiet_trip_confirmation_1`.
+- The accepted Osaka browser run submitted real answer values, advanced server trace count to 2, recorded `providerRequest=second_turn_attempted`, recorded `live-turn-attempt-count=2`, and produced a second validated form `form-additional_food_preferences_1` whose prompt referenced Japan, late-night ramen, and market snacks.
+- Raw sentinel scans were clean in DOM/API for raw prompt, provider payload, API key, credentials, approval token, hold/booking/payment refs, candidate display sentinels, and secret sentinels.
+
+Coordinator verification after merge:
+
+- `npm run build:ui` from `src/Pch.UI`: passed.
+- `dotnet test tests\Pch.Core.Tests\Pch.Core.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 9 tests.
+- `dotnet test tests\Pch.Harness.Tests\Pch.Harness.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 197 tests.
+- `dotnet test tests\Pch.Providers.Tests\Pch.Providers.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 311 tests.
+- `dotnet test tests\Pch.UI.Tests\Pch.UI.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 82 tests.
+- `dotnet build --no-restore -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings, 0 errors.
+- `git diff --check`: passed with normal Windows line-ending warnings only.
+
+Still not complete MVP:
+
+- The primitive catalog is still narrow and needs to become a richer planner tool/form library.
+- Live model output remains nondeterministic; one later Iceland retry blocked at fixed `invalid_manifest` after the accepted A/B proof. This is a valid sanitized block, but it shows quality/robustness still needs iteration.
+- The task rail is derived from validated task primitives, but not yet a complete strong-model task decomposition graph for all planning phases.
+- Blazor Server circuit instability remains unresolved. The app currently uses the server-side HTTP planning session boundary for browser live turns.
+- Real search, availability, booking, payment, and external side effects remain guarded or mocked. Booking/payment should remain mocked until explicit approval and provider safety gates exist.

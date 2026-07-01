@@ -148,3 +148,31 @@ Required correction:
 - send actual answer values and updated harness graph state to the second provider turn;
 - render cards/decks as visual wrappers over the same primitive answer contract used by normal forms;
 - prove in real browser testing that two different prompts produce different visible validated content.
+
+## Sprint 023 Result
+
+Sprint 023 corrected the Sprint 022 semantic failure. The live end-user planner is no longer just a static/generic form shell after a provider call.
+
+What is now true:
+
+- The server-side planner model request receives the transient raw prompt plus the sanitized manifest/context it needs to author a turn-specific primitive form.
+- Harness validation preserves safe model-authored primitive labels, prompts, help text, options, defaults, task refs, tool context refs, mood/media tokens, and renderer hints.
+- UI rendering derives live forms/tasks/timeline state from validated primitive data rather than hard-coded live adapter defaults.
+- Browser card/deck answers and normal form answers submit the same primitive answer DTO shape.
+- Submitted answer values are retained in server-side planning context and sent into the second provider turn.
+- OpenAI live browser smoke proved different starter prompts produce different visible validated primitive structures, and the Osaka food-first flow reached a second live provider turn with answer-derived context.
+
+What was proven:
+
+- Prompt A, Osaka food-first/no-temples, produced fields for destination, temple exclusion confirmation, late-night ramen preferences, and market preferences.
+- Prompt B, Iceland quiet-trip, produced a different field/task structure for destination, start date, trip focus, and quiet-trip confirmation.
+- Submitting Osaka answers produced a second accepted validated form for additional food preferences, with the second prompt grounded in Japan, late-night ramen, and market snacks.
+- Raw prompt text, provider payloads, keys, credentials, approval tokens, hold/booking/payment refs, candidate display sentinels, and secret sentinels were absent from observed DOM/API artifacts.
+
+What is still not an MVP:
+
+- The primitive library is still small; it needs more planner primitives, composite forms, validation patterns, and visual renderers.
+- The task decomposition layer is not yet a full strong-model-authored work graph.
+- Live provider behavior is still probabilistic; malformed or invalid manifests can still happen and are surfaced as sanitized blocks.
+- The Blazor Server circuit remains unstable in the in-app browser. Sprint 023 continued using the server-side HTTP planning session transport for live turns instead of repairing SignalR.
+- Search/web/context providers and booking/availability/payment integrations are not connected end to end. Booking and payment should stay mocked until approval and safety boundaries are mature.
