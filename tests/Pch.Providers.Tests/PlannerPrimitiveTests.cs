@@ -133,6 +133,7 @@ public sealed class PlannerPrimitiveTests
     [InlineData("timeout", "planner_model_timeout", "provider_timeout")]
     [InlineData("empty", "planner_model_empty_content", "provider_empty_content")]
     [InlineData("schema", "planner_model_schema_invalid", "provider_schema_invalid")]
+    [InlineData("rate", "planner_model_rate_limited", "provider_rate_limited")]
     [InlineData("unavailable", "planner_model_provider_unavailable", "provider_http_5xx")]
     public async Task ProviderFailuresMapToFixedOutcomes(
         string failure,
@@ -146,6 +147,7 @@ public sealed class PlannerPrimitiveTests
             "timeout" => new ThrowingCompletionClient(new ProviderUnavailableException("openrouter", "OpenRouter request timed out.")),
             "empty" => new ThrowingCompletionClient(new ProviderEmptyResponseException("openrouter", $"{RawProviderPayload} empty")),
             "schema" => new StaticCompletionClient("{\"manifestId\":\"manifest-intake\"}"),
+            "rate" => new ThrowingCompletionClient(new ProviderUnavailableException("openrouter", $"{RawException} rate", 429)),
             _ => new ThrowingCompletionClient(new ProviderUnavailableException("openrouter", $"{RawException} unavailable", 500))
         };
         var creditClient = failure == "credit"
