@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Pch.Core;
 
 namespace Pch.Harness;
@@ -8,6 +11,7 @@ public sealed class PlannerToolManifestCompiler
 
     private const int MaxPrimitiveCount = 12;
     private const int MaxTextLength = 160;
+    private const int MaxOptionCount = 8;
 
     private readonly PlanningEditImpactAnalyzer _graph = new();
 
@@ -50,7 +54,17 @@ public sealed class PlannerToolManifestCompiler
             MaxPrimitiveCount: MaxPrimitiveCount,
             MaxTextLength: MaxTextLength,
             AllowsApproval: currentStage is HarnessStage.ApprovalQueue,
-            AllowsSpend: false);
+            AllowsSpend: false)
+        {
+            MaxOptionCount = MaxOptionCount,
+            AllowedToolIds =
+            [
+                PlannerPrimitiveIds.ToolSearchRequest,
+                PlannerPrimitiveIds.ToolGapRequest,
+                PlannerPrimitiveIds.ToolContextReference
+            ],
+            AllowedToolContextRefs = ToolContextRefs(session, taskIds)
+        };
     }
 
     public string CurrentGraphRevision(TripSession session)
@@ -66,8 +80,11 @@ public sealed class PlannerToolManifestCompiler
             Definition(PlannerPrimitiveIds.AssistantMessage, "assistant-message", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
             Definition(PlannerPrimitiveIds.EvidenceStrip, "evidence-strip", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false),
             Definition(PlannerPrimitiveIds.TimelineAnchor, "timeline-anchor", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.TaskList, "task-list", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.TaskGroup, "task-group", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
             Definition(PlannerPrimitiveIds.ToolSearchRequest, "tool-search-request", stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
-            Definition(PlannerPrimitiveIds.ToolGapRequest, "tool-gap-request", stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false)
+            Definition(PlannerPrimitiveIds.ToolGapRequest, "tool-gap-request", stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.ToolContextReference, "tool-context-reference", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false)
         };
 
         shared.AddRange(stage switch
@@ -165,6 +182,18 @@ public sealed class PlannerToolManifestCompiler
             "/constraints/budget"
         ];
     }
+
+    private static IReadOnlyList<string> ToolContextRefs(TripSession session, IReadOnlyList<string> taskIds)
+    {
+        return taskIds
+            .Concat(session.EvidenceTrace.Items.Select(item => item.EvidenceId))
+            .Concat(session.MemoryDigest?.TraceReferences ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(value => value, StringComparer.Ordinal)
+            .Take(24)
+            .ToArray();
+    }
 }
 
 public sealed class PlannerPrimitiveValidator
@@ -182,7 +211,11 @@ public sealed class PlannerPrimitiveValidator
     public const string StaleGraphRevisionCode = "stale_graph_revision";
     public const string OwnershipInvalidCode = "ownership_invalid";
     public const string PrimitiveMetadataRedactedCode = "primitive_metadata_redacted";
+    public const string PrimitiveTextRedactedCode = "primitive_text_redacted";
     public const string ApprovalRequiredCode = "approval_required";
+    public const string ToolNotAllowedCode = "tool_not_allowed";
+    public const string PrimitiveOptionLimitExceededCode = "primitive_option_limit_exceeded";
+    public const string AnswerValueNotAllowedCode = "answer_value_not_allowed";
 
     private const int MaxTextLength = 160;
     private const int MaxRefs = 12;
@@ -239,6 +272,28 @@ public sealed class PlannerPrimitiveValidator
                 : validated.Any(primitive => RequiresAnswer(primitive.AnswerSchema))
                     ? AwaitingUserInputCode
                     : AcceptedCode;
+        var primitiveHash = HashValidatedTurn(validated);
+        var renderedPrimitiveIds = validated.Select(primitive => primitive.InstanceId).Distinct(StringComparer.Ordinal).Take(MaxRefs).ToArray();
+        var taskRailRefs = validated
+            .SelectMany(primitive => new[] { primitive.TaskId }.Where(id => !string.IsNullOrWhiteSpace(id)))
+            .Concat(validated.SelectMany(primitive => primitive.TaskReferences.Select(task => task.TaskId)))
+            .Select(SafeId)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxRefs)
+            .ToArray();
+        var answerIds = validated
+            .SelectMany(primitive => primitive.Answers.Keys.Select(key => $"{primitive.InstanceId}:{key}"))
+            .Select(SafeId)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxRefs)
+            .ToArray();
+        var toolContextRefs = validated
+            .SelectMany(primitive => primitive.ToolContextReferences)
+            .Concat(validated.SelectMany(primitive => primitive.Options.SelectMany(option => option.ToolContextReferences)))
+            .Concat(validated.SelectMany(primitive => primitive.TaskReferences.SelectMany(task => task.ToolContextReferences)))
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxRefs)
+            .ToArray();
         var view = new ValidatedTurnView(
             TurnId: $"validated-turn-{SafeId(proposal.ProposalId)}",
             SessionId: SafeId(session.SessionId),
@@ -246,10 +301,17 @@ public sealed class PlannerPrimitiveValidator
             Source: "live_provider_candidate",
             Code: code,
             Primitives: validated,
-            TaskRailItemRefs: validated.SelectMany(primitive => new[] { primitive.TaskId }.Where(id => !string.IsNullOrWhiteSpace(id))).Select(SafeId).Distinct(StringComparer.Ordinal).Take(MaxRefs).ToArray(),
+            TaskRailItemRefs: taskRailRefs,
             TimelineAnchorRefs: validated.Where(primitive => primitive.PrimitiveId == PlannerPrimitiveIds.TimelineAnchor).Select(primitive => primitive.InstanceId).Take(MaxRefs).ToArray(),
             EvidenceReferences: validated.SelectMany(primitive => primitive.EvidenceReferences).Distinct(StringComparer.Ordinal).Take(MaxRefs).ToArray(),
-            SanitizationStatus: "sanitized");
+            SanitizationStatus: "sanitized")
+        {
+            PrimitiveHash = primitiveHash,
+            ProviderOutputHash = primitiveHash,
+            RenderedPrimitiveIds = renderedPrimitiveIds,
+            AnswerIds = answerIds,
+            ToolContextReferences = toolContextRefs
+        };
 
         return new(true, false, code, SummaryFor(code), view);
     }
@@ -265,6 +327,8 @@ public sealed class PlannerPrimitiveValidator
             || manifest.AllowedTaskIds is null
             || manifest.AllowedMoodTokens is null
             || manifest.AllowedMediaTokens is null
+            || manifest.AllowedToolIds is null
+            || manifest.AllowedToolContextRefs is null
             || manifest.SchemaVersion != PlannerToolManifestCompiler.ManifestSchemaVersion
             || string.IsNullOrWhiteSpace(manifest.ManifestId)
             || string.IsNullOrWhiteSpace(manifest.GraphRevision)
@@ -309,7 +373,18 @@ public sealed class PlannerPrimitiveValidator
             || primitive.AnswerSchema is null
             || primitive.Answers is null
             || primitive.EvidenceReferences is null
-            || primitive.DependencyReferences is null)
+            || primitive.DependencyReferences is null
+            || primitive.Options is null
+            || primitive.Defaults is null
+            || primitive.TaskReferences is null
+            || primitive.ToolContextReferences is null
+            || primitive.ValidationRules is null
+            || primitive.RendererHints is null
+            || primitive.Options.Any(option => option is null)
+            || primitive.Defaults.Any(item => item is null)
+            || primitive.TaskReferences.Any(item => item is null)
+            || primitive.ValidationRules.Any(item => item is null)
+            || primitive.RendererHints.Any(item => item is null))
         {
             return Reject(InvalidManifestCode, "Planner primitive failed validation.");
         }
@@ -332,7 +407,14 @@ public sealed class PlannerPrimitiveValidator
         }
 
         if (primitive.Label?.Length > manifest.MaxTextLength
-            || primitive.Prompt?.Length > manifest.MaxTextLength)
+            || primitive.Prompt?.Length > manifest.MaxTextLength
+            || primitive.HelpText?.Length > manifest.MaxTextLength
+            || primitive.Options.Any(option => option.Label?.Length > manifest.MaxTextLength || option.Summary?.Length > manifest.MaxTextLength)
+            || primitive.Defaults.Any(item => item.Value?.Length > manifest.MaxTextLength)
+            || primitive.TaskReferences.Any(item => item.Label?.Length > manifest.MaxTextLength)
+            || primitive.ToolContextReferences.Count > MaxRefs
+            || primitive.ValidationRules.Count > MaxRefs
+            || primitive.RendererHints.Count > MaxRefs)
         {
             return Reject(InvalidManifestCode, "Planner primitive failed validation.");
         }
@@ -342,12 +424,37 @@ public sealed class PlannerPrimitiveValidator
             || Unsafe(primitive.RendererKey)
             || Unsafe(primitive.Label)
             || Unsafe(primitive.Prompt)
+            || Unsafe(primitive.HelpText)
             || Unsafe(primitive.MoodToken)
             || Unsafe(primitive.MediaToken)
             || LooksLikeRawMediaOrCss(primitive.MediaToken)
-            || primitive.Answers.Any(pair => Unsafe(pair.Key) || Unsafe(pair.Value)))
+            || primitive.Answers.Any(pair => Unsafe(pair.Key) || Unsafe(pair.Value))
+            || HasUnsafeDynamicContent(primitive))
         {
-            return Reject(PrimitiveMetadataRedactedCode, "Planner primitive metadata was unsafe.");
+            return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+        }
+
+        if (primitive.PrimitiveId is PlannerPrimitiveIds.ToolSearchRequest or PlannerPrimitiveIds.ToolGapRequest or PlannerPrimitiveIds.ToolContextReference
+            && !manifest.AllowedToolIds.Contains(primitive.PrimitiveId, StringComparer.Ordinal))
+        {
+            return Reject(ToolNotAllowedCode, "Planner primitive tool request is not allowed.");
+        }
+
+        if (primitive.Options.Count > manifest.MaxOptionCount)
+        {
+            return Reject(PrimitiveOptionLimitExceededCode, "Planner primitive option count exceeded the allowed maximum.");
+        }
+
+        var dynamicOptionValidation = ValidateDynamicOptions(manifest, definition, primitive);
+        if (!dynamicOptionValidation.IsAccepted)
+        {
+            return dynamicOptionValidation;
+        }
+
+        var dynamicReferenceValidation = ValidateDynamicReferences(manifest, primitive);
+        if (!dynamicReferenceValidation.IsAccepted)
+        {
+            return dynamicReferenceValidation;
         }
 
         if (!string.IsNullOrWhiteSpace(primitive.FieldPath)
@@ -405,6 +512,18 @@ public sealed class PlannerPrimitiveValidator
             return Reject(AnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
         }
 
+        if (!AnswerValuesAllowed(primitive))
+        {
+            return Reject(AnswerValueNotAllowedCode, "Planner primitive answer value is not allowed.");
+        }
+
+        var cleanOptions = CleanOptions(primitive.Options, manifest).ToArray();
+        var cleanDefaults = CleanDefaults(primitive.Defaults, manifest).ToArray();
+        var cleanTasks = CleanTasks(primitive.TaskReferences, manifest).ToArray();
+        var cleanToolRefs = CleanRefs(primitive.ToolContextReferences).ToArray();
+        var cleanRules = CleanRules(primitive.ValidationRules, manifest).ToArray();
+        var cleanHints = CleanHints(primitive.RendererHints, manifest).ToArray();
+
         return new(
             true,
             AcceptedCode,
@@ -426,7 +545,128 @@ public sealed class PlannerPrimitiveValidator
                     Options = primitive.AnswerSchema.Options.Select(SafeId).Distinct(StringComparer.Ordinal).Take(MaxRefs).ToArray()
                 },
                 primitive.Answers.ToDictionary(pair => SafeId(pair.Key), pair => SafeNullableText(pair.Value, manifest.MaxTextLength), StringComparer.Ordinal),
-                CleanRefs(primitive.EvidenceReferences)));
+                CleanRefs(primitive.EvidenceReferences))
+            {
+                HelpText = SafeNullableText(primitive.HelpText, manifest.MaxTextLength),
+                Options = cleanOptions,
+                Defaults = cleanDefaults,
+                TaskReferences = cleanTasks,
+                ToolContextReferences = cleanToolRefs,
+                ValidationRules = cleanRules,
+                RendererHints = cleanHints
+            });
+    }
+
+    private static PlannerPrimitiveValidation ValidateDynamicOptions(
+        PlannerToolManifest manifest,
+        PlannerPrimitiveDefinition definition,
+        PlannerPrimitiveInstance primitive)
+    {
+        var optionIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var option in primitive.Options)
+        {
+            if (option is null
+                || string.IsNullOrWhiteSpace(option.OptionId)
+                || string.IsNullOrWhiteSpace(option.Label)
+                || Unsafe(option.OptionId)
+                || Unsafe(option.Label)
+                || Unsafe(option.Summary)
+                || Unsafe(option.MoodToken)
+                || Unsafe(option.MediaToken)
+                || LooksLikeRawMediaOrCss(option.MediaToken)
+                || option.EvidenceReferences is null
+                || option.ToolContextReferences is null
+                || !optionIds.Add(option.OptionId))
+            {
+                return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(option.MoodToken)
+                && (!definition.SupportsMood || !manifest.AllowedMoodTokens.Contains(option.MoodToken, StringComparer.Ordinal)))
+            {
+                return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(option.MediaToken)
+                && (!definition.SupportsMedia || !manifest.AllowedMediaTokens.Contains(option.MediaToken, StringComparer.Ordinal)))
+            {
+                return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+            }
+
+            if (option.ToolContextReferences.Any(reference => !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
+            {
+                return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+            }
+        }
+
+        return PlannerPrimitiveValidation.Accepted();
+    }
+
+    private static PlannerPrimitiveValidation ValidateDynamicReferences(PlannerToolManifest manifest, PlannerPrimitiveInstance primitive)
+    {
+        foreach (var item in primitive.Defaults)
+        {
+            if (item is null
+                || string.IsNullOrWhiteSpace(item.FieldKey)
+                || Unsafe(item.FieldKey)
+                || Unsafe(item.Value))
+            {
+                return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+            }
+        }
+
+        foreach (var task in primitive.TaskReferences)
+        {
+            if (task is null
+                || string.IsNullOrWhiteSpace(task.TaskId)
+                || string.IsNullOrWhiteSpace(task.Label)
+                || Unsafe(task.TaskId)
+                || Unsafe(task.Label)
+                || Unsafe(task.GroupId)
+                || task.EvidenceReferences is null
+                || task.ToolContextReferences is null)
+            {
+                return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+            }
+
+            if (!manifest.AllowedTaskIds.Contains(task.TaskId, StringComparer.Ordinal))
+            {
+                return Reject(OwnershipInvalidCode, "Planner primitive references an unknown task.");
+            }
+
+            if (task.ToolContextReferences.Any(reference => !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
+            {
+                return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+            }
+        }
+
+        if (primitive.ToolContextReferences.Any(reference => Unsafe(reference) || !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
+        {
+            return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+        }
+
+        if (primitive.ValidationRules.Any(rule => rule is null
+                || string.IsNullOrWhiteSpace(rule.RuleId)
+                || string.IsNullOrWhiteSpace(rule.Kind)
+                || string.IsNullOrWhiteSpace(rule.Code)
+                || Unsafe(rule.RuleId)
+                || Unsafe(rule.Kind)
+                || Unsafe(rule.Value)
+                || Unsafe(rule.Code)))
+        {
+            return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+        }
+
+        if (primitive.RendererHints.Any(hint => hint is null
+                || string.IsNullOrWhiteSpace(hint.Key)
+                || Unsafe(hint.Key)
+                || Unsafe(hint.Value)
+                || LooksLikeRawMediaOrCss(hint.Value)))
+        {
+            return Reject(PrimitiveTextRedactedCode, "Planner primitive text was unsafe.");
+        }
+
+        return PlannerPrimitiveValidation.Accepted();
     }
 
     private static bool AnswerSchemaMatches(PlannerAnswerSchema expected, PlannerAnswerSchema actual)
@@ -454,6 +694,36 @@ public sealed class PlannerPrimitiveValidator
             PlannerAnswerSchemaKinds.NumberRange => HasValue(answers, "min") && HasValue(answers, "max"),
             _ => false
         };
+    }
+
+    private static bool AnswerValuesAllowed(PlannerPrimitiveInstance primitive)
+    {
+        var optionIds = primitive.Options.Select(option => option.OptionId).ToHashSet(StringComparer.Ordinal);
+        if (optionIds.Count == 0)
+        {
+            return true;
+        }
+
+        var selectedValues = primitive.AnswerSchema.Kind switch
+        {
+            PlannerAnswerSchemaKinds.SingleSelect => Values(primitive.Answers, "selected"),
+            PlannerAnswerSchemaKinds.MultiSelect => Values(primitive.Answers, "selected"),
+            PlannerAnswerSchemaKinds.RankedChoice => Values(primitive.Answers, "ranked"),
+            PlannerAnswerSchemaKinds.Confirmation => Values(primitive.Answers, "value"),
+            _ => []
+        };
+
+        return selectedValues.Count == 0 || selectedValues.All(value => optionIds.Contains(value));
+    }
+
+    private static IReadOnlyList<string> Values(IReadOnlyDictionary<string, string?> answers, string key)
+    {
+        if (!answers.TryGetValue(key, out var raw) || string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     private static bool RequiresAnswer(PlannerAnswerSchema schema)
@@ -507,6 +777,57 @@ public sealed class PlannerPrimitiveValidator
             ToolGapReviewRequiredCode => "Planner reported a tool gap for review without mutation.",
             _ => "Planner primitive turn accepted."
         };
+    }
+
+    private static IEnumerable<PlannerPrimitiveOption> CleanOptions(IEnumerable<PlannerPrimitiveOption> options, PlannerToolManifest manifest)
+    {
+        return options
+            .Take(manifest.MaxOptionCount)
+            .Select(option => new PlannerPrimitiveOption(
+                SafeId(option.OptionId),
+                SafeText(option.Label, manifest.MaxTextLength),
+                SafeNullableText(option.Summary, manifest.MaxTextLength),
+                SafeNullableText(option.MoodToken, manifest.MaxTextLength),
+                SafeNullableText(option.MediaToken, manifest.MaxTextLength),
+                CleanRefs(option.EvidenceReferences),
+                CleanRefs(option.ToolContextReferences)));
+    }
+
+    private static IEnumerable<PlannerPrimitiveDefault> CleanDefaults(IEnumerable<PlannerPrimitiveDefault> defaults, PlannerToolManifest manifest)
+    {
+        return defaults
+            .Take(MaxRefs)
+            .Select(item => new PlannerPrimitiveDefault(SafeId(item.FieldKey), SafeNullableText(item.Value, manifest.MaxTextLength)));
+    }
+
+    private static IEnumerable<PlannerTaskReference> CleanTasks(IEnumerable<PlannerTaskReference> tasks, PlannerToolManifest manifest)
+    {
+        return tasks
+            .Take(MaxRefs)
+            .Select(task => new PlannerTaskReference(
+                SafeId(task.TaskId),
+                SafeText(task.Label, manifest.MaxTextLength),
+                SafeNullableText(task.GroupId, manifest.MaxTextLength),
+                CleanRefs(task.EvidenceReferences),
+                CleanRefs(task.ToolContextReferences)));
+    }
+
+    private static IEnumerable<PlannerPrimitiveValidationRule> CleanRules(IEnumerable<PlannerPrimitiveValidationRule> rules, PlannerToolManifest manifest)
+    {
+        return rules
+            .Take(MaxRefs)
+            .Select(rule => new PlannerPrimitiveValidationRule(
+                SafeId(rule.RuleId),
+                SafeId(rule.Kind),
+                SafeNullableText(rule.Value, manifest.MaxTextLength),
+                SafeId(rule.Code)));
+    }
+
+    private static IEnumerable<PlannerRendererHint> CleanHints(IEnumerable<PlannerRendererHint> hints, PlannerToolManifest manifest)
+    {
+        return hints
+            .Take(MaxRefs)
+            .Select(hint => new PlannerRendererHint(SafeId(hint.Key), SafeNullableText(hint.Value, manifest.MaxTextLength)));
     }
 
     private static IReadOnlyList<string> CleanRefs(IEnumerable<string>? values)
@@ -589,6 +910,50 @@ public sealed class PlannerPrimitiveValidator
             || value.Contains("{", StringComparison.Ordinal)
             || value.Contains("}", StringComparison.Ordinal)
             || value.Contains("javascript:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasUnsafeDynamicContent(PlannerPrimitiveInstance primitive)
+    {
+        return primitive.Options.Any(option => option is null
+                || Unsafe(option.OptionId)
+                || Unsafe(option.Label)
+                || Unsafe(option.Summary)
+                || Unsafe(option.MoodToken)
+                || Unsafe(option.MediaToken)
+                || LooksLikeRawMediaOrCss(option.MediaToken)
+                || option.EvidenceReferences is null
+                || option.EvidenceReferences.Any(Unsafe)
+                || option.ToolContextReferences is null
+                || option.ToolContextReferences.Any(Unsafe))
+            || primitive.Defaults.Any(item => item is null || Unsafe(item.FieldKey) || Unsafe(item.Value))
+            || primitive.TaskReferences.Any(task => task is null
+                || Unsafe(task.TaskId)
+                || Unsafe(task.Label)
+                || Unsafe(task.GroupId)
+                || task.EvidenceReferences is null
+                || task.EvidenceReferences.Any(Unsafe)
+                || task.ToolContextReferences is null
+                || task.ToolContextReferences.Any(Unsafe))
+            || primitive.ToolContextReferences.Any(Unsafe)
+            || primitive.ValidationRules.Any(rule => rule is null || Unsafe(rule.RuleId) || Unsafe(rule.Kind) || Unsafe(rule.Value) || Unsafe(rule.Code))
+            || primitive.RendererHints.Any(hint => hint is null || Unsafe(hint.Key) || Unsafe(hint.Value) || LooksLikeRawMediaOrCss(hint.Value));
+    }
+
+    internal static string HashValidatedTurn(IReadOnlyList<ValidatedPrimitiveView> primitives)
+    {
+        var payload = JsonSerializer.Serialize(primitives.Select(primitive => new
+        {
+            primitive.InstanceId,
+            primitive.PrimitiveId,
+            primitive.FieldPath,
+            primitive.MoodToken,
+            primitive.MediaToken,
+            Options = primitive.Options.Select(option => option.OptionId).OrderBy(id => id, StringComparer.Ordinal),
+            Tasks = primitive.TaskReferences.Select(task => task.TaskId).OrderBy(id => id, StringComparer.Ordinal),
+            ToolContextReferences = primitive.ToolContextReferences.OrderBy(id => id, StringComparer.Ordinal),
+            Answers = primitive.Answers.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+        }));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
     }
 }
 

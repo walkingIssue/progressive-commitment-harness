@@ -22,6 +22,7 @@ type MediaAsset = {
 
 type CandidateOption = {
   id: string;
+  candidateId?: string;
   title: string;
   mood: string;
   tone: string;
@@ -351,12 +352,13 @@ function appendTurn(
   return article;
 }
 
-async function startLivePlanningViaHttp(): Promise<void> {
+async function startLivePlanningViaHttp(promptText?: string): Promise<void> {
   if (pendingHttpPlanning) return;
 
   pendingHttpPlanning = true;
   try {
     const prompt = document.querySelector<HTMLTextAreaElement>("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
+    const capturedPrompt = promptText ?? prompt?.value ?? "";
     setRootState({
       "data-browser-transport": "http_api",
       "data-provider-request-state": "attempted",
@@ -367,7 +369,7 @@ async function startLivePlanningViaHttp(): Promise<void> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        prompt: prompt?.value ?? "",
+        prompt: capturedPrompt,
         selectedModelRole: selectedModelRole(),
       }),
     });
@@ -387,19 +389,23 @@ async function startLivePlanningViaHttp(): Promise<void> {
   }
 }
 
-async function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string): Promise<void> {
+async function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string, selectedCandidateId?: string): Promise<void> {
   const sessionId = root()?.dataset.httpSessionId;
   if (!sessionId || pendingHttpPlanning) return;
 
   pendingHttpPlanning = true;
   try {
     const fieldValues: Record<string, string> = {};
-    document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-http-primitive-turn] [data-field-input]").forEach((field) => {
-      const fieldId = field.dataset.fieldInput;
-      if (fieldId) {
-        fieldValues[fieldId] = field.value;
-      }
-    });
+    if (selectedCandidateId) {
+      fieldValues.candidate_id = selectedCandidateId;
+    } else {
+      document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-http-primitive-turn] [data-field-input]").forEach((field) => {
+        const fieldId = field.dataset.fieldInput;
+        if (fieldId) {
+          fieldValues[fieldId] = field.value;
+        }
+      });
+    }
     setRootState({
       "data-browser-transport": "http_api",
       "data-provider-request-state": "second_turn_attempted",
@@ -478,6 +484,8 @@ function renderApiTurn(turn: PlanningApiTurn | null | undefined): void {
   for (const primitive of turn.primitives) {
     if (primitive.rendererKey === "form") {
       panel.insertAdjacentHTML("beforeend", formPrimitiveHtml(turn, primitive));
+    } else if (primitive.rendererKey === "candidate-deck") {
+      panel.insertAdjacentHTML("beforeend", candidateDeckPrimitiveHtml(turn, primitive));
     } else {
       panel.insertAdjacentHTML("beforeend", primitiveMessageHtml(turn, primitive));
     }
@@ -507,6 +515,50 @@ function formPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitiv
         <h2>${escapeHtml(primitive.title)}</h2>
         ${fields}
         <button type="button" class="secondary-button primitive-server-submit" data-http-answer-submit="true" data-answer-submit="${escapeHtml(primitive.instanceId)}" aria-label="Submit validated primitive form">Submit answers</button>
+      </section>
+    </article>`;
+}
+
+function candidateDeckPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string {
+  const candidatesHtml = primitive.candidates.map((candidate) => {
+    const candidateId = candidate.candidateId ?? candidate.id;
+    return `
+    <article class="candidate-card candidate-card--${escapeHtml(candidate.mood)}"
+      data-candidate-id="${escapeHtml(candidateId)}"
+      data-candidate-category="validated-primitive"
+      data-candidate-mood="${escapeHtml(candidate.mood)}"
+      data-candidate-state="available"
+      data-evidence-ids="${escapeHtml(primitive.evidenceIds.join(","))}">
+      <span>${escapeHtml(candidate.mood)}</span>
+      <h3>${escapeHtml(candidate.title)}</h3>
+      <p>${escapeHtml(candidate.summary)}</p>
+      <div class="candidate-actions">
+        <button type="button"
+          data-http-answer-submit="true"
+          data-answer-submit="${escapeHtml(primitive.instanceId)}"
+          data-answer-choice="${escapeHtml(candidateId)}"
+          data-choice-action="select"
+          data-candidate-id="${escapeHtml(candidateId)}"
+          aria-label="Select ${escapeHtml(candidate.title)}">Select</button>
+      </div>
+    </article>`;
+  }).join("");
+
+  return `<article class="work-bubble primitive-work"
+      data-http-primitive-turn="${escapeHtml(turn.turnId)}"
+      data-turn-id="${escapeHtml(turn.turnId)}"
+      data-primitive-renderer="candidate-deck"
+      data-primitive-id="${escapeHtml(primitive.primitiveId)}"
+      data-primitive-instance-id="${escapeHtml(primitive.instanceId)}"
+      data-primitive-state="${escapeHtml(primitive.state)}"
+      data-provider-outcome="${escapeHtml(turn.providerOutcome)}"
+      data-validated-turn-source="${escapeHtml(turn.source)}"
+      data-validated-turn-outcome="${escapeHtml(turn.outcomeCode)}"
+      data-raw-absence-state="${escapeHtml(turn.rawAbsenceState)}">
+      <section class="primitive-candidate-deck" data-validated-candidate-deck="${escapeHtml(primitive.instanceId)}">
+        <p class="work-lead">${escapeHtml(primitive.prompt)}</p>
+        <h2>${escapeHtml(primitive.title)}</h2>
+        <div class="candidate-deck__track" data-choice-set-id="${escapeHtml(primitive.instanceId)}">${candidatesHtml}</div>
       </section>
     </article>`;
 }
@@ -627,6 +679,7 @@ function ensureWorkObjects(): void {
 
 function sendPrompt(): void {
   const prompt = document.querySelector<HTMLTextAreaElement>("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
+  const promptValue = prompt?.value ?? "";
   const promptLength = prompt?.value.trim().length ?? 0;
   const role = selectedModelRole();
   const liveSelected = role !== "deterministic-offline";
@@ -634,7 +687,7 @@ function sendPrompt(): void {
   const liveConfigured = liveSelected && (livePreflightState === "preflight_ready" || livePreflightState === "preflight_passed");
   const liveFallbackOutcome = liveConfigured ? "browser_circuit_disconnected" : "live_preflight_disabled";
   if (liveSelected) {
-    void startLivePlanningViaHttp();
+    void startLivePlanningViaHttp(promptValue);
     return;
   }
 
@@ -838,10 +891,11 @@ function handleChatInteraction(target: EventTarget | null): void {
   if (action.sendAction === "planner" || action.sendAction === "planner-drawer" || action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
     const beforeFinalState = root()?.dataset.finalState;
     const beforeTurnCount = transcript()?.dataset.turnCount;
+    const capturedPrompt = document.querySelector<HTMLTextAreaElement>("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']")?.value ?? "";
     if (selectedModelRole() !== "deterministic-offline") {
       scheduleHttpTransport(
         () => root()?.dataset.finalState === beforeFinalState || transcript()?.dataset.turnCount === beforeTurnCount || root()?.dataset.providerOutcome === "planner_model_pending",
-        startLivePlanningViaHttp,
+        () => startLivePlanningViaHttp(capturedPrompt),
       );
     } else {
       scheduleFallback(
@@ -861,9 +915,10 @@ function handleChatInteraction(target: EventTarget | null): void {
 
   const answerSubmit = closestAction(target, "[data-answer-submit]")?.dataset.answerSubmit;
   if (answerSubmit) {
+    const selectedChoice = closestAction(target, "[data-answer-choice]")?.dataset.answerChoice;
     scheduleHttpTransport(
       () => root()?.dataset.providerRequestState !== "second_turn_attempted",
-      () => submitPrimitiveAnswerViaHttp(answerSubmit),
+      () => submitPrimitiveAnswerViaHttp(answerSubmit, selectedChoice),
     );
   }
 

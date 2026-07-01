@@ -100,11 +100,11 @@
                                OnSubmitAnswer="SubmitPrimitiveAnswer"
                                OnSelectCandidate="SelectCandidate"
                                OnDeferCandidate="DeferCandidate" />
-            @if (CurrentTurn.Primitives.Any(primitive => primitive.RendererKey == "form"))
+            @if (CurrentTurn.Primitives.FirstOrDefault(primitive => primitive.RendererKey == "form") is { } currentForm)
             {
                 <button type="button"
                         class="secondary-button primitive-server-submit"
-                        data-answer-submit="primitive-trip-basics-form"
+                        data-answer-submit="@currentForm.InstanceId"
                         aria-label="Submit validated primitive form"
                         @onclick="SubmitCurrentPrimitiveAnswer">
                     Submit answers

@@ -10,6 +10,7 @@ type MediaAsset = {
 };
 type CandidateOption = {
     id: string;
+    candidateId?: string;
     title: string;
     mood: string;
     tone: string;
@@ -101,11 +102,12 @@ declare function setRootState(attrs: Record<string, string>): void;
 declare function selectedModelRole(): string;
 declare function setModelRole(role: string): void;
 declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
-declare function startLivePlanningViaHttp(): Promise<void>;
-declare function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string): Promise<void>;
+declare function startLivePlanningViaHttp(promptText?: string): Promise<void>;
+declare function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string, selectedCandidateId?: string): Promise<void>;
 declare function applyPlanningApiResponse(response: PlanningApiResponse, transport: string): void;
 declare function renderApiTurn(turn: PlanningApiTurn | null | undefined): void;
 declare function formPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
+declare function candidateDeckPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
 declare function primitiveMessageHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
 declare function candidateCard(candidate: (typeof candidates)[number], state?: string): string;
 declare function timelineItem(id: string, mode: string, kind: string, state: string, title: string, summary: string, originTurnId: string, media: MediaAsset, attrs?: string): string;

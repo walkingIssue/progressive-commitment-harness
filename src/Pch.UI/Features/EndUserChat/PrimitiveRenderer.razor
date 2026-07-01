@@ -30,10 +30,16 @@
                         {
                             <OptionCard Candidate="candidate"
                                         IsActive="true"
-                                        OnSelect="OnSelectCandidate"
-                                        OnDefer="OnDeferCandidate" />
+                                        OnSelect="candidateId => SubmitCandidateAnswer(primitive, candidateId)"
+                                        OnDefer="candidateId => SubmitCandidateAnswer(primitive, candidateId)" />
                         }
                     </div>
+                </section>
+                break;
+            case "assistant-message":
+                <section class="primitive-assistant-message" data-assistant-message-primitive="@primitive.InstanceId">
+                    <p class="work-lead">@primitive.Title</p>
+                    <p>@primitive.Prompt</p>
                 </section>
                 break;
             case "provider-failure":
@@ -69,4 +75,19 @@
 
     [Parameter, EditorRequired]
     public EventCallback<string> OnDeferCandidate { get; set; }
+
+    private Task SubmitCandidateAnswer(ValidatedPrimitive primitive, string candidateId)
+    {
+        var answer = new PrimitiveAnswerDto(
+            Turn.SessionId,
+            Turn.TurnId,
+            Turn.GraphRevision,
+            primitive.InstanceId,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["candidate_id"] = candidateId
+            });
+
+        return OnSubmitAnswer.InvokeAsync(answer);
+    }
 }

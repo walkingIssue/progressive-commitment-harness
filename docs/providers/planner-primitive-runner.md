@@ -12,9 +12,10 @@ This lane remains dependency-light:
 Provider-local shapes:
 
 - `PlannerToolManifestMirror` carries manifest id/version, graph revision, session id, stage, allowed primitive definitions, allowed field paths, mood tokens, and max primitive count.
-- `PlannerModelRequest` carries run/turn ids, manifest mirror, locale, optional prompt digest, and runtime-only raw prompt text marked `JsonIgnore`.
-- `PlannerModelResult` carries output kind, primitive invocations, repair status, response length, duration, and accepted provider/model/request metadata.
-- `SanitizedPlannerModelLogRow` carries only fixed outcomes, safe ids, manifest version, primitive ids/counts, repair flag, timing, response length, and accepted provider metadata.
+- `PlannerModelRequest` carries run/turn ids, manifest mirror, locale, optional prompt digest, runtime-only raw prompt text marked `JsonIgnore`, runtime submitted answer values, and provider-local context/tool refs.
+- `PlannerContextToolResult` is the provider-neutral context mirror for future web/search/booking sources. Sprint 023 uses only explicitly named `mock_context_provider` context and must not present it as live web/search.
+- `PlannerModelResult` carries output kind, primitive invocations, task invocations, repair status, prompt-specific status, response length, duration, and accepted provider/model/request metadata.
+- `SanitizedPlannerModelLogRow` carries only fixed outcomes, safe ids, manifest version, primitive ids/counts, task count, option count, repair flag, timing, response length, and accepted provider metadata.
 
 Supported output kinds:
 
@@ -26,9 +27,10 @@ Runner behavior:
 
 - key/config guard;
 - optional credit guard;
-- strict JSON schema request over `IModelCompletionClient`;
+- provider prompt/context builder over `IModelCompletionClient` that includes the transient raw prompt, stage, graph revision, allowed primitive manifest, allowed field paths, mood/media tokens, submitted answer values, and sanitized context refs;
 - one bounded repair attempt after malformed JSON or schema-invalid output;
 - unsupported primitive validation against manifest ids/kinds/renderers;
+- prompt-specific acceptance; generic/static output is blocked as schema invalid;
 - no paid-provider fallback unless explicitly configured by the caller and reported.
 
 Provider clients:
@@ -50,7 +52,10 @@ Fixed outcomes include:
 - `planner_model_empty_content`
 - `planner_model_malformed_json`
 - `planner_model_schema_invalid`
+- `planner_model_unsafe_text`
 - `planner_model_unsupported_primitive`
+- `planner_model_field_path_not_allowed`
+- `planner_model_tool_not_allowed`
 - `planner_model_provider_unavailable`
 
 Runtime primitive labels, prompt text, raw user prompt text, completions, request/response bodies, keys, credentials, approval tokens, hold references, booking/payment refs, and candidate-display values must not be persisted in committed artifacts.

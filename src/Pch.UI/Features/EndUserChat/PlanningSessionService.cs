@@ -26,8 +26,8 @@ public sealed class PlanningSessionService
     private readonly FormBuilder _formBuilder;
     private readonly Func<IReadOnlyDictionary<string, string?>> _environment;
     private readonly PlannerPrimitiveModelRunner? _plannerRunner;
-    private readonly PlannerToolManifestCompiler _manifestCompiler = new();
     private readonly PlannerPrimitiveValidator _validator = new();
+    private readonly PlannerTurnContextBuilder _turnContextBuilder = new();
 
     public PlanningSessionService(
         EndUserChatService chatService,
@@ -52,31 +52,95 @@ public sealed class PlanningSessionService
         string selectedModelRole,
         CancellationToken cancellationToken = default)
     {
+        var context = CreateContext();
+        return await StartAsync(context, prompt, selectedModelRole, cancellationToken).ConfigureAwait(false);
+    }
+
+    public PlanningSessionContext CreateContext(string? sessionId = null)
+    {
+        var mission = new TripMission(
+            "mission-live-planning",
+            "live_planning",
+            "unconfirmed_destination",
+            new DateOnly(2027, 1, 1),
+            new DateOnly(2027, 1, 7),
+            [new("traveler-live-user", "Traveler", null, [])],
+            [],
+            []);
+        var session = new TripSession(sessionId ?? $"session-live-planning-{Guid.NewGuid():N}", mission);
+        session.MoveTo(HarnessStage.Intake);
+        return new PlanningSessionContext(session);
+    }
+
+    public async Task<PlanningSessionUiResult> StartAsync(
+        PlanningSessionContext context,
+        string prompt,
+        string selectedModelRole,
+        CancellationToken cancellationToken = default)
+    {
         var normalizedRole = EndUserModelRoleSelection.Normalize(selectedModelRole);
-        var state = await _chatService.SendAsync(prompt, normalizedRole, cancellationToken).ConfigureAwait(false);
         if (normalizedRole == EndUserModelRoleSelection.DeterministicOffline)
         {
-            return new(state, null, null, []);
+            var deterministicState = await _chatService.SendAsync(prompt, normalizedRole, cancellationToken).ConfigureAwait(false);
+            return new(deterministicState, null, null, []);
         }
 
-        var session = CreatePrimitiveSession();
-        var manifest = _manifestCompiler.Compile(session, HarnessStage.Intake);
+        var state = _chatService.CreateInitialState(normalizedRole) with
+        {
+            Prompt = string.Empty,
+            Turns = AppendTurn(
+                _chatService.CreateInitialState(normalizedRole).Turns,
+                new(
+                    "turn-user-live-prompt",
+                    "user",
+                    "prompt",
+                    "submitted",
+                    $"Live prompt received with {Math.Max(0, prompt?.Length ?? 0)} characters. Raw prompt text is not persisted in UI state.",
+                    "prompt_received",
+                    "evidence-live-prompt",
+                    null))
+        };
+        var turnContext = _turnContextBuilder.Build(
+            context.HarnessContext,
+            new PlannerTurnContextRequest(context.Session.SessionId, prompt ?? string.Empty, "en-US", []));
+        var manifest = turnContext.Manifest;
         var model = await RunPlannerModelAsync(
             manifest,
-            prompt,
+            FirstTurnPrompt(turnContext, prompt ?? string.Empty),
+            turnContext,
             "run-end-user-planner-primitive",
             "turn-end-user-planner-primitive",
             "attempted",
             cancellationToken).ConfigureAwait(false);
         var canonical = model.Result is null
             ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
-            : ValidateModelResult(session, manifest, model.Result);
+            : ValidateModelResult(context.Session, manifest, model.Result);
+        _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, canonical);
         var turn = ProjectTurn(canonical, manifest, model.ProviderRequestState, model.ProviderOutcome);
+        context.LastTurn = turn;
+        context.AddTrace(PlanningSessionTraceEntry.FromModelRun(model, turn, null));
 
         return new(ApplyTurnState(state, turn), turn, null, []);
     }
 
     public async Task<PlanningSessionUiResult> SubmitAnswer(
+        EndUserChatState state,
+        EndUserValidatedTurnView turn,
+        PrimitiveAnswerDto answer,
+        CancellationToken cancellationToken = default)
+    {
+        var context = CreateContext(turn.SessionId);
+        if (turn.CanonicalTurn is not null)
+        {
+            _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, turn.CanonicalTurn);
+        }
+
+        context.LastTurn = turn;
+        return await SubmitAnswer(context, state, turn, answer, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<PlanningSessionUiResult> SubmitAnswer(
+        PlanningSessionContext context,
         EndUserChatState state,
         EndUserValidatedTurnView turn,
         PrimitiveAnswerDto answer,
@@ -121,19 +185,56 @@ public sealed class PlanningSessionService
                 errors);
         }
 
-        var session = CreatePrimitiveSession();
-        var manifest = _manifestCompiler.Compile(session, HarnessStage.Intake);
+        var answerApplication = context.HarnessContext.ApplyAnswers(new PlannerAnswerApplicationRequest(
+            context.Session.SessionId,
+            turn.GraphRevision,
+            ToPlannerPrimitiveAnswers(turn, form, answer)));
+        if (answerApplication.IsBlocked)
+        {
+            var blockedTurn = turn with
+            {
+                OutcomeCode = answerApplication.Code,
+                Primitives = MarkPrimitiveValidationBlocked(
+                    turn.Primitives,
+                    form.InstanceId,
+                    [new(answer.PrimitiveInstanceId, answerApplication.Code, answerApplication.Summary)])
+            };
+            return new(
+                state with
+                {
+                    FinalState = "answer_validation_failed",
+                    ErrorCode = "PCH_UI_PRIMITIVE_ANSWER_INVALID",
+                    BlockedReason = answerApplication.Code
+                },
+                blockedTurn,
+                answer,
+                [new(answer.PrimitiveInstanceId, answerApplication.Code, answerApplication.Summary)]);
+        }
+
+        context.RecordAnswer(answer);
+        context.Session.ApplyFormResponse(new FormResponse(
+            answer.PrimitiveInstanceId,
+            answer.FieldValues.ToDictionary(pair => pair.Key, pair => (string?)pair.Value, StringComparer.Ordinal),
+            DateTimeOffset.UtcNow));
+        var turnContext = _turnContextBuilder.Build(
+            context.HarnessContext,
+            new PlannerTurnContextRequest(context.Session.SessionId, string.Empty, "en-US", []));
+        var manifest = turnContext.Manifest;
         var model = await RunPlannerModelAsync(
             manifest,
-            SecondTurnPrompt(answer),
+            SecondTurnPrompt(turnContext),
+            turnContext,
             "run-end-user-planner-primitive-followup",
             "turn-end-user-planner-primitive-followup",
             "second_turn_attempted",
             cancellationToken).ConfigureAwait(false);
         var canonical = model.Result is null
             ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
-            : ValidateModelResult(session, manifest, model.Result);
+            : ValidateModelResult(context.Session, manifest, model.Result);
+        _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, canonical);
         var nextTurn = ProjectTurn(canonical, manifest, model.ProviderRequestState, model.ProviderOutcome);
+        context.LastTurn = nextTurn;
+        context.AddTrace(PlanningSessionTraceEntry.FromModelRun(model, nextTurn, answer));
         var answeredState = state with
         {
             Turns = AppendTurn(state.Turns, new(
@@ -187,20 +288,108 @@ public sealed class PlanningSessionService
     public EndUserChatState RequestDeterministicApproval(EndUserChatState state) =>
         _chatService.RequestApproval(state);
 
-    private static string SecondTurnPrompt(PrimitiveAnswerDto answer)
+    private static IReadOnlyList<PlannerPrimitiveAnswer> ToPlannerPrimitiveAnswers(
+        EndUserValidatedTurnView turn,
+        ValidatedPrimitive primitive,
+        PrimitiveAnswerDto answer)
     {
-        var fieldList = string.Join(
-            ",",
-            answer.FieldValues.Keys
-                .Where(key => !string.IsNullOrWhiteSpace(key))
-                .OrderBy(key => key, StringComparer.Ordinal)
+        if (turn.CanonicalTurn is null || primitive.RendererKey != "form")
+        {
+            var evidenceIds = primitive.EvidenceIds
+                .Concat(primitive.Fields.Select(field => field.EvidenceId).OfType<string>())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var selectedOptions = answer.FieldValues.Values
+                .Where(value => primitive.Candidates.Any(candidate => string.Equals(candidate.CandidateId, value, StringComparison.Ordinal)))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            return
+            [
+                new(
+                    $"answer-{answer.PrimitiveInstanceId}",
+                    answer.PrimitiveInstanceId,
+                    primitive.PrimitiveId,
+                    answer.FieldValues.ToDictionary(pair => pair.Key, pair => (string?)pair.Value, StringComparer.Ordinal),
+                    selectedOptions,
+                    evidenceIds)
+            ];
+        }
+
+        return primitive.Fields
+            .Select(field =>
+            {
+                var canonical = turn.CanonicalTurn.Primitives.FirstOrDefault(item => string.Equals(FieldId(item), field.FieldId, StringComparison.Ordinal))
+                    ?? turn.CanonicalTurn.Primitives.First(item => string.Equals(item.PrimitiveId, field.PrimitiveId, StringComparison.Ordinal));
+                var value = answer.FieldValues.TryGetValue(field.FieldId, out var submitted) ? submitted : field.Value;
+                return new PlannerPrimitiveAnswer(
+                    $"answer-{canonical.InstanceId}",
+                    canonical.InstanceId,
+                    canonical.PrimitiveId,
+                    new Dictionary<string, string?>(StringComparer.Ordinal)
+                    {
+                        [field.FieldId] = value
+                    },
+                    [],
+                    canonical.EvidenceReferences.Count > 0 ? canonical.EvidenceReferences : primitive.EvidenceIds);
+            })
+            .ToArray();
+    }
+
+    private static string FirstTurnPrompt(PlannerTurnContext context, string prompt)
+    {
+        var factSummary = string.Join(
+            "; ",
+            context.AcceptedFacts
+                .OrderBy(fact => fact.FieldPath, StringComparer.Ordinal)
+                .Take(8)
+                .Select(fact => $"{fact.FieldPath}={fact.Value}"));
+        return $"Create validated planning primitives for this user request: {prompt}. Prompt category: {context.PromptCategory}. Current accepted facts: {factSummary}.";
+    }
+
+    private static string SecondTurnPrompt(PlannerTurnContext context)
+    {
+        var values = string.Join(
+            "; ",
+            context.SubmittedAnswers
+                .SelectMany(answer => answer.Values.Select(pair => $"{answer.PrimitiveInstanceId}.{pair.Key}={pair.Value}"))
+                .OrderBy(value => value, StringComparer.Ordinal)
                 .Take(12));
-        return $"Continue from the validated primitive answer. Use only trusted server state and field ids: {fieldList}.";
+        var acceptedFacts = string.Join(
+            "; ",
+            context.AcceptedFacts
+                .OrderBy(fact => fact.FieldPath, StringComparer.Ordinal)
+                .Take(12)
+                .Select(fact => $"{fact.FieldPath}={fact.Value}"));
+        var turnSummaries = string.Join(
+            "; ",
+            context.ValidatedTurnSummaries
+                .Select(turn => $"{turn.TurnId}:{turn.Code}:{string.Join(',', turn.RenderedPrimitiveIds)}")
+                .Take(8));
+        return $"Continue from the validated primitive answer. Submitted values: {values}. Accepted facts: {acceptedFacts}. Prior validated turns: {turnSummaries}.";
+    }
+
+    private static string StateSummary(PlannerTurnContext context)
+    {
+        var facts = string.Join(
+            "; ",
+            context.AcceptedFacts
+                .OrderBy(fact => fact.FieldPath, StringComparer.Ordinal)
+                .Take(10)
+                .Select(fact => $"{fact.FieldPath}={fact.Value}"));
+        var answers = string.Join(
+            "; ",
+            context.SubmittedAnswers
+                .SelectMany(answer => answer.Values.Select(pair => $"{answer.PrimitiveInstanceId}.{pair.Key}={pair.Value}"))
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Take(10));
+        return $"stage={context.Stage}; graph={context.GraphRevision}; category={context.PromptCategory}; facts={facts}; answers={answers}";
     }
 
     private async Task<PlannerModelRun> RunPlannerModelAsync(
         PlannerToolManifest manifest,
         string prompt,
+        PlannerTurnContext turnContext,
         string runId,
         string turnId,
         string attemptedState,
@@ -219,7 +408,28 @@ public sealed class PlanningSessionService
             Manifest: ToProviderMirror(manifest),
             Locale: "en-US",
             RuntimePrompt: prompt,
-            PromptDigest: PromptDigest(prompt));
+            PromptDigest: PromptDigest(prompt))
+        {
+            SanitizedStateSummary = StateSummary(turnContext),
+            SubmittedAnswers = turnContext.SubmittedAnswers
+                .Select(answer => new PlannerSubmittedAnswer(
+                    answer.AnswerId,
+                    answer.Values.Keys.FirstOrDefault() ?? answer.PrimitiveInstanceId,
+                    answer.Values.Values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "submitted",
+                    answer.PrimitiveInstanceId))
+                .ToArray(),
+            ContextToolResults = turnContext.ToolContextReferences
+                .Select(reference => new PlannerContextToolResult(
+                    "mock_context_provider",
+                    reference.ReferenceId,
+                    "planning_context",
+                    reference.SourceClass,
+                    reference.EvidenceReferences,
+                    reference.Summary,
+                    reference.Summary,
+                    "session"))
+                .ToArray()
+        };
 
         try
         {
@@ -256,6 +466,14 @@ public sealed class PlanningSessionService
         var definition = manifest.AllowedPrimitives.FirstOrDefault(item => string.Equals(item.PrimitiveId, primitive.PrimitiveId, StringComparison.Ordinal))
             ?? manifest.AllowedPrimitives.First(item => item.PrimitiveId == PlannerPrimitiveIds.AssistantMessage);
         var fieldPath = string.IsNullOrWhiteSpace(primitive.FieldPath) ? null : primitive.FieldPath;
+        if (definition.AnswerSchema.Kind is PlannerAnswerSchemaKinds.SingleSelect or PlannerAnswerSchemaKinds.MultiSelect or PlannerAnswerSchemaKinds.RankedChoice &&
+            primitive.Options.Count == 0 &&
+            primitive.CandidateIds.Count == 0 &&
+            definition.AnswerSchema.Options.Count == 0)
+        {
+            definition = manifest.AllowedPrimitives.FirstOrDefault(item => item.PrimitiveId == PlannerPrimitiveIds.TextInput)
+                ?? definition;
+        }
 
         var candidateId = primitive.PrimitiveId is PlannerPrimitiveIds.CandidateDeck
                 or PlannerPrimitiveIds.SingleSelect
@@ -264,27 +482,59 @@ public sealed class PlanningSessionService
             ? primitive.CandidateIds.FirstOrDefault(id => manifest.AllowedCandidateIds.Contains(id, StringComparer.Ordinal))
             : null;
         var safeMoodToken = SafeMoodToken(definition, manifest, primitive.MoodToken);
+        var mediaToken = SafeMediaToken(definition, manifest, primitive.MediaToken, safeMoodToken);
+        var evidenceRefs = SafeRefs(primitive.EvidenceRefs, "evidence-planner-primitive");
+        var toolRefs = SafeRefs(primitive.ToolContextRefs, null);
 
         return new(
-            InstanceId: FixedInstanceId(definition.PrimitiveId, fieldPath),
-            PrimitiveId: primitive.PrimitiveId,
+            InstanceId: SafePrimitiveInstanceId(primitive, definition.PrimitiveId, fieldPath),
+            PrimitiveId: definition.PrimitiveId,
             SchemaVersion: manifest.SchemaVersion,
             RendererKey: definition.RendererKey,
-            Label: FixedLabel(definition.PrimitiveId),
-            Prompt: FixedPrompt(definition.PrimitiveId),
+            Label: SafeDisplayText(primitive.Label, definition.PrimitiveId),
+            Prompt: SafeDisplayText(primitive.PromptText, "Validated planner primitive"),
             FieldPath: fieldPath,
             SlotId: null,
             CandidateId: candidateId,
-            TaskId: null,
+            TaskId: primitive.TaskRefs.FirstOrDefault(IsSafeId),
             MoodToken: safeMoodToken,
-            MediaToken: definition.SupportsMedia && !string.IsNullOrWhiteSpace(safeMoodToken) ? $"media:{safeMoodToken}" : null,
+            MediaToken: mediaToken,
             AnswerSchema: definition.AnswerSchema,
-            Answers: DefaultAnswers(definition.AnswerSchema, fieldPath, primitive.CandidateIds),
-            EvidenceReferences: ["evidence-planner-primitive"],
-            DependencyReferences: []);
+            Answers: ModelAuthoredAnswers(definition.AnswerSchema, primitive, fieldPath),
+            EvidenceReferences: evidenceRefs,
+            DependencyReferences: [])
+        {
+            HelpText = SafeDisplayText(primitive.HelpText, null),
+            Options = SafeOptions(primitive.Options, definition, manifest),
+            Defaults = string.IsNullOrWhiteSpace(primitive.DefaultValue) || ContainsUnsafeText(primitive.DefaultValue)
+                ? []
+                : [new("value", primitive.DefaultValue)],
+            TaskReferences = primitive.TaskRefs
+                .Where(IsSafeId)
+                .Select(taskId => new PlannerTaskReference(taskId, taskId, null, evidenceRefs, toolRefs))
+                .ToArray(),
+            ToolContextReferences = toolRefs,
+            RendererHints = primitive.RendererHints
+                .Where(pair => IsSafeId(pair.Key) && !ContainsUnsafeText(pair.Value))
+                .Select(pair => new PlannerRendererHint(pair.Key, pair.Value))
+                .ToArray()
+        };
     }
 
-    private static string FixedInstanceId(string primitiveId, string? fieldPath) =>
+    private static string SafePrimitiveInstanceId(
+        PlannerPrimitiveInvocation primitive,
+        string primitiveId,
+        string? fieldPath)
+    {
+        if (!string.IsNullOrWhiteSpace(primitive.InstanceId) && IsSafeId(primitive.InstanceId))
+        {
+            return primitive.InstanceId;
+        }
+
+        return FallbackInstanceId(primitiveId, fieldPath);
+    }
+
+    private static string FallbackInstanceId(string primitiveId, string? fieldPath) =>
         fieldPath switch
         {
             "/mission/destination_country" => "primitive-destination-country",
@@ -304,6 +554,40 @@ public sealed class PlanningSessionService
             }
         };
 
+    private static bool IsSafeId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 120 &&
+        value.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or ':' or '/');
+
+    private static string SafeDisplayText(string? value, string? fallback)
+    {
+        var text = string.IsNullOrWhiteSpace(value) ? fallback ?? "redacted" : value.Trim();
+        if (ContainsUnsafeText(text))
+        {
+            return "redacted";
+        }
+
+        return text.Length <= 160 ? text : text[..160];
+    }
+
+    private static bool ContainsUnsafeText(string? text) =>
+        !string.IsNullOrWhiteSpace(text) &&
+        (text.Contains("RAW_", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("PROVIDER_PAYLOAD", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("RAW_PROMPT", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("APPROVAL", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("HOLD_REFERENCE", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("PAYMENT", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("BOOKING_REF", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("CANDIDATE_DISPLAY", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("SECRET", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("CREDENTIAL", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("API_KEY", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("sk-", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains('<') ||
+            text.Contains('>'));
+
     private static string? SafeMoodToken(
         Pch.Core.PlannerPrimitiveDefinition definition,
         PlannerToolManifest manifest,
@@ -320,63 +604,100 @@ public sealed class PlanningSessionService
                 : PlannerMoodTokens.CalmMorning;
     }
 
-    private static string FixedLabel(string primitiveId) =>
-        primitiveId switch
-        {
-            PlannerPrimitiveIds.DateRange => "Dates",
-            PlannerPrimitiveIds.ConfirmationQuestion => "Confirmation",
-            PlannerPrimitiveIds.ToolSearchRequest => "Tool search",
-            PlannerPrimitiveIds.ToolGapRequest => "Tool gap",
-            _ => "Trip detail"
-        };
-
-    private static string FixedPrompt(string primitiveId) =>
-        primitiveId switch
-        {
-            PlannerPrimitiveIds.DateRange => "Confirm travel dates.",
-            PlannerPrimitiveIds.ConfirmationQuestion => "Confirm this planning detail.",
-            PlannerPrimitiveIds.ToolSearchRequest => "Planner requested a tool search.",
-            PlannerPrimitiveIds.ToolGapRequest => "Planner reported a tool gap.",
-            _ => "Confirm this trip planning detail."
-        };
-
-    private static IReadOnlyDictionary<string, string?> DefaultAnswers(
-        PlannerAnswerSchema schema,
-        string? fieldPath,
-        IReadOnlyList<string> candidateIds)
+    private static string? SafeMediaToken(
+        Pch.Core.PlannerPrimitiveDefinition definition,
+        PlannerToolManifest manifest,
+        string? mediaToken,
+        string? moodToken)
     {
+        if (!definition.SupportsMedia)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(mediaToken) &&
+            manifest.AllowedMediaTokens.Contains(mediaToken, StringComparer.Ordinal))
+        {
+            return mediaToken;
+        }
+
+        var derived = string.IsNullOrWhiteSpace(moodToken) ? null : $"media:{moodToken}";
+        return derived is not null && manifest.AllowedMediaTokens.Contains(derived, StringComparer.Ordinal)
+            ? derived
+            : manifest.AllowedMediaTokens.FirstOrDefault();
+    }
+
+    private static IReadOnlyList<string> SafeRefs(IReadOnlyList<string> refs, string? fallback)
+    {
+        var safe = refs.Where(IsSafeId).Distinct(StringComparer.Ordinal).Take(12).ToArray();
+        return safe.Length > 0 || fallback is null ? safe : [fallback];
+    }
+
+    private static IReadOnlyList<Pch.Core.PlannerPrimitiveOption> SafeOptions(
+        IReadOnlyList<Pch.Providers.PlannerPrimitives.PlannerPrimitiveOption> options,
+        Pch.Core.PlannerPrimitiveDefinition definition,
+        PlannerToolManifest manifest) =>
+        definition.AnswerSchema.Kind == PlannerAnswerSchemaKinds.Confirmation
+            ? []
+            :
+        options
+            .Where(option => IsSafeId(option.OptionId))
+            .Take(manifest.MaxOptionCount)
+            .Select(option => new Pch.Core.PlannerPrimitiveOption(
+                option.OptionId,
+                SafeDisplayText(option.Label, option.OptionId),
+                SafeDisplayText(option.Summary, null),
+                definition.SupportsMood && manifest.AllowedMoodTokens.Contains(option.MoodToken ?? string.Empty, StringComparer.Ordinal) ? option.MoodToken : null,
+                definition.SupportsMedia && manifest.AllowedMediaTokens.Contains(option.MediaToken ?? string.Empty, StringComparer.Ordinal) ? option.MediaToken : null,
+                [],
+                SafeRefs(option.ToolContextRefs, null)))
+            .ToArray();
+
+    private static IReadOnlyDictionary<string, string?> ModelAuthoredAnswers(
+        PlannerAnswerSchema schema,
+        PlannerPrimitiveInvocation primitive,
+        string? fieldPath)
+    {
+        var modelText = SafeDisplayText(
+            primitive.DefaultValue ?? primitive.PromptText ?? primitive.Label,
+            fieldPath?.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? primitive.PrimitiveId);
         return schema.Kind switch
         {
             PlannerAnswerSchemaKinds.Text => new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                ["value"] = fieldPath switch
-                {
-                    "/mission/destination_country" => "Japan",
-                    "/constraints/pace" => "balanced",
-                    "/constraints/budget" => "comfortable",
-                    _ => "trip-planning"
-                }
+                ["value"] = modelText
             },
             PlannerAnswerSchemaKinds.DateRange => new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                ["start"] = "2027-04-01",
-                ["end"] = "2027-04-07"
+                ["start"] = $"{modelText}-start",
+                ["end"] = $"{modelText}-end"
             },
             PlannerAnswerSchemaKinds.Confirmation => new Dictionary<string, string?>(StringComparer.Ordinal)
             {
                 ["value"] = schema.Options.FirstOrDefault() ?? "confirm"
             },
             PlannerAnswerSchemaKinds.SingleSelect => new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["selected"] = candidateIds.FirstOrDefault() ?? "selected"
-            },
+                {
+                    ["selected"] = primitive.Options.FirstOrDefault()?.OptionId ?? primitive.CandidateIds.FirstOrDefault() ?? schema.Options.FirstOrDefault()
+                }
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             PlannerAnswerSchemaKinds.MultiSelect => new Dictionary<string, string?>(StringComparer.Ordinal)
-            {
-                ["selected"] = candidateIds.FirstOrDefault() ?? "selected"
-            },
+                {
+                    ["selected"] = primitive.Options.FirstOrDefault()?.OptionId ?? primitive.CandidateIds.FirstOrDefault() ?? schema.Options.FirstOrDefault()
+                }
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             PlannerAnswerSchemaKinds.RankedChoice => new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["ranked"] = primitive.Options.FirstOrDefault()?.OptionId ?? primitive.CandidateIds.FirstOrDefault() ?? schema.Options.FirstOrDefault()
+                }
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+            PlannerAnswerSchemaKinds.NumberRange => new Dictionary<string, string?>(StringComparer.Ordinal)
             {
-                ["ranked"] = candidateIds.FirstOrDefault() ?? "ranked"
+                ["min"] = "0",
+                ["max"] = "0"
             },
             _ => new Dictionary<string, string?>(StringComparer.Ordinal)
         };
@@ -422,9 +743,7 @@ public sealed class PlanningSessionService
         var primitives = isProviderBlocked || canonical.Primitives.Count == 0
             ? [ProviderBlockedPrimitive(providerOutcome)]
             : ProjectPrimitives(canonical);
-        var tasks = canonical.TaskRailItemRefs.Count > 0
-            ? canonical.TaskRailItemRefs.Select(TaskFromRef).ToArray()
-            : (isProviderBlocked ? ProviderBlockedTasks(providerOutcome) : LivePrimitiveTasks());
+        var tasks = ProjectTasks(primitives, isProviderBlocked, providerOutcome);
         var firstPrimitive = primitives.First();
         var media = ResolveMedia(firstPrimitive.MediaToken);
 
@@ -485,14 +804,17 @@ public sealed class PlanningSessionService
         IReadOnlyList<ValidatedPrimitiveView> primitives,
         Pch.Core.ValidatedTurnView canonical)
     {
+        var first = primitives.First();
+        var title = first.Label ?? "Validated planner form";
+        var prompt = first.Prompt ?? "Review the validated model-authored fields.";
         return new(
-            InstanceId: "primitive-trip-basics-form",
+            InstanceId: $"form-{first.InstanceId}",
             PrimitiveId: "composite_form",
             RendererKey: "form",
-            Title: "Trip basics",
-            Prompt: "Confirm the details the live planner needs before building options.",
-            MoodToken: PlannerMoodTokens.CalmMorning,
-            MediaToken: PlannerMoodTokens.CalmMorning,
+            Title: title,
+            Prompt: prompt,
+            MoodToken: first.MoodToken ?? PlannerMoodTokens.Neutral,
+            MediaToken: first.MediaToken ?? first.MoodToken ?? PlannerMoodTokens.Neutral,
             State: AwaitingUserInput,
             Fields: primitives.Select(ProjectField).ToArray(),
             Candidates: [],
@@ -518,7 +840,9 @@ public sealed class PlanningSessionService
         new(
             primitive.InstanceId,
             primitive.PrimitiveId,
-            "provider-failure",
+            string.Equals(canonical.Code, "primitive_turn_accepted", StringComparison.Ordinal)
+                ? "assistant-message"
+                : "provider-failure",
             primitive.Label ?? "Live planner update",
             primitive.Prompt ?? "The live planner returned a sanitized update.",
             primitive.MoodToken ?? PlannerMoodTokens.Logistics,
@@ -527,24 +851,29 @@ public sealed class PlanningSessionService
             [],
             [],
             primitive.EvidenceReferences.Count > 0 ? primitive.EvidenceReferences : canonical.EvidenceReferences,
-            canonical.Code,
-            canonical.Code);
+            string.Equals(canonical.Code, "primitive_turn_accepted", StringComparison.Ordinal) ? null : canonical.Code,
+            string.Equals(canonical.Code, "primitive_turn_accepted", StringComparison.Ordinal) ? null : canonical.Code);
 
     private static ValidatedPrimitive ProjectDeck(ValidatedPrimitiveView primitive, Pch.Core.ValidatedTurnView canonical) =>
         new(
             primitive.InstanceId,
             primitive.PrimitiveId,
             "candidate-deck",
-            primitive.Label ?? "Choose a planning mood",
-            primitive.Prompt ?? "Pick one validated option or ask for a different direction.",
-            primitive.MoodToken ?? PlannerMoodTokens.ReflectiveCulture,
-            primitive.MediaToken ?? PlannerMoodTokens.ReflectiveCulture,
+            primitive.Label ?? "Choose a validated option",
+            primitive.Prompt ?? "Pick one validated option.",
+            primitive.MoodToken ?? PlannerMoodTokens.Neutral,
+            primitive.MediaToken ?? primitive.MoodToken ?? PlannerMoodTokens.Neutral,
             AwaitingUserInput,
             [],
-            [
-                Candidate("candidate-live-culture", "reflective-culture", PlannerMoodTokens.ReflectiveCulture, "Classic culture", "Temples, neighborhoods, and calm evenings.", primitive.EvidenceReferences),
-                Candidate("candidate-live-nature", "soft-nature", PlannerMoodTokens.SoftNature, "Soft nature", "A quieter route with restorative outdoor time.", primitive.EvidenceReferences)
-            ],
+            primitive.CandidateId is null
+                ? []
+                : [Candidate(
+                    primitive.CandidateId,
+                    primitive.MoodToken ?? PlannerMoodTokens.Neutral,
+                    primitive.MediaToken ?? primitive.MoodToken ?? PlannerMoodTokens.Neutral,
+                    primitive.Label ?? primitive.CandidateId,
+                    primitive.Prompt ?? "Validated model-authored option.",
+                    primitive.EvidenceReferences)],
             primitive.EvidenceReferences.Count > 0 ? primitive.EvidenceReferences : canonical.EvidenceReferences);
 
     private static string FieldId(ValidatedPrimitiveView primitive) =>
@@ -633,14 +962,26 @@ public sealed class PlanningSessionService
             "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE",
             providerOutcome);
 
-    private static IReadOnlyList<ValidatedTaskPrimitive> LivePrimitiveTasks() =>
-    [
-        new("task-live-intake", "Answer live planner form", "needs_user", 45, "Answer", [new("step-live-form", "Validated form rendered", "needs_user")]),
-        new("task-live-options", "Generate planning options", "not_started", 0, "Queued", [new("step-live-second-turn", "Second provider turn after answer", "not_started")])
-    ];
+    private static IReadOnlyList<ValidatedTaskPrimitive> ProjectTasks(
+        IReadOnlyList<ValidatedPrimitive> primitives,
+        bool isProviderBlocked,
+        string providerOutcome)
+    {
+        if (isProviderBlocked)
+        {
+            return ProviderBlockedTasks(providerOutcome);
+        }
 
-    private static ValidatedTaskPrimitive TaskFromRef(string taskId) =>
-        new(taskId, "Live planner task", "needs_user", 45, "Review", [new($"step-{taskId}", "Validated primitive task", "needs_user")]);
+        return primitives
+            .Select(primitive => new ValidatedTaskPrimitive(
+                $"task-{primitive.InstanceId}",
+                primitive.Title,
+                primitive.State == AwaitingUserInput ? "needs_user" : primitive.State,
+                primitive.State == AwaitingUserInput ? 45 : 20,
+                primitive.State == AwaitingUserInput ? "Answer" : "Review",
+                [new($"step-{primitive.InstanceId}", primitive.Prompt, primitive.State == AwaitingUserInput ? "needs_user" : primitive.State)]))
+            .ToArray();
+    }
 
     private static IReadOnlyList<ValidatedTaskPrimitive> ProviderBlockedTasks(string outcome) =>
     [
@@ -659,13 +1000,6 @@ public sealed class PlanningSessionService
         IReadOnlyList<string> evidenceIds) =>
         new(candidateId, "itinerary", "trip-style", mood, MoodTone(mood), title, summary, "available", "validated_primitive", ResolveMedia(mediaToken), evidenceIds);
 
-    private static TripSession CreatePrimitiveSession()
-    {
-        var session = SyntheticTripFactory.CreateSession(7);
-        session.MoveTo(HarnessStage.Intake);
-        return session;
-    }
-
     private static PlannerToolManifestMirror ToProviderMirror(PlannerToolManifest manifest) =>
         new(
             manifest.ManifestId,
@@ -674,7 +1008,6 @@ public sealed class PlanningSessionService
             manifest.SessionId,
             manifest.Stage,
             manifest.AllowedPrimitives
-                .Where(primitive => primitive.AnswerSchema.Required)
                 .Select(primitive => new Pch.Providers.PlannerPrimitives.PlannerPrimitiveDefinition(
                     primitive.PrimitiveId,
                     primitive.PrimitiveId,
@@ -682,7 +1015,11 @@ public sealed class PlanningSessionService
                 .ToArray(),
             manifest.AllowedFieldPaths,
             manifest.AllowedMoodTokens,
-            manifest.MaxPrimitiveCount);
+            manifest.MaxPrimitiveCount)
+        {
+            AllowedMediaTokens = manifest.AllowedMediaTokens,
+            AllowedToolIds = manifest.AllowedToolIds.Count > 0 ? manifest.AllowedToolIds : ["mock_context_provider"]
+        };
 
     private static IReadOnlyDictionary<string, string?> WithKeyFileAvailability(IReadOnlyDictionary<string, string?> source)
     {
@@ -795,8 +1132,9 @@ public sealed class PlanningSessionService
         EndUserChatTurn turn) =>
         turns.Concat([turn]).ToArray();
 
-    private sealed record PlannerModelRun(
-        string ProviderRequestState,
-        string ProviderOutcome,
-        PlannerModelResult? Result);
 }
+
+public sealed record PlannerModelRun(
+    string ProviderRequestState,
+    string ProviderOutcome,
+    PlannerModelResult? Result);
