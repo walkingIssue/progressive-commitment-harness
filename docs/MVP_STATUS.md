@@ -99,3 +99,31 @@ Required correction:
 - render validated primitive instances in UI;
 - remove deterministic seeded cards from live mode;
 - prove a real in-context browser run reaches a second server-side provider turn or records a specific fixed failure.
+
+## Sprint 022 Result
+
+Sprint 022 is merged to `main` at `db2a011`.
+
+Current state after the correction sprint:
+
+- The planner primitive/form layer now exists in shared contracts.
+- The harness compiles a `PlannerToolManifest` and validates provider/model primitive proposals before UI render.
+- The provider layer has a planner primitive runner with strict schema output, sanitized logging, OpenRouter support, and an OpenAI completion client.
+- The end-user UI has a server-side planning session API. The browser posts prompt and answer DTOs; provider calls, key access, prompt assembly, manifest/schema generation, and validation stay server-side.
+- Live mode no longer treats deterministic seeded cards as model output.
+- In-app browser smoke proved one OpenAI-backed live first turn, a validated form render, answer submission through the HTTP session API, and a second server-side provider turn attempt/acceptance.
+
+What this fixes:
+
+- The product now has a real path from browser input to server-side model request to harness validation to UI primitive render to answer submission to a second provider turn.
+- The UI no longer has to rely on a healthy Blazor circuit for live provider turns. When the circuit disconnects, the HTTP planning session API can continue the interaction using sanitized DTOs.
+- Server-owned model/tool/form logic is no longer leaked into browser JavaScript.
+
+What is still not an MVP:
+
+- The primitive catalog is small and needs expansion into a full planner tool library.
+- The model can output validated primitive/form invocations, but the planning quality is still unproven beyond narrow live smokes.
+- The task rail is not yet a complete live strong-model task decomposition system.
+- The evidence/timeline/edit-repair loop is not fully connected to live primitive answers.
+- Real search, availability, booking, payment, and external provider side effects are still out of scope or guarded. Real booking/payment should remain mocked until explicit approval and safety gates exist.
+- Blazor Server circuit instability remains a known browser transport issue. Sprint 022 bypassed it for live planning with the HTTP session API rather than repairing SignalR itself.

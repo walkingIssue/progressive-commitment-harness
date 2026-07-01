@@ -621,3 +621,53 @@ Target outcomes:
 - consolidate MVP documentation so live, deterministic, mocked, synthetic, and missing surfaces are clear.
 
 Detailed sprint plan: `docs/sprints/sprint-022.md`.
+
+## Sprint 022 Result
+
+Sprint 022 is merged to `main` at `db2a011` and should be treated as functionally complete for the corrected acceptance gate, with one explicit transport caveat.
+
+Delivered:
+
+- `src/Pch.Core/PlannerPrimitiveContracts.cs` defines versioned planner primitives, mood tokens, answer schemas, composite forms, primitive proposals, and validated turn views.
+- `src/Pch.Harness/PlannerToolManifestCompiler.cs` compiles harness-owned planner manifests from session state, stage gates, graph revisions, allowed field paths, trusted slot/candidate/task ids, mood/media tokens, and approval restrictions.
+- `PlannerPrimitiveValidator` blocks unsupported primitives, stage violations, stale graph revisions, invalid answer schemas, ownership mismatches, unsafe metadata, and approval-gated operations before UI render or mutation.
+- `src/Pch.Providers/PlannerPrimitives/**` adds the server-side planner primitive runner, provider-local manifest mirror, strict schema request/repair loop, sanitized log rows, and OpenAI/OpenRouter-compatible live execution paths.
+- `src/Pch.Providers/OpenAi/**` adds the OpenAI completion client used by the UI runner when `PCH_LIVE_MODEL_PROVIDER=openai`.
+- `src/Pch.UI/Features/EndUserChat/PlanningSessionApi.cs` adds the server-side planning session boundary:
+  - `POST /api/planning/session/start`
+  - `POST /api/planning/session/{sessionId}/answer`
+  - `GET /api/planning/session/{sessionId}`
+- `/trip` live mode now requests sanitized turn DTOs from the server. Provider calls, prompt assembly, schema generation, API key access, manifest compilation, primitive validation, and UI projection remain server-side.
+- The browser helper no longer fakes live success when Blazor disconnects. It either uses Blazor when healthy or posts prompt/answer DTOs to the server-side HTTP planning session API.
+
+Acceptance evidence:
+
+- Harness/core/provider/UI tests passed after merge:
+  - Core: 8 tests
+  - Harness: 189 tests
+  - Providers: 305 tests
+  - UI: 76 tests
+- `npm run build:ui`, full root `dotnet build --no-restore`, and `git diff --check` passed after integration.
+- Provider live repair smoke accepted strict primitive envelopes from both OpenAI and OpenRouter in the provider lane.
+- In-app browser live smoke with OpenAI proved the corrected end-to-end browser path through HTTP transport:
+  - first turn posted to the server with `data-browser-transport=http_api`;
+  - provider request was attempted and accepted with `data-provider-outcome=planner_model_accepted`;
+  - harness validation returned `awaiting_user_input`;
+  - UI rendered the model/provider-backed form primitive `primitive-trip-basics-form`;
+  - answer submission posted to `/api/planning/session/{sessionId}/answer`;
+  - second provider turn was attempted and accepted with `data-live-turn-attempt-count=2`;
+  - raw prompt/provider/key/credential/approval/hold/booking/payment/candidate-display/secret sentinels were absent from observed DOM markers and committed reports.
+
+Important caveat:
+
+- The Blazor Server circuit remains unreliable in the in-app browser after live provider latency. Sprint 022 did not fix the SignalR/circuit instability directly.
+- The accepted repair is architectural: live model interaction no longer depends on that circuit. The client requests sanitized next-turn DTOs from the server HTTP planning session boundary.
+- If the product later stays on Blazor Server for high-interaction surfaces, circuit health still needs a separate hardening sprint. If not, the HTTP session API is the more robust direction.
+
+Still not complete MVP:
+
+- The primitive catalog is initial, not a complete planner tool library.
+- Task decomposition is not yet a rich strong-model-authored task graph for every trip planning phase.
+- Model-authored options/forms are now possible and validated, but quality and breadth still need live trace iteration.
+- Real availability/search/booking/payment remain guarded or mocked. Booking/payment should stay mocked until explicit approval and provider safety gates exist.
+- Edit repair and dependency merge behavior have harness prototypes, but they are not fully wired into the end-user live editing loop.
