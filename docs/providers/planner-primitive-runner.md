@@ -50,6 +50,7 @@ Runner behavior:
 - optional credit guard;
 - provider prompt/context builder over `IModelCompletionClient` that includes the transient raw prompt, stage, graph revision, allowed primitive manifest, allowed field paths, mood/media tokens, submitted answer values, and sanitized context refs;
 - explicit HTML/form primitive tool menu in the provider request, including selection rules for destination confirmation, exact dates, pace, multiple preferences, and planning task decomposition;
+- runtime-only parse tolerance for fenced or prose-wrapped JSON objects before bounded repair; extracted raw completion text is never persisted;
 - one bounded repair attempt after malformed JSON or schema-invalid output;
 - unsupported primitive validation against manifest ids/kinds/renderers;
 - prompt-specific acceptance; generic/static output is blocked as schema invalid;

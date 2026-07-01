@@ -222,11 +222,7 @@ public sealed class PlannerPrimitiveRunner
         }
 
         PlannerModelEnvelope? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(completion.Content, JsonOptions);
-        }
-        catch (JsonException)
+        if (!TryDeserializeEnvelope(completion.Content, out parsed))
         {
             failure = PlannerParseFailure.MalformedJson;
             return false;
@@ -262,6 +258,90 @@ public sealed class PlannerPrimitiveRunner
             completion.RequestId);
         failure = PlannerParseFailure.None;
         return true;
+    }
+
+    private static bool TryDeserializeEnvelope(string content, out PlannerModelEnvelope? parsed)
+    {
+        try
+        {
+            parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(content, JsonOptions);
+            return true;
+        }
+        catch (JsonException)
+        {
+            if (!TryExtractJsonObject(content, out var jsonObject))
+            {
+                parsed = null;
+                return false;
+            }
+
+            try
+            {
+                parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(jsonObject, JsonOptions);
+                return true;
+            }
+            catch (JsonException)
+            {
+                parsed = null;
+                return false;
+            }
+        }
+    }
+
+    private static bool TryExtractJsonObject(string content, out string jsonObject)
+    {
+        jsonObject = string.Empty;
+        var start = content.IndexOf('{');
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var index = start; index < content.Length; index++)
+        {
+            var current = content[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\' && inString)
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+            {
+                continue;
+            }
+
+            if (current == '{')
+            {
+                depth++;
+            }
+            else if (current == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    jsonObject = content[start..(index + 1)];
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateRequest(PlannerModelRequest request)
