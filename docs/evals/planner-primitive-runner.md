@@ -11,6 +11,8 @@ Accepted rows may persist:
 - output kind enum
 - primitive ids from the manifest
 - primitive count
+- task count
+- option count
 - repair flag
 - duration milliseconds and coarse duration bucket
 - response content length
@@ -39,12 +41,17 @@ Fixed outcomes:
 - `planner_model_empty_content`
 - `planner_model_malformed_json`
 - `planner_model_schema_invalid`
+- `planner_model_unsafe_text`
 - `planner_model_unsupported_primitive`
+- `planner_model_field_path_not_allowed`
+- `planner_model_tool_not_allowed`
 - `planner_model_provider_unavailable`
 
 Malformed JSON and schema-invalid responses get one bounded repair attempt. If the repair output is valid, the accepted row uses `planner_model_repaired_json`. If the repair also fails, the row uses the fixed malformed/schema outcome and omits provider result metadata.
 
 Optional live smoke records only fixed/sanitized status and must not fall back to a different paid provider unless explicitly configured and reported.
+
+Sprint 023 dynamic-form eval rows also enforce prompt-specific output. Accepted rows may preserve only manifest-owned primitive ids and counts; runtime model-authored labels, prompts, help text, default values, option labels/summaries, task titles/summaries, submitted answer values, context summaries, and raw prompts remain runtime-only and are omitted from serialized eval rows.
 
 OpenAI/OpenRouter client diagnostics should classify provider failures with fixed classes before they reach eval rows:
 

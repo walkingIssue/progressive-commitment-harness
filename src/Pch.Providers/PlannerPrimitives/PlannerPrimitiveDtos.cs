@@ -14,7 +14,12 @@ public sealed record PlannerToolManifestMirror(
     IReadOnlyList<PlannerPrimitiveDefinition> AllowedPrimitives,
     IReadOnlyList<string> AllowedFieldPaths,
     IReadOnlyList<string> AllowedMoodTokens,
-    int MaxPrimitiveCount);
+    int MaxPrimitiveCount)
+{
+    public IReadOnlyList<string> AllowedMediaTokens { get; init; } = ["neutral"];
+
+    public IReadOnlyList<string> AllowedToolIds { get; init; } = ["mock_context_provider"];
+}
 
 public sealed record PlannerPrimitiveDefinition(
     string PrimitiveId,
@@ -28,7 +33,33 @@ public sealed record PlannerModelRequest(
     string Locale,
     [property: JsonIgnore]
     string? RuntimePrompt = null,
-    string? PromptDigest = null);
+    string? PromptDigest = null)
+{
+    public string? SanitizedStateSummary { get; init; }
+
+    public IReadOnlyList<PlannerSubmittedAnswer> SubmittedAnswers { get; init; } = [];
+
+    public IReadOnlyList<PlannerContextToolResult> ContextToolResults { get; init; } = [];
+}
+
+public sealed record PlannerSubmittedAnswer(
+    string AnswerId,
+    string FieldPath,
+    [property: JsonIgnore]
+    string Value,
+    string? SourcePrimitiveInstanceId = null);
+
+public sealed record PlannerContextToolResult(
+    string ToolId,
+    string ResultId,
+    string Category,
+    string SourceClass,
+    IReadOnlyList<string> EvidenceRefs,
+    [property: JsonIgnore]
+    string? Title = null,
+    [property: JsonIgnore]
+    string? Summary = null,
+    string? Freshness = null);
 
 public sealed record PlannerModelOptions(
     bool Enabled = false,
@@ -106,8 +137,10 @@ public sealed record PlannerModelResult(
     string SessionId,
     PlannerModelOutputKind OutputKind,
     IReadOnlyList<PlannerPrimitiveInvocation> Primitives,
+    IReadOnlyList<PlannerTaskInvocation> Tasks,
     bool WasRepaired,
     bool HasUnsafeValue,
+    bool HasPromptSpecificContent,
     TimeSpan Duration,
     int ResponseContentLength,
     string Provider,
@@ -121,11 +154,41 @@ public sealed record PlannerPrimitiveInvocation(
     string RendererKey,
     string? FieldPath,
     string? MoodToken,
+    string? MediaToken,
     IReadOnlyList<string> CandidateIds,
+    IReadOnlyList<string> TaskRefs,
+    IReadOnlyList<string> EvidenceRefs,
+    IReadOnlyList<string> ToolContextRefs,
+    [property: JsonIgnore]
+    IReadOnlyList<PlannerPrimitiveOption> Options,
     [property: JsonIgnore]
     string? Label,
     [property: JsonIgnore]
-    string? PromptText);
+    string? PromptText,
+    [property: JsonIgnore]
+    string? HelpText,
+    [property: JsonIgnore]
+    string? DefaultValue,
+    [property: JsonIgnore]
+    IReadOnlyDictionary<string, string> RendererHints);
+
+public sealed record PlannerPrimitiveOption(
+    string OptionId,
+    string? MoodToken,
+    string? MediaToken,
+    IReadOnlyList<string> ToolContextRefs,
+    [property: JsonIgnore]
+    string? Label,
+    [property: JsonIgnore]
+    string? Summary);
+
+public sealed record PlannerTaskInvocation(
+    string TaskId,
+    IReadOnlyList<string> PrimitiveRefs,
+    [property: JsonIgnore]
+    string? Title,
+    [property: JsonIgnore]
+    string? Summary);
 
 public sealed record PlannerModelEvalCase(
     string Name,
@@ -143,6 +206,8 @@ public sealed record SanitizedPlannerModelLogRow(
     PlannerModelOutputKind? OutputKind,
     IReadOnlyList<string> PrimitiveIds,
     int PrimitiveCount,
+    int TaskCount,
+    int OptionCount,
     bool WasRepaired,
     int? DurationMilliseconds,
     string? DurationBucket,

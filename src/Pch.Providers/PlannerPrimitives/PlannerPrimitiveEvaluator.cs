@@ -66,6 +66,11 @@ public sealed class PlannerPrimitiveEvaluator
 
         if (result.HasUnsafeValue)
         {
+            return Rejected(PlannerPrimitiveRunner.OutcomeUnsafeText, "unsafe_text");
+        }
+
+        if (!result.HasPromptSpecificContent)
+        {
             return Rejected(PlannerPrimitiveRunner.OutcomeSchemaInvalid, "provider_schema_invalid");
         }
 
@@ -74,31 +79,70 @@ public sealed class PlannerPrimitiveEvaluator
             StringComparer.Ordinal);
         var allowedFieldPaths = evalCase.Request.Manifest.AllowedFieldPaths.ToHashSet(StringComparer.Ordinal);
         var allowedMoodTokens = evalCase.Request.Manifest.AllowedMoodTokens.ToHashSet(StringComparer.Ordinal);
+        var allowedMediaTokens = evalCase.Request.Manifest.AllowedMediaTokens.ToHashSet(StringComparer.Ordinal);
+        var allowedToolRefs = evalCase.Request.ContextToolResults
+            .Select(result => result.ResultId)
+            .Concat(evalCase.Request.Manifest.AllowedToolIds)
+            .ToHashSet(StringComparer.Ordinal);
         var primitiveIds = new List<string>(result.Primitives.Count);
+        var primitiveInstanceIds = new List<string>(result.Primitives.Count);
+        var optionCount = 0;
         foreach (var primitive in result.Primitives)
         {
             if (primitive is null ||
                 !allowed.TryGetValue(primitive.PrimitiveId, out var definition) ||
                 !string.Equals(definition.PrimitiveKind, primitive.PrimitiveKind, StringComparison.Ordinal) ||
                 !string.Equals(definition.RendererKey, primitive.RendererKey, StringComparison.Ordinal) ||
-                !PlannerPrimitiveRunner.IsSafeIdentifier(primitive.InstanceId) ||
-                (!string.IsNullOrWhiteSpace(primitive.FieldPath) && !allowedFieldPaths.Contains(primitive.FieldPath)) ||
-                (primitive.MoodToken is not null && !allowedMoodTokens.Contains(primitive.MoodToken)) ||
-                primitive.CandidateIds.Any(id => !PlannerPrimitiveRunner.IsSafeIdentifier(id)))
+                !PlannerPrimitiveRunner.IsSafeIdentifier(primitive.InstanceId))
             {
                 return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
             }
 
+            if (!string.IsNullOrWhiteSpace(primitive.FieldPath) && !allowedFieldPaths.Contains(primitive.FieldPath))
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomeFieldPathNotAllowed, "field_path_not_allowed");
+            }
+
+            if ((primitive.MoodToken is not null && !allowedMoodTokens.Contains(primitive.MoodToken)) ||
+                (primitive.MediaToken is not null && !allowedMediaTokens.Contains(primitive.MediaToken)) ||
+                primitive.CandidateIds.Any(id => !PlannerPrimitiveRunner.IsSafeIdentifier(id)) ||
+                primitive.TaskRefs.Any(id => !PlannerPrimitiveRunner.IsSafeIdentifier(id)) ||
+                primitive.EvidenceRefs.Any(id => !PlannerPrimitiveRunner.IsSafeIdentifier(id)))
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
+            }
+
+            if (primitive.ToolContextRefs.Any(id => !allowedToolRefs.Contains(id)) ||
+                primitive.Options.Any(option =>
+                    !PlannerPrimitiveRunner.IsSafeIdentifier(option.OptionId) ||
+                    (option.MoodToken is not null && !allowedMoodTokens.Contains(option.MoodToken)) ||
+                    (option.MediaToken is not null && !allowedMediaTokens.Contains(option.MediaToken)) ||
+                    option.ToolContextRefs.Any(id => !allowedToolRefs.Contains(id))))
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomeToolNotAllowed, "tool_not_allowed");
+            }
+
+            optionCount += primitive.Options.Count;
             primitiveIds.Add(definition.PrimitiveId);
+            primitiveInstanceIds.Add(primitive.InstanceId);
         }
 
-        return Accepted(evalCase, result, primitiveIds.Order(StringComparer.Ordinal).ToArray());
+        if (result.Tasks.Any(task =>
+            task is null ||
+            !PlannerPrimitiveRunner.IsSafeIdentifier(task.TaskId) ||
+            task.PrimitiveRefs.Any(id => !primitiveInstanceIds.Contains(id, StringComparer.Ordinal))))
+        {
+            return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
+        }
+
+        return Accepted(evalCase, result, primitiveIds.Order(StringComparer.Ordinal).ToArray(), optionCount);
     }
 
     private static SanitizedPlannerModelLogRow Accepted(
         PlannerModelEvalCase evalCase,
         PlannerModelResult result,
-        IReadOnlyList<string> primitiveIds)
+        IReadOnlyList<string> primitiveIds,
+        int optionCount)
     {
         var outcome = result.OutputKind switch
         {
@@ -109,7 +153,7 @@ public sealed class PlannerPrimitiveEvaluator
         };
 
         return new SanitizedPlannerModelLogRow(
-            evalCase.Name,
+            SafeRowName(evalCase.Name),
             evalCase.Request.RunId,
             evalCase.Request.TurnId,
             evalCase.Request.Manifest.ManifestId,
@@ -120,6 +164,8 @@ public sealed class PlannerPrimitiveEvaluator
             result.OutputKind,
             primitiveIds,
             primitiveIds.Count,
+            result.Tasks.Count,
+            optionCount,
             result.WasRepaired,
             (int)Math.Min(result.Duration.TotalMilliseconds, int.MaxValue),
             DurationBucket(result.Duration),
@@ -128,6 +174,11 @@ public sealed class PlannerPrimitiveEvaluator
             result.Model,
             result.RequestId);
     }
+
+    private static string SafeRowName(string name) =>
+        PlannerPrimitiveRunner.IsSafeIdentifier(name)
+            ? name
+            : PlannerPrimitiveRunner.RejectedRowName;
 
     private static bool IsSafeRequest(PlannerModelRequest request) =>
         PlannerPrimitiveRunner.IsSafeIdentifier(request.RunId) &&
@@ -142,7 +193,18 @@ public sealed class PlannerPrimitiveEvaluator
             PlannerPrimitiveRunner.IsSafeIdentifier(primitive.PrimitiveKind) &&
             PlannerPrimitiveRunner.IsSafeIdentifier(primitive.RendererKey)) &&
         request.Manifest.AllowedFieldPaths.All(PlannerPrimitiveRunner.IsSafeIdentifier) &&
-        request.Manifest.AllowedMoodTokens.All(PlannerPrimitiveRunner.IsSafeIdentifier);
+        request.Manifest.AllowedMoodTokens.All(PlannerPrimitiveRunner.IsSafeIdentifier) &&
+        request.Manifest.AllowedMediaTokens.All(PlannerPrimitiveRunner.IsSafeIdentifier) &&
+        request.Manifest.AllowedToolIds.All(PlannerPrimitiveRunner.IsSafeIdentifier) &&
+        request.SubmittedAnswers.All(answer =>
+            PlannerPrimitiveRunner.IsSafeIdentifier(answer.AnswerId) &&
+            PlannerPrimitiveRunner.IsSafeIdentifier(answer.FieldPath)) &&
+        request.ContextToolResults.All(result =>
+            PlannerPrimitiveRunner.IsSafeIdentifier(result.ToolId) &&
+            PlannerPrimitiveRunner.IsSafeIdentifier(result.ResultId) &&
+            PlannerPrimitiveRunner.IsSafeIdentifier(result.Category) &&
+            PlannerPrimitiveRunner.IsSafeIdentifier(result.SourceClass) &&
+            result.EvidenceRefs.All(PlannerPrimitiveRunner.IsSafeIdentifier));
 
     private static SanitizedPlannerModelLogRow ExceptionRow(Exception exception)
     {
@@ -176,6 +238,8 @@ public sealed class PlannerPrimitiveEvaluator
             failureClassCode,
             null,
             [],
+            0,
+            0,
             0,
             false,
             null,
