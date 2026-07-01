@@ -1,0 +1,331 @@
+{
+  "manifestId": "japan-prompt-studio-pack-sprint-021",
+  "sourcePath": "C:/Users/Bartek/Documents/Playground/pch-prompt-studio/artifacts",
+  "sourceCatalog": "catalog.json",
+  "sourcePngCount": 240,
+  "sourceCatalogCount": 240,
+  "importedCount": 16,
+  "runtimePath": "/media/japan-prompt-studio-pack/",
+  "assets": [
+    {
+      "assetId": "backdrop.cultural.sakura_temple.cultural_immersive",
+      "label": "Sakura Temple Mood",
+      "domain": "backdrop",
+      "category": "cultural",
+      "variant": "sakura_temple",
+      "mood": "cultural_immersive",
+      "imageType": "mood_backdrop_panel",
+      "season": "spring_sakura",
+      "anchors": [
+        "sakura petals",
+        "temple roof",
+        "warm ivory sky"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.cultural.sakura_temple.cultural_immersive.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.scenic.fuji_lake.scenic_relaxed",
+      "label": "Fuji Lake Mood",
+      "domain": "backdrop",
+      "category": "scenic",
+      "variant": "fuji_lake",
+      "mood": "scenic_relaxed",
+      "imageType": "mood_backdrop_panel",
+      "season": "morning_mist",
+      "anchors": [
+        "Mount Fuji",
+        "calm lake reflection",
+        "soft mountain contours"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.scenic.fuji_lake.scenic_relaxed.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.food.ramen_steam.food_cozy",
+      "label": "Ramen Steam Mood",
+      "domain": "backdrop",
+      "category": "food",
+      "variant": "ramen_steam",
+      "mood": "food_cozy",
+      "imageType": "mood_backdrop_panel",
+      "season": "blue_hour",
+      "anchors": [
+        "ramen bowl",
+        "steam",
+        "counter seating"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.food.ramen_steam.food_cozy.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.urban.station_grid.budget_practical",
+      "label": "Station Grid Mood",
+      "domain": "backdrop",
+      "category": "urban",
+      "variant": "station_grid",
+      "mood": "budget_practical",
+      "imageType": "mood_backdrop_panel",
+      "season": "clear_sky",
+      "anchors": [
+        "train station concourse",
+        "route lines",
+        "ticket gates"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.urban.station_grid.budget_practical.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.logistics.map_planning.family_easy",
+      "label": "Map Planning Mood",
+      "domain": "backdrop",
+      "category": "logistics",
+      "variant": "map_planning",
+      "mood": "family_easy",
+      "imageType": "mood_backdrop_panel",
+      "season": "cloudy_soft",
+      "anchors": [
+        "folded map",
+        "route pins",
+        "suitcases"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.logistics.map_planning.family_easy.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.scenic.onsen_valley.wellness_restorative",
+      "label": "Onsen Valley Mood",
+      "domain": "backdrop",
+      "category": "scenic",
+      "variant": "onsen_valley",
+      "mood": "wellness_restorative",
+      "imageType": "mood_backdrop_panel",
+      "season": "winter_onsen",
+      "anchors": [
+        "hot spring steam",
+        "cedar forest",
+        "onsen bathhouse"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.scenic.onsen_valley.wellness_restorative.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.cultural.craft_district.arts_design",
+      "label": "Craft District Mood",
+      "domain": "backdrop",
+      "category": "cultural",
+      "variant": "craft_district",
+      "mood": "arts_design",
+      "imageType": "mood_backdrop_panel",
+      "season": "golden_hour",
+      "anchors": [
+        "ceramic cups",
+        "indigo cloth",
+        "craft workshop"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.cultural.craft_district.arts_design.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.scenic.coastal_bay.coastal_breezy",
+      "label": "Coastal Bay Mood",
+      "domain": "backdrop",
+      "category": "scenic",
+      "variant": "coastal_bay",
+      "mood": "coastal_breezy",
+      "imageType": "mood_backdrop_panel",
+      "season": "summer_coastal",
+      "anchors": [
+        "coastline",
+        "island harbor",
+        "turquoise water"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.scenic.coastal_bay.coastal_breezy.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.cultural.vermilion_torii.spiritual_serene",
+      "label": "Vermilion Torii Mood",
+      "domain": "backdrop",
+      "category": "cultural",
+      "variant": "vermilion_torii",
+      "mood": "spiritual_serene",
+      "imageType": "mood_backdrop_panel",
+      "season": "morning_mist",
+      "anchors": [
+        "torii gate",
+        "forest shrine path",
+        "lantern glow"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.cultural.vermilion_torii.spiritual_serene.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.cultural.old_town_lanterns.romantic_slow",
+      "label": "Old Town Lantern Mood",
+      "domain": "backdrop",
+      "category": "cultural",
+      "variant": "old_town_lanterns",
+      "mood": "romantic_slow",
+      "imageType": "mood_backdrop_panel",
+      "season": "blue_hour",
+      "anchors": [
+        "wooden machiya townhouse",
+        "narrow lantern lane",
+        "paper lanterns"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.cultural.old_town_lanterns.romantic_slow.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.urban.neon_rain.urban_kinetic",
+      "label": "Neon Rain Mood",
+      "domain": "backdrop",
+      "category": "urban",
+      "variant": "neon_rain",
+      "mood": "urban_kinetic",
+      "imageType": "mood_backdrop_panel",
+      "season": "neon_rain",
+      "anchors": [
+        "neon glow",
+        "wet pavement",
+        "city street"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.urban.neon_rain.urban_kinetic.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.festival.lantern_fireworks.seasonal_festival",
+      "label": "Festival Lantern Mood",
+      "domain": "backdrop",
+      "category": "festival",
+      "variant": "lantern_fireworks",
+      "mood": "seasonal_festival",
+      "imageType": "mood_backdrop_panel",
+      "season": "summer_matsuri",
+      "anchors": [
+        "lanterns",
+        "fireworks shapes",
+        "yukata pattern"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.festival.lantern_fireworks.seasonal_festival.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.food.izakaya_lanterns.night_social",
+      "label": "Izakaya Lantern Mood",
+      "domain": "backdrop",
+      "category": "food",
+      "variant": "izakaya_lanterns",
+      "mood": "night_social",
+      "imageType": "mood_backdrop_panel",
+      "season": "blue_hour",
+      "anchors": [
+        "lantern alley",
+        "wooden textures",
+        "small doors"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.food.izakaya_lanterns.night_social.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.scenic.mountain_valley.active_outdoors",
+      "label": "Mountain Valley Mood",
+      "domain": "backdrop",
+      "category": "scenic",
+      "variant": "mountain_valley",
+      "mood": "active_outdoors",
+      "imageType": "mood_backdrop_panel",
+      "season": "clear_sky",
+      "anchors": [
+        "misty mountains",
+        "river valley",
+        "ridgelines"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.scenic.mountain_valley.active_outdoors.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "backdrop.scenic.rural_train.rural_nostalgic",
+      "label": "Rural Train Mood",
+      "domain": "backdrop",
+      "category": "scenic",
+      "variant": "rural_train",
+      "mood": "rural_nostalgic",
+      "imageType": "mood_backdrop_panel",
+      "season": "golden_hour",
+      "anchors": [
+        "rice fields",
+        "local train",
+        "mountain village"
+      ],
+      "path": "/media/japan-prompt-studio-pack/backdrop.scenic.rural_train.rural_nostalgic.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    },
+    {
+      "assetId": "flight.air.red_eye.refined_premium",
+      "label": "Overnight Flight",
+      "domain": "flight",
+      "category": "air",
+      "variant": "red_eye",
+      "mood": "refined_premium",
+      "imageType": "hero_card_wide",
+      "season": "blue_hour",
+      "anchors": [
+        "airplane window",
+        "moonlit clouds",
+        "quiet cabin"
+      ],
+      "path": "/media/japan-prompt-studio-pack/flight.air.red_eye.refined_premium.png",
+      "sourceClass": "prompt_studio_generated_local",
+      "license": "project-generated",
+      "attribution": "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+      "state": "ready"
+    }
+  ]
+}

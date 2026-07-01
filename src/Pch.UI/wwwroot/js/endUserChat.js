@@ -12,66 +12,66 @@ const RAW_SENTINELS = [
 ];
 const mediaAssets = {
     cultural_immersive: {
-        id: "cultural_immersive",
+        id: "backdrop.cultural.sakura_temple.cultural_immersive",
         mood: "cultural_immersive",
-        path: "/media/japan-card-pack/cultural-immersive.svg",
-        alt: "Abstract lanterns and temple lines for an immersive cultural Japan card.",
+        path: "/media/japan-prompt-studio-pack/backdrop.cultural.sakura_temple.cultural_immersive.png",
+        alt: "Sakura temple prompt-studio mood art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     reflective_culture: {
-        id: "reflective_culture",
-        mood: "reflective_culture",
-        path: "/media/japan-card-pack/reflective-culture.svg",
-        alt: "Cherry, indigo, paper, and lantern glow for a reflective culture card.",
+        id: "backdrop.cultural.vermilion_torii.spiritual_serene",
+        mood: "spiritual_serene",
+        path: "/media/japan-prompt-studio-pack/backdrop.cultural.vermilion_torii.spiritual_serene.png",
+        alt: "Vermilion torii prompt-studio reflective culture art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     soft_nature: {
-        id: "soft_nature",
-        mood: "soft_nature",
-        path: "/media/japan-card-pack/soft-nature.svg",
-        alt: "Soft mountain, moss, and water shapes for a quiet nature card.",
+        id: "backdrop.scenic.fuji_lake.scenic_relaxed",
+        mood: "scenic_relaxed",
+        path: "/media/japan-prompt-studio-pack/backdrop.scenic.fuji_lake.scenic_relaxed.png",
+        alt: "Fuji lake prompt-studio soft nature art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     calm_morning: {
-        id: "calm_morning",
-        mood: "calm_morning",
-        path: "/media/japan-card-pack/calm-morning.svg",
-        alt: "Pale sun and soft green morning fields for a calm morning card.",
+        id: "backdrop.logistics.map_planning.family_easy",
+        mood: "family_easy",
+        path: "/media/japan-prompt-studio-pack/backdrop.logistics.map_planning.family_easy.png",
+        alt: "Gentle map-planning prompt-studio morning mood art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     restorative_downtime: {
-        id: "restorative_downtime",
-        mood: "restorative_downtime",
-        path: "/media/japan-card-pack/restorative-downtime.svg",
-        alt: "Lavender grey, warm wood, and bathhouse steam for restorative downtime.",
+        id: "backdrop.scenic.onsen_valley.wellness_restorative",
+        mood: "wellness_restorative",
+        path: "/media/japan-prompt-studio-pack/backdrop.scenic.onsen_valley.wellness_restorative.png",
+        alt: "Onsen valley prompt-studio restorative mood art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     logistics_transit: {
-        id: "logistics_transit",
-        mood: "logistics_transit",
-        path: "/media/japan-card-pack/logistics-transit.svg",
-        alt: "Crisp transit linework with blue, charcoal, and signal green.",
+        id: "backdrop.urban.station_grid.budget_practical",
+        mood: "budget_practical",
+        path: "/media/japan-prompt-studio-pack/backdrop.urban.station_grid.budget_practical.png",
+        alt: "Station grid prompt-studio logistics art.",
         state: "ready",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
     mood_placeholder: {
-        id: "mood_placeholder",
-        mood: "fallback",
-        path: "/media/japan-card-pack/mood-placeholder.svg",
-        alt: "Deterministic fallback mood art used when media is missing.",
+        id: "backdrop.cultural.craft_district.arts_design",
+        mood: "arts_design",
+        path: "/media/japan-prompt-studio-pack/backdrop.cultural.craft_district.arts_design.png",
+        alt: "Craft district prompt-studio fallback art.",
         state: "fallback",
-        sourceClass: "generated_local",
+        sourceClass: "prompt_studio_generated_local",
         license: "project-generated",
     },
 };
@@ -292,6 +292,8 @@ function sendPrompt() {
         "data-harness-validation-state": "not_run",
         "data-latest-turn-source": "deterministic_fallback",
         "data-provider-request-state": "not_attempted",
+        "data-live-turn-attempt-count": liveSelected ? "1" : "0",
+        "data-live-second-turn-state": "not_started",
         "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",
         "data-blocked-reason": liveSelected ? "live_preflight_disabled" : "",
     });
@@ -300,8 +302,11 @@ function sendPrompt() {
     appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active; live provider roles are disabled for this run.", "model_role_status_ready");
     if (liveSelected) {
         appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.", "live_preflight_disabled", "evidence-chat-live-model");
+        appendTurn("turn-live-work-item-1", "assistant", "live-blocked", "blocked", "Live model output was blocked before application; deterministic planning remains available.", "live_preflight_disabled", "evidence-chat-live-model");
     }
-    appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
+    else {
+        appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
+    }
     ensureWorkObjects();
     if (!document.querySelector("[data-ask-action='open']")) {
         document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<button type="button" class="ask-tab" data-ask-action="open" aria-label="Open Ask drawer">Ask</button>`);
@@ -329,6 +334,17 @@ function selectCandidate(candidateId) {
     }
     ensurePlanningTimeline();
     document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-selected-option", "day", "candidate", "selected", `Selected ${candidate.title}`, candidate.summary, "turn-choice-selected", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-itinerary-choice" data-candidate-id="${candidate.id}" data-decision-id="decision-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
+    if (selectedModelRole() !== "deterministic-offline") {
+        setRootState({
+            "data-final-state": "live_second_turn_blocked",
+            "data-provider-request-state": "second_turn_blocked",
+            "data-provider-outcome": "live_multiturn_contract_pending",
+            "data-live-turn-attempt-count": "2",
+            "data-live-second-turn-state": "blocked",
+        });
+        appendTurn("turn-live-model-followup", "provider", "live-model-followup", "blocked", "A second live turn needs the canonical multi-turn session contract before provider replay can continue.", "live_multiturn_contract_pending", "evidence-chat-live-model", candidate.id);
+        document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-live-second-turn", "task", "live-model-followup", "blocked", "Second live turn pending", "The selected option is preserved while the canonical multi-turn runner integration is pending.", "turn-live-model-followup", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-live-followup" data-task-id="task-itinerary" data-candidate-id="${candidate.id}" data-decision-id="decision-live-followup-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
+    }
 }
 function deferCandidate(candidateId) {
     const candidate = candidates.find((item) => item.id === candidateId);

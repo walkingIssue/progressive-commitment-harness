@@ -63,23 +63,24 @@ public sealed class EndUserChatServiceTests
         Assert.NotNull(state.ApprovalPlate);
         Assert.Contains(state.ChoiceSet.Candidates, candidate => candidate.CandidateId == "candidate-japan-classic-highlights"
             && candidate.Mood == "reflective-culture"
-            && candidate.Media.AssetId == "reflective_culture"
+            && candidate.Media.AssetId == "backdrop.cultural.vermilion_torii.spiritual_serene"
             && candidate.Media.State == "ready");
         Assert.All(state.ChoiceSet.Candidates, candidate =>
         {
-            Assert.StartsWith("/media/japan-card-pack/", candidate.Media.Path, StringComparison.Ordinal);
-            Assert.Equal("generated_local", candidate.Media.SourceClass);
+            Assert.StartsWith("/media/japan-prompt-studio-pack/", candidate.Media.Path, StringComparison.Ordinal);
+            Assert.EndsWith(".png", candidate.Media.Path, StringComparison.Ordinal);
+            Assert.Equal("prompt_studio_generated_local", candidate.Media.SourceClass);
             Assert.Equal("project-generated", candidate.Media.License);
         });
         Assert.Contains(state.PlanTrail, item => item.TrailId == "trail-mission-facts"
             && item.State == "accepted"
-            && item.Media?.AssetId == "calm_morning");
+            && item.Media?.AssetId == "backdrop.logistics.map_planning.family_easy");
         Assert.Contains(state.PlanningTimeline, item => item.TimelineId == "timeline-day-1-mission"
             && item.Mode == "day"
             && item.DayId == "day-japan-01"
             && item.SlotId == "slot-morning"
             && item.OriginTurnId == "turn-03"
-            && item.Media?.AssetId == "calm_morning");
+            && item.Media?.AssetId == "backdrop.logistics.map_planning.family_easy");
         Assert.Contains(state.PlanningTimeline, item => item.TimelineId == "timeline-task-itinerary"
             && item.Mode == "task"
             && item.TaskId == "task-itinerary"
@@ -142,9 +143,11 @@ public sealed class EndUserChatServiceTests
             && turn.State == "blocked"
             && turn.OutcomeCode == "live_preflight_disabled"
             && turn.ErrorCode == "PCH_UI_LIVE_MODEL_GUARDED");
-        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-final"
-            && turn.State == "applied"
-            && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
+        Assert.DoesNotContain(state.Turns, turn => turn.TurnId == "turn-assistant-final");
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-work-item-1"
+            && turn.Kind == "live-blocked"
+            && turn.State == "blocked"
+            && turn.OutcomeCode == "live_preflight_disabled");
         AssertChatRawTextAbsent(serialized);
     }
 
@@ -186,9 +189,11 @@ public sealed class EndUserChatServiceTests
             && turn.Kind == "live-model"
             && turn.State == "blocked"
             && turn.OutcomeCode == "live_mission_proposal_provider_unavailable");
-        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-final"
-            && turn.State == "applied"
-            && turn.OutcomeCode == GoldenTurnTraceRunner.TraceCompleteCode);
+        Assert.DoesNotContain(state.Turns, turn => turn.TurnId == "turn-assistant-final");
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-work-item-1"
+            && turn.Kind == "live-blocked"
+            && turn.State == "blocked"
+            && turn.OutcomeCode == "live_mission_proposal_provider_unavailable");
         AssertChatRawTextAbsent(serialized);
     }
 
@@ -216,6 +221,11 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.State == "applied"
             && turn.OutcomeCode == "live_model_proposal_accepted");
+        Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-work-item-1"
+            && turn.Kind == "live-work-item"
+            && turn.State == "applied"
+            && turn.OutcomeCode == "live_model_proposal_accepted");
+        Assert.DoesNotContain(state.Turns, turn => turn.TurnId == "turn-assistant-final");
         AssertChatRawTextAbsent(serialized);
     }
 
@@ -274,6 +284,43 @@ public sealed class EndUserChatServiceTests
     }
 
     [Fact]
+    public async Task LiveModeSelectionCreatesSecondTurnBlockedMarkerAndTimelineUpdate()
+    {
+        var service = LiveProposalService(new EndUserLiveMissionProposalGateway(
+            LiveEnvironment,
+            new LiveMissionProposalRunner(
+                new ProposalCompletionClient(CreateProposalContent()),
+                new PreflightCreditClient())));
+        var sent = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with live multi turn.",
+            EndUserModelRoleSelection.InHarnessActionGenerator);
+
+        var selected = service.SelectCandidate(sent, "candidate-japan-classic-highlights");
+        var serialized = Serialize(selected);
+
+        Assert.Equal("live_second_turn_blocked", selected.FinalState);
+        Assert.Equal("second_turn_blocked", selected.ProviderRequestState);
+        Assert.Equal("live_multiturn_contract_pending", selected.ProviderOutcome);
+        Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-run"
+            && turn.State == "applied"
+            && turn.OutcomeCode == "live_model_proposal_accepted");
+        Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-choice-selected"
+            && turn.CandidateId == "candidate-japan-classic-highlights");
+        Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-followup"
+            && turn.Kind == "live-model-followup"
+            && turn.State == "blocked"
+            && turn.OutcomeCode == "live_multiturn_contract_pending"
+            && turn.CandidateId == "candidate-japan-classic-highlights");
+        Assert.Contains(selected.PlanningTimeline, item => item.TimelineId == "timeline-live-second-turn"
+            && item.Mode == "task"
+            && item.CandidateId == "candidate-japan-classic-highlights"
+            && item.OriginTurnId == "turn-live-model-followup"
+            && item.OutcomeCode == "live_multiturn_contract_pending"
+            && item.Media?.Path.EndsWith(".png", StringComparison.Ordinal) == true);
+        AssertChatRawTextAbsent(serialized);
+    }
+
+    [Fact]
     public async Task FormChoiceApprovalAndTrailInteractionsMutateTypedState()
     {
         var service = new EndUserChatService();
@@ -292,12 +339,12 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(selected.PlanTrail, item => item.TrailId == "trail-selected-option"
             && item.CandidateId == "candidate-japan-classic-highlights"
             && item.OutcomeCode == "choice_candidate_selected"
-            && item.Media?.AssetId == "reflective_culture");
+            && item.Media?.AssetId == "backdrop.cultural.vermilion_torii.spiritual_serene");
         Assert.Contains(selected.PlanningTimeline, item => item.TimelineId == "timeline-selected-option"
             && item.Mode == "day"
             && item.CandidateId == "candidate-japan-classic-highlights"
             && item.OriginTurnId == "turn-choice-selected"
-            && item.Media?.AssetId == "reflective_culture");
+            && item.Media?.AssetId == "backdrop.cultural.vermilion_torii.spiritual_serene");
         Assert.Equal("blocked", blocked.FinalState);
         Assert.Equal("blocked_missing_approval", blocked.ApprovalState);
         Assert.Equal("approval_required_preview", blocked.ApprovalPlate?.BlockedReason);
@@ -323,11 +370,11 @@ public sealed class EndUserChatServiceTests
         Assert.Contains(deferred.PlanTrail, item => item.TrailId == "trail-deferred-option"
             && item.CandidateId == "candidate-japan-scenic-explorer"
             && item.OutcomeCode == "choice_candidate_deferred"
-            && item.Media?.AssetId == "soft_nature");
+            && item.Media?.AssetId == "backdrop.scenic.fuji_lake.scenic_relaxed");
         Assert.Contains(deferred.PlanningTimeline, item => item.TimelineId == "timeline-deferred-option"
             && item.CandidateId == "candidate-japan-scenic-explorer"
             && item.OriginTurnId == "turn-choice-deferred"
-            && item.Media?.AssetId == "soft_nature");
+            && item.Media?.AssetId == "backdrop.scenic.fuji_lake.scenic_relaxed");
     }
 
     [Fact]
@@ -338,40 +385,47 @@ public sealed class EndUserChatServiceTests
 
         var fallbackCandidate = Assert.Single(sent.ChoiceSet!.Candidates, candidate => candidate.CandidateId == "candidate-japan-transit-rhythm");
 
-        Assert.Equal("mood_placeholder", fallbackCandidate.Media.AssetId);
+        Assert.Equal("backdrop.cultural.craft_district.arts_design", fallbackCandidate.Media.AssetId);
         Assert.Equal("fallback", fallbackCandidate.Media.State);
-        Assert.Equal("/media/japan-card-pack/mood-placeholder.svg", fallbackCandidate.Media.Path);
+        Assert.Equal("/media/japan-prompt-studio-pack/backdrop.cultural.craft_district.arts_design.png", fallbackCandidate.Media.Path);
         AssertChatRawTextAbsent(Serialize(sent));
     }
 
     [Fact]
-    public void JapanMediaManifestCoversRequiredMoodPack()
+    public void JapanPromptStudioMediaManifestCoversRepresentativeMoodPack()
     {
         using var manifest = JsonDocument.Parse(File.ReadAllText(FindManifestPath()));
         var assets = manifest.RootElement.GetProperty("assets").EnumerateArray().ToArray();
         var assetIds = assets.Select(asset => asset.GetProperty("assetId").GetString()).ToHashSet(StringComparer.Ordinal);
+        var moods = assets.Select(asset => asset.GetProperty("mood").GetString()).ToHashSet(StringComparer.Ordinal);
 
         foreach (var required in new[]
         {
-            "cultural_immersive",
-            "scenic_relaxed",
-            "lively_food",
-            "calm_morning",
-            "reflective_culture",
-            "soft_nature",
-            "restorative_downtime",
-            "logistics_transit",
-            "mood_placeholder"
+            "backdrop.cultural.sakura_temple.cultural_immersive",
+            "backdrop.scenic.fuji_lake.scenic_relaxed",
+            "backdrop.food.ramen_steam.food_cozy",
+            "backdrop.urban.station_grid.budget_practical",
+            "backdrop.scenic.onsen_valley.wellness_restorative",
+            "backdrop.cultural.craft_district.arts_design"
         })
         {
             Assert.Contains(required, assetIds);
         }
 
+        foreach (var mood in new[] { "cultural_immersive", "scenic_relaxed", "food_cozy", "budget_practical", "wellness_restorative", "arts_design" })
+        {
+            Assert.Contains(mood, moods);
+        }
+
+        Assert.Equal("japan-prompt-studio-pack-sprint-021", manifest.RootElement.GetProperty("manifestId").GetString());
+        Assert.True(manifest.RootElement.GetProperty("importedCount").GetInt32() >= 16);
         Assert.All(assets, asset =>
         {
-            Assert.Equal("generated_local", asset.GetProperty("sourceClass").GetString());
+            Assert.Equal("prompt_studio_generated_local", asset.GetProperty("sourceClass").GetString());
             Assert.Equal("project-generated", asset.GetProperty("license").GetString());
-            Assert.StartsWith("/media/japan-card-pack/", asset.GetProperty("path").GetString(), StringComparison.Ordinal);
+            Assert.StartsWith("/media/japan-prompt-studio-pack/", asset.GetProperty("path").GetString(), StringComparison.Ordinal);
+            Assert.EndsWith(".png", asset.GetProperty("path").GetString(), StringComparison.Ordinal);
+            Assert.True(asset.GetProperty("anchors").GetArrayLength() > 0);
         });
     }
 
@@ -511,7 +565,7 @@ public sealed class EndUserChatServiceTests
         var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
         while (directory is not null)
         {
-            var candidate = Path.Combine(directory.FullName, "src", "Pch.UI", "wwwroot", "media", "japan-card-pack", "manifest.json");
+            var candidate = Path.Combine(directory.FullName, "src", "Pch.UI", "wwwroot", "media", "japan-prompt-studio-pack", "manifest.json");
             if (File.Exists(candidate))
             {
                 return candidate;

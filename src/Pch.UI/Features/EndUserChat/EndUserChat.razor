@@ -14,6 +14,8 @@
          data-provider-request-state="@Chat.ProviderRequestState"
          data-role-status="@Chat.RoleStatusOutcome"
          data-provider-outcome="@Chat.ProviderOutcome"
+         data-live-turn-attempt-count="@LiveTurnAttemptCount"
+         data-live-second-turn-state="@LiveSecondTurnState"
          data-approval-state="@Chat.ApprovalState"
          data-final-state="@Chat.FinalState"
          data-composer-state="@ComposerState"
@@ -123,6 +125,12 @@
     private string DrawerState => DrawerOpen ? "open" : "closed";
 
     private string AgentWorkState => HasSubmitted ? "active" : "waiting_for_first_prompt";
+
+    private int LiveTurnAttemptCount =>
+        Chat.Turns.Count(turn => turn.Kind is "live-model" or "live-model-followup");
+
+    private string LiveSecondTurnState =>
+        Chat.Turns.SingleOrDefault(turn => turn.TurnId == "turn-live-model-followup")?.State ?? "not_started";
 
     private IReadOnlyList<EndUserCandidateOption> CultureCandidates =>
         Chat.ChoiceSet?.Candidates.Where(candidate => candidate.Mood == "reflective-culture").ToArray() ?? [];
