@@ -82,16 +82,31 @@ public sealed class LiveSessionConductor
             return BuildBlocked(ProviderModelBlockedCode, "Prompt packet construction was blocked.", session, prompt, null, []);
         }
 
-        var proposalValidation = ValidateProposalCorrelation(session, prompt.Packet, request.Proposal);
+        return RunPreparedTurn(session, prompt, request.Proposal, request.ScenarioHints ?? []);
+    }
+
+    public LivePlanningTurnResult RunPreparedTurn(
+        TripSession session,
+        PromptIntakeResult prompt,
+        LiveModelProposalEnvelope proposal,
+        IReadOnlyList<string>? scenarioHints = null)
+    {
+        var validation = ValidatePrepared(session, prompt, proposal);
+        if (!validation.IsAccepted)
+        {
+            return BuildBlocked(validation.Code, validation.Summary, session, prompt, null, []);
+        }
+
+        var proposalValidation = ValidateProposalCorrelation(session, prompt.Packet!, proposal);
         if (!proposalValidation.IsAccepted)
         {
             return BuildBlocked(proposalValidation.Code, proposalValidation.Summary, session, prompt, null, []);
         }
 
-        return request.Proposal.Kind switch
+        return proposal.Kind switch
         {
-            LiveModelProposalKind.MissionProposal => ApplyMissionProposal(session, request, prompt),
-            LiveModelProposalKind.RuntimeAction => ApplyRuntimeAction(session, request, prompt),
+            LiveModelProposalKind.MissionProposal => ApplyMissionProposal(session, proposal, prompt, scenarioHints ?? []),
+            LiveModelProposalKind.RuntimeAction => ApplyRuntimeAction(session, proposal, prompt),
             LiveModelProposalKind.ModelBlocked => BuildBlocked(ProviderModelBlockedCode, "Provider or model output was blocked.", session, prompt, null, [Trace("model-blocked", "model", ProviderModelBlockedCode)]),
             LiveModelProposalKind.DeterministicFallback => BuildFallback(session, prompt),
             LiveModelProposalKind.Unsupported => BuildBlocked(UnsupportedLiveOperationCode, "Live operation is unsupported.", session, prompt, null, []),
@@ -101,15 +116,16 @@ public sealed class LiveSessionConductor
 
     private LivePlanningTurnResult ApplyMissionProposal(
         TripSession session,
-        LivePlanningTurnRequest request,
-        PromptIntakeResult prompt)
+        LiveModelProposalEnvelope proposal,
+        PromptIntakeResult prompt,
+        IReadOnlyList<string> scenarioHints)
     {
-        if (request.Proposal.MissionProposal is null)
+        if (proposal.MissionProposal is null)
         {
             return BuildBlocked(MissionProposalBlockedCode, "Mission proposal was blocked.", session, prompt, null, []);
         }
 
-        var result = _missionProposalAdapter.Apply(session, request.Proposal.MissionProposal);
+        var result = _missionProposalAdapter.Apply(session, proposal.MissionProposal);
         if (!result.IsAccepted)
         {
             return BuildBlocked(MissionProposalBlockedCode, "Mission proposal was blocked.", session, prompt, result, []);
@@ -120,7 +136,7 @@ public sealed class LiveSessionConductor
             null,
             null,
             session.MemoryDigest,
-            request.ScenarioHints ?? []));
+            scenarioHints));
         var pendingConfirmations = result.IntakeResult?.PendingConfirmations ?? [];
         var turn = pendingConfirmations.Count > 0
             ? _liveTurnProjector.FromMissionPendingConfirmations(prompt, pendingConfirmations)
@@ -136,7 +152,7 @@ public sealed class LiveSessionConductor
             Code: code,
             Summary: code == AwaitingUserInputCode ? "Live planning turn is awaiting user input." : "Live planning turn accepted.",
             Prompt: PromptFragment(prompt),
-            Proposal: ProposalFragment(request.Proposal, prompt, code),
+            Proposal: ProposalFragment(proposal, prompt, code),
             Mission: new LiveMissionFragment(result.Code, result.Summary, result.Digest.DigestId, pendingConfirmations.Count),
             RuntimeAction: null,
             Itinerary: new LiveItineraryFragment(compilation.Code, compilation.Summary, compilation.SlotCount, compilation.ConflictCount),
@@ -147,15 +163,15 @@ public sealed class LiveSessionConductor
 
     private LivePlanningTurnResult ApplyRuntimeAction(
         TripSession session,
-        LivePlanningTurnRequest request,
+        LiveModelProposalEnvelope proposal,
         PromptIntakeResult prompt)
     {
-        if (request.Proposal.RuntimeAction is null)
+        if (proposal.RuntimeAction is null)
         {
             return BuildBlocked(DecodeBlockedCode, "Runtime action proposal was blocked before intake.", session, prompt, null, []);
         }
 
-        var runtime = _runtimeActionApplication.Apply(session, request.Proposal.RuntimeAction);
+        var runtime = _runtimeActionApplication.Apply(session, proposal.RuntimeAction);
         if (runtime.IsBlocked)
         {
             var code = runtime.IntakeCode switch
@@ -175,7 +191,7 @@ public sealed class LiveSessionConductor
                         ? "Runtime action proposal was blocked before intake."
                         : "Runtime action intake was blocked.",
                 Prompt: PromptFragment(prompt),
-                Proposal: ProposalFragment(request.Proposal, prompt, code),
+                Proposal: ProposalFragment(proposal, prompt, code),
                 Mission: null,
                 RuntimeAction: new LiveRuntimeActionFragment(runtime.DecodeCode, runtime.IntakeCode, runtime.Stage, runtime.PacketId),
                 Itinerary: null,
@@ -191,7 +207,7 @@ public sealed class LiveSessionConductor
             Code: AcceptedCode,
             Summary: "Live runtime action accepted.",
             Prompt: PromptFragment(prompt),
-            Proposal: ProposalFragment(request.Proposal, prompt, AcceptedCode),
+            Proposal: ProposalFragment(proposal, prompt, AcceptedCode),
             Mission: null,
             RuntimeAction: new LiveRuntimeActionFragment(runtime.DecodeCode, runtime.IntakeCode, runtime.Stage, runtime.PacketId),
             Itinerary: null,
@@ -283,6 +299,45 @@ public sealed class LiveSessionConductor
         }
 
         if (!OperationMatchesKind(request.Proposal.Kind, request.Proposal.OperationCode))
+        {
+            return LivePlanningValidation.Blocked(UnsupportedLiveOperationCode, "Live operation is unsupported.");
+        }
+
+        return LivePlanningValidation.Accepted();
+    }
+
+    private static LivePlanningValidation ValidatePrepared(
+        TripSession session,
+        PromptIntakeResult? prompt,
+        LiveModelProposalEnvelope? proposal)
+    {
+        if (prompt is null || proposal is null)
+        {
+            return LivePlanningValidation.Blocked(UnsupportedLiveOperationCode, "Live planning turn request failed validation.");
+        }
+
+        if (!prompt.IsAccepted || prompt.Packet is null)
+        {
+            return LivePlanningValidation.Blocked(ProviderModelBlockedCode, "Prompt packet construction was blocked.");
+        }
+
+        if (string.IsNullOrWhiteSpace(prompt.Packet.SessionId)
+            || !string.Equals(prompt.Packet.SessionId, session.SessionId, StringComparison.Ordinal))
+        {
+            return LivePlanningValidation.Blocked(UnsupportedLiveOperationCode, "Live planning turn request failed validation.");
+        }
+
+        if (proposal.Kind is LiveModelProposalKind.MissionProposal && proposal.MissionProposal is null)
+        {
+            return LivePlanningValidation.Blocked(MissionProposalBlockedCode, "Mission proposal was blocked.");
+        }
+
+        if (proposal.Kind is LiveModelProposalKind.RuntimeAction && proposal.RuntimeAction is null)
+        {
+            return LivePlanningValidation.Blocked(DecodeBlockedCode, "Runtime action proposal was blocked before intake.");
+        }
+
+        if (!OperationMatchesKind(proposal.Kind, proposal.OperationCode))
         {
             return LivePlanningValidation.Blocked(UnsupportedLiveOperationCode, "Live operation is unsupported.");
         }
