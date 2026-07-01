@@ -243,12 +243,13 @@ function appendTurn(id, role, kind, state, text, outcome, evidence, candidateId)
     panel.dataset.turnCount = String(panel.querySelectorAll("[data-turn-id]").length);
     return article;
 }
-async function startLivePlanningViaHttp() {
+async function startLivePlanningViaHttp(promptText) {
     if (pendingHttpPlanning)
         return;
     pendingHttpPlanning = true;
     try {
         const prompt = document.querySelector("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
+        const capturedPrompt = promptText ?? prompt?.value ?? "";
         setRootState({
             "data-browser-transport": "http_api",
             "data-provider-request-state": "attempted",
@@ -259,7 +260,7 @@ async function startLivePlanningViaHttp() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                prompt: prompt?.value ?? "",
+                prompt: capturedPrompt,
                 selectedModelRole: selectedModelRole(),
             }),
         });
@@ -496,6 +497,7 @@ function ensureWorkObjects() {
 }
 function sendPrompt() {
     const prompt = document.querySelector("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
+    const promptValue = prompt?.value ?? "";
     const promptLength = prompt?.value.trim().length ?? 0;
     const role = selectedModelRole();
     const liveSelected = role !== "deterministic-offline";
@@ -503,7 +505,7 @@ function sendPrompt() {
     const liveConfigured = liveSelected && (livePreflightState === "preflight_ready" || livePreflightState === "preflight_passed");
     const liveFallbackOutcome = liveConfigured ? "browser_circuit_disconnected" : "live_preflight_disabled";
     if (liveSelected) {
-        void startLivePlanningViaHttp();
+        void startLivePlanningViaHttp(promptValue);
         return;
     }
     document.querySelector("[data-composer-layout='expanded_start']")?.setAttribute("hidden", "");

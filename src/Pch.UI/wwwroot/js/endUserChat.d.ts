@@ -101,7 +101,7 @@ declare function setRootState(attrs: Record<string, string>): void;
 declare function selectedModelRole(): string;
 declare function setModelRole(role: string): void;
 declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
-declare function startLivePlanningViaHttp(): Promise<void>;
+declare function startLivePlanningViaHttp(promptText?: string): Promise<void>;
 declare function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string): Promise<void>;
 declare function applyPlanningApiResponse(response: PlanningApiResponse, transport: string): void;
 declare function renderApiTurn(turn: PlanningApiTurn | null | undefined): void;
