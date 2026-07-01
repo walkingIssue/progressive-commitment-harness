@@ -10,6 +10,7 @@ Accepted rows may persist:
 - fixed outcome code
 - output kind enum
 - primitive ids from the manifest
+- primitive kinds from the manifest
 - primitive count
 - task count
 - option count
@@ -45,6 +46,8 @@ Fixed outcomes:
 - `planner_model_unsupported_primitive`
 - `planner_model_field_path_not_allowed`
 - `planner_model_tool_not_allowed`
+- `planner_model_primitive_renderer_mismatch`
+- `planner_model_task_decomposition_missing`
 - `planner_model_provider_unavailable`
 
 Malformed JSON and schema-invalid responses get one bounded repair attempt. If the repair output is valid, the accepted row uses `planner_model_repaired_json`. If the repair also fails, the row uses the fixed malformed/schema outcome and omits provider result metadata.
@@ -52,6 +55,13 @@ Malformed JSON and schema-invalid responses get one bounded repair attempt. If t
 Optional live smoke records only fixed/sanitized status and must not fall back to a different paid provider unless explicitly configured and reported.
 
 Sprint 023 dynamic-form eval rows also enforce prompt-specific output. Accepted rows may preserve only manifest-owned primitive ids and counts; runtime model-authored labels, prompts, help text, default values, option labels/summaries, task titles/summaries, submitted answer values, context summaries, and raw prompts remain runtime-only and are omitted from serialized eval rows.
+
+Sprint 024 HTML primitive eval rows also enforce structural anti-gaming gates before acceptance:
+
+- accepted `composite_form` rows must include at least one non-text interactive primitive such as `select`, `radio_group`, `date`, `date_range`, `slider`, `multi_select`, `choice_card`, or `candidate_deck`;
+- accepted `composite_form` rows must include a `task_decomposition` primitive and task records;
+- destination confirmation, exact dates, and pace controls must not be accepted as generic `text_input`/`textarea` when the prompt/context calls for structured controls;
+- row `PrimitiveIds`, `PrimitiveKinds`, `PrimitiveCount`, `TaskCount`, `OptionCount`, and `OutputKind` are the persisted proof of accepted structure.
 
 OpenAI/OpenRouter client diagnostics should classify provider failures with fixed classes before they reach eval rows:
 

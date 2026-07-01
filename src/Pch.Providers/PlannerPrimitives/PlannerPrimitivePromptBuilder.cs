@@ -13,7 +13,7 @@ internal static class PlannerPrimitivePromptBuilder
         var manifest = request.Manifest;
         return JsonSerializer.Serialize(new
         {
-            Instruction = "Build the next validated planner interaction for the user task. Make labels, prompts, tasks, and options specific to the runtimePrompt and current context. Do not invent live search, booking, availability, hotel, price, or web facts without toolContextRefs.",
+            Instruction = "Build the next validated planner interaction by invoking explicit HTML/form primitive tools with data. Do not emit generic form-ish prose blobs. Make primitive ids, primitive kinds, field paths, labels, prompts, tasks, and options specific to runtimePrompt, submitted answers, and current context. Do not invent live search, booking, availability, hotel, price, or web facts without toolContextRefs.",
             RuntimePrompt = request.RuntimePrompt,
             request.RunId,
             request.TurnId,
@@ -51,6 +51,25 @@ internal static class PlannerPrimitivePromptBuilder
                 primitive.PrimitiveKind,
                 primitive.RendererKey
             }).ToArray(),
+            PrimitiveToolMenu = PlannerPrimitiveToolCatalog.RequiredPrimitiveIds.Select(id => new
+            {
+                PrimitiveId = id,
+                PrimitiveKind = id,
+                RendererKey = id
+            }).ToArray(),
+            PrimitiveSelectionRules = new[]
+            {
+                "destination confirmation must use radio_group or select, never text_input",
+                "exact dates must use date or date_range, never text_input",
+                "pace must use select, radio_group, or slider when options are available",
+                "multiple preferences must use multi_select, choice_card, or candidate_deck",
+                "an accepted planning turn must include task_decomposition plus task records",
+                "tasks[].primitiveRefs must reference primitive instanceId values exactly, not primitiveId values",
+                "primitive taskRefs must reference taskId values exactly",
+                "use only allowedFieldPaths exactly as provided",
+                "use only allowed mood/media/tool ids exactly as provided",
+                "tool_search_request and tool_gap_request are non-mutating outcomes for missing external context only"
+            },
             manifest.AllowedFieldPaths,
             manifest.AllowedMoodTokens,
             manifest.AllowedMediaTokens,
@@ -63,6 +82,8 @@ internal static class PlannerPrimitivePromptBuilder
                 IncludeDynamicPrompts = true,
                 IncludeTasksWhenUseful = true,
                 IncludeOptionsWhenAskingChoice = true,
+                IncludeAtLeastOneNonTextPrimitive = true,
+                IncludeTaskDecompositionForCompositeForm = true,
                 ToolClaimsRequireToolContextRefs = true
             }
         }, JsonOptions);

@@ -205,6 +205,7 @@ public sealed record SanitizedPlannerModelLogRow(
     string? FailureClassCode,
     PlannerModelOutputKind? OutputKind,
     IReadOnlyList<string> PrimitiveIds,
+    IReadOnlyList<string> PrimitiveKinds,
     int PrimitiveCount,
     int TaskCount,
     int OptionCount,
