@@ -301,6 +301,57 @@ public sealed class PlanningSessionServiceTests
     }
 
     [Fact]
+    public async Task AcceptedAssistantMessageFollowupDoesNotRenderAsProviderFailure()
+    {
+        var callCount = 0;
+        Task<PlannerModelResult> runner(
+            PlannerModelRequest request,
+            PlannerModelOptions options,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            callCount++;
+            return callCount == 1
+                ? AcceptedPlannerPrimitiveRun(request, options, cancellationToken)
+                : Task.FromResult(ModelResult(
+                    request,
+                    [
+                        Primitive(
+                            "assistant_message",
+                            "assistant_message",
+                            "msg-followup",
+                            "assistant-message",
+                            null,
+                            "lively_food",
+                            "Exploring food and activities",
+                            "The follow-up reflects the submitted answer values.")
+                    ],
+                    "request-planner-primitive-assistant-message"));
+        }
+
+        var store = new PlanningSessionStore();
+        var service = PlanningService(runner);
+        var started = await store.StartAsync(
+            service,
+            new("Plan a weird food-first Osaka trip.", EndUserModelRoleSelection.InHarnessActionGenerator));
+        var form = Assert.Single(started.Turn!.Primitives, primitive => primitive.RendererKey == "form");
+        var values = form.Fields.ToDictionary(
+            field => field.FieldId,
+            _ => "osaka ramen markets no temples",
+            StringComparer.Ordinal);
+
+        var answered = await store.AnswerAsync(service, started.SessionId, new(form.InstanceId, values));
+
+        Assert.Equal("second_turn_attempted", answered.State.ProviderRequestState);
+        Assert.Equal("planner_model_accepted", answered.State.ProviderOutcome);
+        Assert.Equal("awaiting_user_input", answered.State.FinalState);
+        var primitive = Assert.Single(answered.Turn!.Primitives);
+        Assert.Equal("assistant-message", primitive.RendererKey);
+        Assert.Null(primitive.ErrorCode);
+        AssertRawTextAbsent(JsonSerializer.Serialize(answered));
+    }
+
+    [Fact]
     public async Task UnsafeModelAuthoredLabelsAreRedactedBeforeApiSerialization()
     {
         var store = new PlanningSessionStore();
@@ -337,6 +388,30 @@ public sealed class PlanningSessionServiceTests
         Assert.DoesNotContain("SyntheticTripFactory.CreateSession", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CandidateDeckRenderersSubmitPrimitiveAnswerDtoShape()
+    {
+        var primitiveRenderer = File.ReadAllText(Path.Combine(
+            RepoRoot(),
+            "src",
+            "Pch.UI",
+            "Features",
+            "EndUserChat",
+            "PrimitiveRenderer.razor"));
+        var browserHelper = File.ReadAllText(Path.Combine(
+            RepoRoot(),
+            "src",
+            "Pch.UI",
+            "ClientApp",
+            "endUserChat.ts"));
+
+        Assert.Contains("new PrimitiveAnswerDto(", primitiveRenderer, StringComparison.Ordinal);
+        Assert.Contains("[\"candidate_id\"] = candidateId", primitiveRenderer, StringComparison.Ordinal);
+        Assert.Contains("data-answer-choice", browserHelper, StringComparison.Ordinal);
+        Assert.Contains("fieldValues.candidate_id = selectedCandidateId", browserHelper, StringComparison.Ordinal);
+        Assert.Contains("submitPrimitiveAnswerViaHttp(answerSubmit, selectedChoice)", browserHelper, StringComparison.Ordinal);
+    }
+
     private static PlanningSessionService PlanningService(PlannerPrimitiveModelRunner? runner = null) =>
         new(LiveChatService(), new FormBuilder(), LiveEnvironment, runner ?? AcceptedPlannerPrimitiveRun);
 
@@ -349,14 +424,13 @@ public sealed class PlanningSessionServiceTests
         return Task.FromResult(ModelResult(
             request,
             [
-                new(
+                Primitive(
                     "text_input",
                     "text_input",
                     "primitive-unsafe-label",
                     "text-input",
                     "/mission/purpose",
                     null,
-                    [],
                     "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST",
                     "<script>RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST</script>")
             ],
@@ -372,24 +446,22 @@ public sealed class PlanningSessionServiceTests
         var result = ModelResult(
             request,
             [
-                new(
+                Primitive(
                     "text_input",
                     "text_input",
                     "primitive-destination-country",
                     "text-input",
                     "/mission/destination_country",
                     null,
-                    [],
                     "Destination",
                     "Confirm destination."),
-                new(
+                Primitive(
                     "date_range",
                     "date_range",
                     "primitive-trip-dates",
                     "date-range",
                     "/mission/start_date",
                     null,
-                    [],
                     "Dates",
                     "Confirm travel dates.")
             ],
@@ -409,13 +481,43 @@ public sealed class PlanningSessionServiceTests
             request.Manifest.SessionId,
             PlannerModelOutputKind.CompositeForm,
             primitives,
+            [new("task-planner-fixture", primitives.Select(primitive => primitive.InstanceId).ToArray(), "Fixture task", "Fixture task summary.")],
             WasRepaired: false,
             HasUnsafeValue: false,
+            HasPromptSpecificContent: true,
             Duration: TimeSpan.FromMilliseconds(25),
             ResponseContentLength: 256,
             Provider: "mock",
             Model: "mock-planner-primitive",
             RequestId: requestId);
+
+    private static PlannerPrimitiveInvocation Primitive(
+        string primitiveId,
+        string primitiveKind,
+        string instanceId,
+        string rendererKey,
+        string? fieldPath,
+        string? moodToken,
+        string? label,
+        string? promptText) =>
+        new(
+            primitiveId,
+            primitiveKind,
+            instanceId,
+            rendererKey,
+            fieldPath,
+            moodToken,
+            moodToken,
+            [],
+            [],
+            ["evidence-planner-primitive"],
+            [],
+            [],
+            label,
+            promptText,
+            null,
+            null,
+            new Dictionary<string, string>(StringComparer.Ordinal));
 
     private sealed class DynamicPromptPlannerPrimitiveRunner
     {
@@ -427,24 +529,22 @@ public sealed class PlanningSessionServiceTests
             cancellationToken.ThrowIfCancellationRequested();
             var prompt = request.RuntimePrompt ?? string.Empty;
             var primitive = prompt.Contains("Iceland", StringComparison.OrdinalIgnoreCase)
-                ? new PlannerPrimitiveInvocation(
+                ? Primitive(
                     "textarea",
                     "textarea",
                     "primitive-iceland-quiet-hiking",
                     "textarea",
                     "/mission/purpose",
-                    null,
-                    [],
+                    "soft_nature",
                     "Iceland quiet hiking plan",
                     "Focus on glaciers, hot springs, and early nights.")
-                : new PlannerPrimitiveInvocation(
+                : Primitive(
                     "text_input",
                     "text_input",
                     "primitive-osaka-food-first",
                     "text-input",
                     "/mission/purpose",
-                    null,
-                    [],
+                    "lively_food",
                     "Osaka food-first plan",
                     "Prioritize late night ramen, markets, and no temples.");
 
@@ -473,8 +573,14 @@ public sealed class PlanningSessionServiceTests
     private sealed class CapturingPlannerPrimitiveRunner
     {
         private readonly List<PlannerModelRequest> _requests = [];
+        private readonly PlannerPrimitiveModelRunner _inner;
 
         public IReadOnlyList<PlannerModelRequest> Requests => _requests;
+
+        public CapturingPlannerPrimitiveRunner(PlannerPrimitiveModelRunner? inner = null)
+        {
+            _inner = inner ?? AcceptedPlannerPrimitiveRun;
+        }
 
         public Task<PlannerModelResult> RunAsync(
             PlannerModelRequest request,
@@ -482,7 +588,7 @@ public sealed class PlanningSessionServiceTests
             CancellationToken cancellationToken)
         {
             _requests.Add(request);
-            return AcceptedPlannerPrimitiveRun(request, options, cancellationToken);
+            return _inner(request, options, cancellationToken);
         }
     }
 
