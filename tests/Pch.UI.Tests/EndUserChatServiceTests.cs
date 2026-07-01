@@ -3,6 +3,7 @@ using Pch.Harness;
 using Pch.Providers.Errors;
 using Pch.Providers.LiveMissionProposal;
 using Pch.Providers.LivePreflight;
+using Pch.Providers.LiveTurns;
 using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
 using Pch.UI.Features.EndUserChat;
@@ -181,29 +182,29 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("not_run", state.HarnessValidationState);
         Assert.Equal("live_model_proposal_blocked", state.LatestTurnSource);
         Assert.Equal("attempted", state.ProviderRequestState);
-        Assert.Equal("live_mission_proposal_provider_unavailable", state.ProviderOutcome);
+        Assert.Equal("live_turn_provider_unknown_error", state.ProviderOutcome);
         Assert.Equal("credit_guard_checked", state.CreditState);
         Assert.Equal("provider_error", state.LastProviderFailureCode);
         Assert.DoesNotContain("RAW_USER_PROMPT_SHOULD_NOT_LEAK", completion.LastUserMessage, StringComparison.Ordinal);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.Kind == "live-model"
             && turn.State == "blocked"
-            && turn.OutcomeCode == "live_mission_proposal_provider_unavailable");
+            && turn.OutcomeCode == "live_turn_provider_unknown_error");
         Assert.DoesNotContain(state.Turns, turn => turn.TurnId == "turn-assistant-final");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-work-item-1"
             && turn.Kind == "live-blocked"
             && turn.State == "blocked"
-            && turn.OutcomeCode == "live_mission_proposal_provider_unavailable");
+            && turn.OutcomeCode == "live_turn_provider_unknown_error");
         AssertChatRawTextAbsent(serialized);
     }
 
     [Fact]
     public async Task LiveProposalAcceptedRunsThroughHarnessConductorMarkers()
     {
-        var service = LiveProposalService(new EndUserLiveMissionProposalGateway(
+        var service = LiveProposalService(new EndUserLiveTurnGateway(
             LiveEnvironment,
-            new LiveMissionProposalRunner(
-                new ProposalCompletionClient(CreateProposalContent()),
+            new LiveTurnRunner(
+                new LiveTurnCompletionClient(),
                 new PreflightCreditClient())));
 
         var state = await service.SendAsync(
@@ -215,16 +216,16 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("live_model_proposal_accepted", state.LiveProposalState);
         Assert.Equal("accepted", state.HarnessValidationState);
         Assert.Equal("live_model_proposal_accepted", state.LatestTurnSource);
-        Assert.Equal("live_model_proposal_accepted", state.ProviderOutcome);
-        Assert.Equal("harness_conductor_accepted", state.ProviderHealth);
+        Assert.Equal("live_turn_accepted", state.ProviderOutcome);
+        Assert.Equal("harness_multiturn_accepted", state.ProviderHealth);
         Assert.Null(state.ErrorCode);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.State == "applied"
-            && turn.OutcomeCode == "live_model_proposal_accepted");
+            && turn.OutcomeCode == "live_turn_accepted");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-work-item-1"
             && turn.Kind == "live-work-item"
             && turn.State == "applied"
-            && turn.OutcomeCode == "live_model_proposal_accepted");
+            && turn.OutcomeCode == "live_turn_accepted");
         Assert.DoesNotContain(state.Turns, turn => turn.TurnId == "turn-assistant-final");
         AssertChatRawTextAbsent(serialized);
     }
@@ -232,10 +233,10 @@ public sealed class EndUserChatServiceTests
     [Fact]
     public async Task LiveProposalAcceptedButHarnessValidationBlockedUsesSanitizedMarkers()
     {
-        var service = LiveProposalService(new EndUserLiveMissionProposalGateway(
+        var service = LiveProposalService(new EndUserLiveTurnGateway(
             LiveEnvironment,
-            new LiveMissionProposalRunner(
-                new ProposalCompletionClient(CreateProposalContent(fieldPath: "/mission/freeform_secret_note")),
+            new LiveTurnRunner(
+                new LiveTurnCompletionClient(fieldPath: "/mission/freeform_secret_note"),
                 new PreflightCreditClient())));
 
         var state = await service.SendAsync(
@@ -247,8 +248,8 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("live_model_proposal_accepted", state.LiveProposalState);
         Assert.Equal("harness_validation_blocked", state.HarnessValidationState);
         Assert.Equal("harness_validation_blocked", state.LatestTurnSource);
-        Assert.Equal("live_model_proposal_accepted", state.ProviderOutcome);
-        Assert.Equal("harness_conductor_mission_proposal_blocked", state.ProviderHealth);
+        Assert.Equal("live_turn_accepted", state.ProviderOutcome);
+        Assert.Equal("harness_multiturn_mission_proposal_blocked", state.ProviderHealth);
         Assert.Equal("PCH_UI_LIVE_PROPOSAL_BLOCKED", state.ErrorCode);
         Assert.Equal("mission_proposal_blocked", state.BlockedReason);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
@@ -260,10 +261,10 @@ public sealed class EndUserChatServiceTests
     [Fact]
     public async Task LiveProposalPacketMismatchStopsAsStaleSessionWithoutHarnessMutation()
     {
-        var service = LiveProposalService(new EndUserLiveMissionProposalGateway(
+        var service = LiveProposalService(new EndUserLiveTurnGateway(
             LiveEnvironment,
-            new LiveMissionProposalRunner(
-                new ProposalCompletionClient(CreateProposalContent(packetId: "packet-stale-live-proposal")),
+            new LiveTurnRunner(
+                new LiveTurnCompletionClient(packetId: "packet-stale-live-proposal"),
                 new PreflightCreditClient())));
 
         var state = await service.SendAsync(
@@ -275,21 +276,21 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("stale_packet_or_session", state.LiveProposalState);
         Assert.Equal("not_run", state.HarnessValidationState);
         Assert.Equal("live_model_proposal_blocked", state.LatestTurnSource);
-        Assert.Equal("live_mission_proposal_packet_mismatch", state.ProviderOutcome);
-        Assert.Equal("live_mission_proposal_packet_mismatch", state.LastProviderFailureCode);
+        Assert.Equal("live_turn_packet_mismatch", state.ProviderOutcome);
+        Assert.Equal("ProviderSchemaInvalid", state.LastProviderFailureCode);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.State == "blocked"
-            && turn.OutcomeCode == "live_mission_proposal_packet_mismatch");
+            && turn.OutcomeCode == "live_turn_packet_mismatch");
         AssertChatRawTextAbsent(serialized);
     }
 
     [Fact]
     public async Task LiveModeSelectionCreatesSecondTurnBlockedMarkerAndTimelineUpdate()
     {
-        var service = LiveProposalService(new EndUserLiveMissionProposalGateway(
+        var service = LiveProposalService(new EndUserLiveTurnGateway(
             LiveEnvironment,
-            new LiveMissionProposalRunner(
-                new ProposalCompletionClient(CreateProposalContent()),
+            new LiveTurnRunner(
+                new LiveTurnCompletionClient(),
                 new PreflightCreditClient())));
         var sent = await service.SendAsync(
             "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with live multi turn.",
@@ -300,22 +301,22 @@ public sealed class EndUserChatServiceTests
 
         Assert.Equal("live_second_turn_blocked", selected.FinalState);
         Assert.Equal("second_turn_blocked", selected.ProviderRequestState);
-        Assert.Equal("live_multiturn_contract_pending", selected.ProviderOutcome);
+        Assert.Equal("live_turn_provider_unknown_error", selected.ProviderOutcome);
         Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.State == "applied"
-            && turn.OutcomeCode == "live_model_proposal_accepted");
+            && turn.OutcomeCode == "live_turn_accepted");
         Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-choice-selected"
             && turn.CandidateId == "candidate-japan-classic-highlights");
         Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-followup"
             && turn.Kind == "live-model-followup"
             && turn.State == "blocked"
-            && turn.OutcomeCode == "live_multiturn_contract_pending"
+            && turn.OutcomeCode == "live_turn_provider_unknown_error"
             && turn.CandidateId == "candidate-japan-classic-highlights");
         Assert.Contains(selected.PlanningTimeline, item => item.TimelineId == "timeline-live-second-turn"
             && item.Mode == "task"
             && item.CandidateId == "candidate-japan-classic-highlights"
             && item.OriginTurnId == "turn-live-model-followup"
-            && item.OutcomeCode == "live_multiturn_contract_pending"
+            && item.OutcomeCode == "live_turn_provider_unknown_error"
             && item.Media?.Path.EndsWith(".png", StringComparison.Ordinal) == true);
         AssertChatRawTextAbsent(serialized);
     }
@@ -485,7 +486,7 @@ public sealed class EndUserChatServiceTests
     private static string Serialize(EndUserChatState state) =>
         JsonSerializer.Serialize(state);
 
-    private static EndUserChatService LiveProposalService(IEndUserLiveProposalGateway gateway)
+    private static EndUserChatService LiveProposalService(IEndUserLiveTurnGateway gateway)
     {
         var completion = new PreflightCompletionClient();
         var credit = new PreflightCreditClient();
@@ -501,7 +502,7 @@ public sealed class EndUserChatServiceTests
                     ["PCH_LIVE_IN_HARNESS_MODEL"] = "qwen/qwen3-14b"
                 },
                 new LivePreflightEvaluator(new LivePreflightRunner(completion, credit)),
-                proposalGateway: gateway));
+                turnGateway: gateway));
     }
 
     private static IReadOnlyDictionary<string, string?> LiveEnvironment() =>
@@ -512,53 +513,6 @@ public sealed class EndUserChatServiceTests
             ["PCH_LIVE_MODEL_PROVIDER"] = "openrouter",
             ["PCH_LIVE_IN_HARNESS_MODEL"] = "qwen/qwen3-14b"
         };
-
-    private static string CreateProposalContent(
-        string packetId = "packet-end-user-live-proposal",
-        string sessionId = "session-end-user-live-proposal",
-        string role = "in_harness_action_generator",
-        string fieldPath = "/mission/purpose") =>
-        JsonSerializer.Serialize(new
-        {
-            packetId,
-            sessionId,
-            role,
-            outputKind = "mission_proposal",
-            missionKind = "vacation",
-            fields = new[]
-            {
-                new
-                {
-                    fieldPath,
-                    value = "vacation",
-                    authoritySource = "user_stated",
-                    evidenceIds = new[] { "evidence-live-purpose" }
-                },
-                new
-                {
-                    fieldPath = "/mission/destination_country",
-                    value = "Japan",
-                    authoritySource = "user_stated",
-                    evidenceIds = new[] { "evidence-live-destination" }
-                },
-                new
-                {
-                    fieldPath = "/mission/start_date",
-                    value = "2026-10-05",
-                    authoritySource = "user_stated",
-                    evidenceIds = new[] { "evidence-live-dates" }
-                },
-                new
-                {
-                    fieldPath = "/mission/end_date",
-                    value = "2026-10-12",
-                    authoritySource = "user_stated",
-                    evidenceIds = new[] { "evidence-live-dates" }
-                }
-            },
-            commitments = Array.Empty<object>(),
-            pendingConfirmations = Array.Empty<object>()
-        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
     private static string FindManifestPath()
     {
@@ -632,15 +586,69 @@ public sealed class EndUserChatServiceTests
             Task.FromResult(new ProviderCreditStatus(1m, 0m, 1m, IsExhausted: false));
     }
 
-    private sealed class ProposalCompletionClient(string content) : IModelCompletionClient
+    private sealed class LiveTurnCompletionClient(string? packetId = null, string fieldPath = "/mission/purpose") : IModelCompletionClient
     {
         public Task<ModelCompletionResponse> CompleteAsync(
             ModelCompletionRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ModelCompletionResponse(
+            CancellationToken cancellationToken = default)
+        {
+            using var probe = JsonDocument.Parse(request.Messages.Last(message => message.Role == ModelMessageRole.User).Content);
+            var root = probe.RootElement;
+            var content = JsonSerializer.Serialize(new
+            {
+                runId = root.GetProperty("runId").GetString(),
+                turnId = root.GetProperty("turnId").GetString(),
+                packetId = packetId ?? root.GetProperty("packetId").GetString(),
+                sessionId = root.GetProperty("sessionId").GetString(),
+                role = root.GetProperty("role").GetString(),
+                outputKind = "mission_proposal",
+                missionProposal = new
+                {
+                    missionKind = "vacation",
+                    fields = new[]
+                    {
+                        new
+                        {
+                            fieldPath,
+                            value = "vacation",
+                            authoritySource = "user_stated",
+                            evidenceIds = new[] { "evidence-live-purpose" }
+                        },
+                        new
+                        {
+                            fieldPath = "/mission/destination_country",
+                            value = "Japan",
+                            authoritySource = "user_stated",
+                            evidenceIds = new[] { "evidence-live-destination" }
+                        },
+                        new
+                        {
+                            fieldPath = "/mission/start_date",
+                            value = "2026-10-05",
+                            authoritySource = "user_stated",
+                            evidenceIds = new[] { "evidence-live-dates" }
+                        },
+                        new
+                        {
+                            fieldPath = "/mission/end_date",
+                            value = "2026-10-12",
+                            authoritySource = "user_stated",
+                            evidenceIds = new[] { "evidence-live-dates" }
+                        }
+                    },
+                    commitments = Array.Empty<object>(),
+                    pendingConfirmations = Array.Empty<object>()
+                },
+                pendingQuestion = (object?)null,
+                choiceSet = (object?)null,
+                summaryNotice = (object?)null
+            }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+            return Task.FromResult(new ModelCompletionResponse(
                 "qwen/qwen3-14b",
                 content,
                 "openrouter",
                 RequestId: "request-live-proposal-safe"));
+        }
     }
 }

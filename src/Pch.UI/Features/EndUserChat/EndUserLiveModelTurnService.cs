@@ -2,6 +2,7 @@ using Pch.Harness;
 using Pch.Providers.Errors;
 using Pch.Providers.LiveMissionProposal;
 using Pch.Providers.LivePreflight;
+using Pch.Providers.LiveTurns;
 using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
 
@@ -24,24 +25,21 @@ public sealed class EndUserLiveModelTurnService
 
     private readonly Func<IReadOnlyDictionary<string, string?>> _environmentFactory;
     private readonly LivePreflightEvaluator _preflightEvaluator;
-    private readonly LiveSessionConductor _conductor;
-    private readonly IEndUserLiveProposalGateway _proposalGateway;
+    private readonly IEndUserLiveTurnGateway _turnGateway;
 
     public EndUserLiveModelTurnService()
-        : this(ReadProcessEnvironment, CreateDefaultPreflightEvaluator(), new LiveSessionConductor())
+        : this(ReadProcessEnvironment, CreateDefaultPreflightEvaluator())
     {
     }
 
     public EndUserLiveModelTurnService(
         Func<IReadOnlyDictionary<string, string?>> environmentFactory,
         LivePreflightEvaluator? preflightEvaluator = null,
-        LiveSessionConductor? conductor = null,
-        IEndUserLiveProposalGateway? proposalGateway = null)
+        IEndUserLiveTurnGateway? turnGateway = null)
     {
         _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
         _preflightEvaluator = preflightEvaluator ?? CreateDefaultPreflightEvaluator();
-        _conductor = conductor ?? new LiveSessionConductor();
-        _proposalGateway = proposalGateway ?? EndUserLiveMissionProposalGateway.CreateDefault(_environmentFactory);
+        _turnGateway = turnGateway ?? EndUserLiveTurnGateway.CreateDefault(_environmentFactory);
     }
 
     public EndUserLiveModelSnapshot CreateSnapshot(string selectedRole)
@@ -118,41 +116,62 @@ public sealed class EndUserLiveModelTurnService
 
         if (row.Passed)
         {
-            var proposal = await _proposalGateway.BuildAsync(
+            var session = SyntheticTripFactory.CreateSession(3);
+            var conductor = new LiveMultiTurnSessionConductor(session);
+            var start = conductor.StartInitialPrompt(new LiveInitialPromptRequest(
+                session.SessionId,
                 prompt,
+                "en-US",
+                ["end-user-chat", normalizedRole]));
+            if (!start.IsAccepted || start.ModelInput is null)
+            {
+                return BlockedAfterPreflight(
+                    normalizedRole,
+                    options,
+                    modelId,
+                    row,
+                    LiveSessionConductor.ProviderModelBlockedCode,
+                    "prompt_packet_blocked",
+                    start.Code);
+            }
+
+            var proposal = await _turnGateway.BuildAsync(
+                start.ModelInput,
                 normalizedRole,
-                options,
+                LiveTurnOptions.FromEnvironment(_environmentFactory()),
                 cancellationToken).ConfigureAwait(false);
-            var conductor = RunConductor(prompt, proposal.Envelope);
-            var proposalState = ProposalStateFor(proposal, conductor);
-            var harnessValidation = HarnessValidationStateFor(conductor);
+            var application = proposal.Envelope is null
+                ? conductor.RecordProviderModelBlocked(new LiveProviderModelBlockedRequest(session.SessionId, proposal.ProviderOutcomeCode))
+                : conductor.ApplyModelProposal(new LiveModelProposalApplicationRequest(session.SessionId, proposal.Envelope, ["end-user-chat"]));
+            var proposalState = ProposalStateFor(proposal, application);
+            var harnessValidation = HarnessValidationStateFor(application);
             var latestTurn = LatestTurnSourceFor(proposalState, harnessValidation);
             return new EndUserLiveModelSnapshot(
                 normalizedRole,
-                row.Provider ?? options.Provider,
+                proposal.Provider ?? row.Provider ?? options.Provider,
                 PreflightPassed,
                 proposalState,
                 harnessValidation,
                 latestTurn,
                 ProviderRequestAttempted,
-                proposal.ProviderOutcomeCode ?? row.OutcomeCode,
-                $"harness_conductor_{conductor.Code}",
+                proposal.ProviderOutcomeCode,
+                $"harness_multiturn_{application.Code}",
                 CreditStateFor(row.OutcomeCode, options),
                 proposal.FailureCode ?? "none",
-                row.Model ?? modelId,
-                row.RequestId,
-                conductor.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null,
-                conductor.IsBlocked ? conductor.Code : null,
+                proposal.Model ?? row.Model ?? modelId,
+                proposal.RequestId ?? row.RequestId,
+                application.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null,
+                application.IsBlocked ? application.Code : null,
                 new EndUserChatTurn(
                     "turn-live-model-run",
                     "provider",
                     "live-model",
-                    conductor.IsBlocked ? "blocked" : "applied",
+                    application.IsBlocked ? "blocked" : "applied",
                     TurnTextFor(proposalState, harnessValidation),
-                    proposal.ProviderOutcomeCode ?? row.OutcomeCode,
+                    proposal.ProviderOutcomeCode,
                     "evidence-chat-live-model",
-                    conductor.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null),
-                conductor.IsBlocked ? LiveFailureNotice(conductor.Code) : null);
+                    application.IsBlocked ? "PCH_UI_LIVE_PROPOSAL_BLOCKED" : null),
+                application.IsBlocked ? LiveFailureNotice(application.Code) : null);
         }
 
         return new EndUserLiveModelSnapshot(
@@ -224,39 +243,54 @@ public sealed class EndUserLiveModelTurnService
             CanRetry: false,
             CanContinueDeterministic: true);
 
-    private LivePlanningTurnResult RunConductor(string prompt, LiveModelProposalEnvelope envelope)
-    {
-        var session = SyntheticTripFactory.CreateSession(3);
-        return _conductor.RunTurn(session, new LivePlanningTurnRequest(
-            session.SessionId,
-            prompt,
-            "en-US",
-            ["end-user-chat"],
-            envelope));
-    }
+    private static EndUserLiveModelSnapshot BlockedAfterPreflight(
+        string normalizedRole,
+        LivePreflightOptions options,
+        string modelId,
+        SanitizedLivePreflightEvalRow row,
+        string providerOutcome,
+        string failureCode,
+        string blockedReason) =>
+        new(
+            normalizedRole,
+            row.Provider ?? options.Provider,
+            PreflightPassed,
+            EndUserLiveProposalMarkers.Blocked,
+            EndUserLiveProposalMarkers.NotRun,
+            LatestLiveBlocked,
+            ProviderRequestAttempted,
+            providerOutcome,
+            "harness_multiturn_prompt_blocked",
+            CreditStateFor(row.OutcomeCode, options),
+            failureCode,
+            row.Model ?? modelId,
+            row.RequestId,
+            "PCH_UI_LIVE_PROPOSAL_BLOCKED",
+            blockedReason,
+            new EndUserChatTurn(
+                "turn-live-model-run",
+                "provider",
+                "live-model",
+                "blocked",
+                "Live model input was blocked by the harness prompt boundary with a sanitized outcome.",
+                providerOutcome,
+                "evidence-chat-live-model",
+                "PCH_UI_LIVE_PROPOSAL_BLOCKED"),
+            LiveFailureNotice(blockedReason));
 
-    private static string ProposalStateFor(EndUserLiveProposalCandidate proposal, LivePlanningTurnResult conductor)
+    private static string ProposalStateFor(EndUserLiveTurnCandidate proposal, LiveMultiTurnSessionResult conductor)
     {
-        if (proposal.Envelope.Kind is LiveModelProposalKind.DeterministicFallback)
+        if (!proposal.ProviderAccepted)
         {
-            return EndUserLiveProposalMarkers.DeterministicFallback;
-        }
-
-        if (proposal.Envelope.Kind is LiveModelProposalKind.ModelBlocked)
-        {
-            return proposal.ProviderOutcomeCode is LiveMissionProposalRunner.OutcomePacketMismatch
+            return proposal.ProviderOutcomeCode is LiveTurnRunner.OutcomePacketMismatch
                 ? EndUserLiveProposalMarkers.StalePacketOrSession
                 : EndUserLiveProposalMarkers.Blocked;
         }
 
-        return conductor.Code is LiveSessionConductor.MissionProposalBlockedCode
-            ? EndUserLiveProposalMarkers.Accepted
-            : conductor.IsBlocked
-                ? EndUserLiveProposalMarkers.Blocked
-                : EndUserLiveProposalMarkers.Accepted;
+        return EndUserLiveProposalMarkers.Accepted;
     }
 
-    private static string HarnessValidationStateFor(LivePlanningTurnResult conductor)
+    private static string HarnessValidationStateFor(LiveMultiTurnSessionResult conductor)
     {
         if (conductor.Code is LiveSessionConductor.DeterministicFallbackCode)
         {
@@ -266,7 +300,8 @@ public sealed class EndUserLiveModelTurnService
         if (conductor.Code is LiveSessionConductor.MissionProposalBlockedCode or
             LiveSessionConductor.UnsupportedLiveOperationCode or
             LiveSessionConductor.DecodeBlockedCode or
-            LiveSessionConductor.IntakeBlockedCode)
+            LiveSessionConductor.IntakeBlockedCode or
+            LiveSessionConductor.StalePacketSessionCode)
         {
             return EndUserLiveProposalMarkers.HarnessValidationBlocked;
         }
@@ -421,87 +456,131 @@ public sealed record EndUserLiveModelSnapshot(
             null);
 }
 
-public interface IEndUserLiveProposalGateway
+public interface IEndUserLiveTurnGateway
 {
-    Task<EndUserLiveProposalCandidate> BuildAsync(
-        string prompt,
+    Task<EndUserLiveTurnCandidate> BuildAsync(
+        LiveModelInputFragment modelInput,
         string selectedRole,
-        LivePreflightOptions options,
+        LiveTurnOptions options,
         CancellationToken cancellationToken = default);
 }
 
-public sealed record EndUserLiveProposalCandidate(
-    LiveModelProposalEnvelope Envelope,
-    string? ProviderOutcomeCode,
-    string? FailureCode);
+public sealed record EndUserLiveTurnCandidate(
+    LiveModelProposalEnvelope? Envelope,
+    bool ProviderAccepted,
+    string ProviderOutcomeCode,
+    string? FailureCode,
+    string? Provider,
+    string? Model,
+    string? RequestId);
 
-public sealed class EndUserLiveMissionProposalGateway : IEndUserLiveProposalGateway
+public sealed class EndUserLiveTurnGateway : IEndUserLiveTurnGateway
 {
-    private const string PacketId = "packet-end-user-live-proposal";
-    private const string SessionId = "session-end-user-live-proposal";
-    private const string OutputKind = "mission_proposal";
     private readonly Func<IReadOnlyDictionary<string, string?>> _environmentFactory;
-    private readonly LiveMissionProposalRunner _runner;
+    private readonly LiveTurnRunner _runner;
 
-    public EndUserLiveMissionProposalGateway(
+    public EndUserLiveTurnGateway(
         Func<IReadOnlyDictionary<string, string?>> environmentFactory,
-        LiveMissionProposalRunner runner)
+        LiveTurnRunner runner)
     {
         _environmentFactory = environmentFactory ?? throw new ArgumentNullException(nameof(environmentFactory));
         _runner = runner ?? throw new ArgumentNullException(nameof(runner));
     }
 
-    public static EndUserLiveMissionProposalGateway CreateDefault(
+    public static EndUserLiveTurnGateway CreateDefault(
         Func<IReadOnlyDictionary<string, string?>> environmentFactory)
     {
-        var client = new DisabledLiveMissionProposalClient();
-        return new EndUserLiveMissionProposalGateway(
+        var client = new DisabledLiveTurnClient();
+        return new EndUserLiveTurnGateway(
             environmentFactory,
-            new LiveMissionProposalRunner(client, client));
+            new LiveTurnRunner(client, client));
     }
 
-    public async Task<EndUserLiveProposalCandidate> BuildAsync(
-        string prompt,
+    public async Task<EndUserLiveTurnCandidate> BuildAsync(
+        LiveModelInputFragment modelInput,
         string selectedRole,
-        LivePreflightOptions options,
+        LiveTurnOptions options,
         CancellationToken cancellationToken = default)
     {
-        _ = prompt;
-        _ = options;
         var role = selectedRole == EndUserModelRoleSelection.StrongPlanner
             ? LiveModelRole.StrongPlanner
             : LiveModelRole.InHarnessActionGenerator;
-        var proposalOptions = LiveMissionProposalOptions.FromEnvironment(_environmentFactory());
-        var packet = new LiveMissionProposalPacket(
-            PacketId,
-            SessionId,
+        var liveOptions = LiveTurnOptions.FromEnvironment(_environmentFactory()) with
+        {
+            Enabled = options.Enabled,
+            ApiKeyAvailable = options.ApiKeyAvailable,
+            CreditGuardEnabled = options.CreditGuardEnabled,
+            StructuredOutputSupported = options.StructuredOutputSupported,
+            AllowPaidProviderFallback = options.AllowPaidProviderFallback,
+            Timeout = options.Timeout,
+            ProviderKind = options.ProviderKind,
+            Provider = options.Provider,
+            InHarnessModelId = options.InHarnessModelId,
+            StrongPlannerModelId = options.StrongPlannerModelId,
+            MaxTokens = options.MaxTokens
+        };
+        var packet = new LiveTurnPacket(
+            "run-end-user-live-turn",
+            "turn-end-user-live-01",
+            "packet-end-user-live-turn",
+            modelInput.SessionId,
             role,
             "en-US",
-            [OutputKind],
+            [
+                LiveTurnOutputKind.MissionProposal,
+                LiveTurnOutputKind.PendingConfirmationQuestion,
+                LiveTurnOutputKind.ChoiceSet,
+                LiveTurnOutputKind.SummaryFallbackNotice
+            ],
+            [],
             RequiresFallback: false,
-            ContextDigest: "end-user-chat-bounded-live-proposal-projection");
+            ProjectionDigest: "end-user-chat-bounded-live-turn-projection");
 
         try
         {
-            var result = await _runner.RunAsync(packet, proposalOptions, cancellationToken).ConfigureAwait(false);
+            var result = await _runner.RunAsync(packet, liveOptions, cancellationToken).ConfigureAwait(false);
             if (!MatchesPacket(packet, result))
             {
                 return Blocked(
-                    LiveMissionProposalRunner.OutcomePacketMismatch,
-                    LiveMissionProposalRunner.OutcomePacketMismatch);
+                    LiveTurnRunner.OutcomePacketMismatch,
+                    ProviderFailureClass.ProviderSchemaInvalid.ToString(),
+                    result.Provider,
+                    result.Model,
+                    result.RequestId);
             }
 
             if (result.HasUnsafeValue)
             {
                 return Blocked(
-                    LiveMissionProposalRunner.OutcomeUnsafeValueRedacted,
-                    "unsafe_value_redacted");
+                    LiveTurnRunner.OutcomeUnsafeValueRedacted,
+                    ProviderFailureClass.ProviderSchemaInvalid.ToString(),
+                    result.Provider,
+                    result.Model,
+                    result.RequestId);
             }
 
-            return new EndUserLiveProposalCandidate(
-                LiveModelProposalEnvelope.ForMission(MapMissionProposal(result)),
-                EndUserLiveProposalMarkers.Accepted,
-                null);
+            if (result.OutputKind is not LiveTurnOutputKind.MissionProposal || result.MissionProposal is null)
+            {
+                return Blocked(
+                    LiveTurnRunner.OutcomeUnsupportedValue,
+                    ProviderFailureClass.ProviderSchemaInvalid.ToString(),
+                    result.Provider,
+                    result.Model,
+                    result.RequestId);
+            }
+
+            var envelope = LiveModelProposalEnvelope.ForMission(MapMissionProposal(result.MissionProposal)) with
+            {
+                Correlation = new LiveProposalCorrelation(modelInput.SessionId, modelInput.PacketId, modelInput.Stage)
+            };
+            return new EndUserLiveTurnCandidate(
+                envelope,
+                ProviderAccepted: true,
+                LiveTurnRunner.OutcomeAccepted,
+                null,
+                result.Provider,
+                result.Model,
+                result.RequestId);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -509,14 +588,19 @@ public sealed class EndUserLiveMissionProposalGateway : IEndUserLiveProposalGate
         }
     }
 
-    private static EndUserLiveProposalCandidate Blocked(string outcomeCode, string? failureCode) =>
-        new(LiveModelProposalEnvelope.Blocked(outcomeCode), outcomeCode, failureCode ?? outcomeCode);
+    private static EndUserLiveTurnCandidate Blocked(
+        string outcomeCode,
+        string? failureCode,
+        string? provider = null,
+        string? model = null,
+        string? requestId = null) =>
+        new(null, ProviderAccepted: false, outcomeCode, failureCode ?? outcomeCode, provider, model, requestId);
 
-    private static bool MatchesPacket(LiveMissionProposalPacket packet, LiveMissionProposalResult result) =>
+    private static bool MatchesPacket(LiveTurnPacket packet, LiveTurnResult result) =>
         string.Equals(packet.PacketId, result.PacketId, StringComparison.Ordinal) &&
         string.Equals(packet.SessionId, result.SessionId, StringComparison.Ordinal) &&
         packet.Role == result.Role &&
-        packet.AllowedOutputKinds.Contains(result.OutputKind, StringComparer.Ordinal);
+        packet.AllowedOutputKinds.Contains(result.OutputKind);
 
     private static ProviderMissionProposalMirror MapMissionProposal(LiveMissionProposalResult result) =>
         new(
@@ -619,23 +703,23 @@ public sealed class EndUserLiveMissionProposalGateway : IEndUserLiveProposalGate
     private static string ExceptionOutcomeCode(Exception exception) =>
         exception switch
         {
-            LiveMissionProposalGuardException guard => guard.OutcomeCode,
-            ProviderCreditExhaustedException => LiveMissionProposalRunner.OutcomeCreditExhausted,
-            ProviderEmptyResponseException => LiveMissionProposalRunner.OutcomeEmptyContent,
+            LiveTurnGuardException guard => guard.OutcomeCode,
+            ProviderCreditExhaustedException => LiveTurnRunner.OutcomeCreditExhausted,
+            ProviderEmptyResponseException => LiveTurnRunner.OutcomeProviderEmptyContent,
             ProviderMalformedResponseException ex when ex.Message.Contains("schema", StringComparison.OrdinalIgnoreCase) =>
-                LiveMissionProposalRunner.OutcomeSchemaInvalid,
-            ProviderMalformedResponseException => LiveMissionProposalRunner.OutcomeMalformedJson,
+                LiveTurnRunner.OutcomeProviderSchemaInvalid,
+            ProviderMalformedResponseException => LiveTurnRunner.OutcomeProviderMalformedJson,
             ProviderUnavailableException ex when ex.Message.Contains("timed out", StringComparison.OrdinalIgnoreCase) =>
-                LiveMissionProposalRunner.OutcomeTimeout,
-            TimeoutException => LiveMissionProposalRunner.OutcomeTimeout,
-            ProviderException => LiveMissionProposalRunner.OutcomeProviderUnavailable,
-            _ => LiveMissionProposalRunner.OutcomeProviderUnavailable
+                LiveTurnRunner.OutcomeProviderTimeout,
+            TimeoutException => LiveTurnRunner.OutcomeProviderTimeout,
+            ProviderException => LiveTurnRunner.OutcomeProviderUnknownError,
+            _ => LiveTurnRunner.OutcomeProviderUnknownError
         };
 
     private static string? ExceptionFailureCode(Exception exception) =>
         exception switch
         {
-            LiveMissionProposalGuardException guard => guard.ErrorCode,
+            LiveTurnGuardException guard => guard.FailureClass.ToString(),
             ProviderCreditExhaustedException => "credit_exhausted",
             ProviderEmptyResponseException => "empty_content",
             ProviderMalformedResponseException ex when ex.Message.Contains("schema", StringComparison.OrdinalIgnoreCase) => "malformed_schema",
@@ -646,42 +730,73 @@ public sealed class EndUserLiveMissionProposalGateway : IEndUserLiveProposalGate
             _ => "provider_error"
         };
 
-    private sealed class DisabledLiveMissionProposalClient : IModelCompletionClient, IProviderCreditClient
+    private sealed class DisabledLiveTurnClient : IModelCompletionClient, IProviderCreditClient
     {
         public Task<ModelCompletionResponse> CompleteAsync(
             ModelCompletionRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromException<ModelCompletionResponse>(
-                new ProviderUnavailableException("disabled", "Live mission proposal provider is not configured."));
+                new ProviderUnavailableException("disabled", "Live turn provider is not configured."));
 
         public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new ProviderCreditStatus(null, null, 1m, IsExhausted: false));
     }
 }
 
-public sealed class EndUserLiveProposalGateway : IEndUserLiveProposalGateway
+public sealed class EndUserLiveTurnGatewayFixture : IEndUserLiveTurnGateway
 {
-    private readonly LiveModelProposalEnvelope _envelope;
-    private readonly string? _providerOutcomeCode;
-    private readonly string? _failureCode;
+    private readonly EndUserLiveTurnCandidate _candidate;
 
-    public EndUserLiveProposalGateway(
-        LiveModelProposalEnvelope envelope,
-        string? providerOutcomeCode,
-        string? failureCode)
+    public EndUserLiveTurnGatewayFixture(EndUserLiveTurnCandidate candidate)
     {
-        _envelope = envelope ?? throw new ArgumentNullException(nameof(envelope));
-        _providerOutcomeCode = providerOutcomeCode;
-        _failureCode = failureCode;
+        _candidate = candidate;
     }
 
-    public Task<EndUserLiveProposalCandidate> BuildAsync(
-        string prompt,
+    public Task<EndUserLiveTurnCandidate> BuildAsync(
+        LiveModelInputFragment modelInput,
         string selectedRole,
-        LivePreflightOptions options,
+        LiveTurnOptions options,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(new EndUserLiveProposalCandidate(_envelope, _providerOutcomeCode, _failureCode));
+        return Task.FromResult(_candidate);
+    }
+}
+
+public sealed class EndUserLiveProposalGateway : IEndUserLiveTurnGateway
+{
+    private readonly ProviderMissionProposalMirror _proposal;
+    private readonly string _providerOutcomeCode;
+    private readonly string? _failureCode;
+
+    public EndUserLiveProposalGateway(
+        ProviderMissionProposalMirror proposal,
+        string? providerOutcomeCode,
+        string? failureCode)
+    {
+        _proposal = proposal ?? throw new ArgumentNullException(nameof(proposal));
+        _providerOutcomeCode = providerOutcomeCode ?? LiveTurnRunner.OutcomeAccepted;
+        _failureCode = failureCode;
+    }
+
+    public Task<EndUserLiveTurnCandidate> BuildAsync(
+        LiveModelInputFragment modelInput,
+        string selectedRole,
+        LiveTurnOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var envelope = LiveModelProposalEnvelope.ForMission(_proposal) with
+        {
+            Correlation = new LiveProposalCorrelation(modelInput.SessionId, modelInput.PacketId, modelInput.Stage)
+        };
+        return Task.FromResult(new EndUserLiveTurnCandidate(
+            envelope,
+            ProviderAccepted: true,
+            _providerOutcomeCode,
+            _failureCode,
+            "openrouter",
+            "qwen/qwen3-14b",
+            "request-live-turn-safe"));
     }
 }

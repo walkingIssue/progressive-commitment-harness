@@ -216,9 +216,9 @@ public sealed class EndUserChatService
                 ? AppendTimeline(TimelineFromState(state, candidate, "selected"), LiveSecondTurnTimeline(candidate))
                 : TimelineFromState(state, candidate, "selected"),
             ProviderRequestState = IsLiveMode(state.SelectedModelRole) ? "second_turn_blocked" : state.ProviderRequestState,
-            ProviderOutcome = IsLiveMode(state.SelectedModelRole) ? "live_multiturn_contract_pending" : state.ProviderOutcome,
-            ProviderHealth = IsLiveMode(state.SelectedModelRole) ? "canonical_multiturn_contract_pending" : state.ProviderHealth,
-            LastProviderFailureCode = IsLiveMode(state.SelectedModelRole) ? "live_multiturn_contract_pending" : state.LastProviderFailureCode,
+            ProviderOutcome = IsLiveMode(state.SelectedModelRole) ? "live_turn_provider_unknown_error" : state.ProviderOutcome,
+            ProviderHealth = IsLiveMode(state.SelectedModelRole) ? "harness_multiturn_provider_blocked" : state.ProviderHealth,
+            LastProviderFailureCode = IsLiveMode(state.SelectedModelRole) ? "provider_unknown_error" : state.LastProviderFailureCode,
             Turns = turns
         };
     }
@@ -357,10 +357,10 @@ public sealed class EndUserChatService
             "provider",
             "live-model-followup",
             "blocked",
-            "A second live turn needs the canonical multi-turn session contract before provider replay can continue.",
-            "live_multiturn_contract_pending",
+            "A second live turn was blocked with the canonical live-turn provider diagnostic. Deterministic planning remains available.",
+            "live_turn_provider_unknown_error",
             "evidence-chat-live-model",
-            "PCH_UI_LIVE_MULTITURN_CONTRACT_PENDING",
+            "PCH_UI_LIVE_TURN_PROVIDER_BLOCKED",
             candidateId,
             "trip-style");
 
@@ -370,8 +370,8 @@ public sealed class EndUserChatService
             "task",
             "live-model-followup",
             "blocked",
-            "Second live turn pending",
-            "The selected option is preserved while the canonical multi-turn runner integration is pending.",
+            "Second live turn blocked",
+            "The selected option is preserved while the live-turn provider diagnostic is surfaced safely.",
             "day-japan-02",
             "slot-live-followup",
             "task-itinerary",
@@ -380,7 +380,7 @@ public sealed class EndUserChatService
             candidate.EvidenceIds.FirstOrDefault(),
             "turn-live-model-followup",
             candidate.Media,
-            "live_multiturn_contract_pending");
+            "live_turn_provider_unknown_error");
 
     private static string LiveWorkItemText(EndUserLiveModelSnapshot liveSnapshot)
     {

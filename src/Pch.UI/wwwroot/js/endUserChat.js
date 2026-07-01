@@ -338,11 +338,11 @@ function selectCandidate(candidateId) {
         setRootState({
             "data-final-state": "live_second_turn_blocked",
             "data-provider-request-state": "second_turn_blocked",
-            "data-provider-outcome": "live_multiturn_contract_pending",
+            "data-provider-outcome": "live_turn_provider_unknown_error",
             "data-live-turn-attempt-count": "2",
             "data-live-second-turn-state": "blocked",
         });
-        appendTurn("turn-live-model-followup", "provider", "live-model-followup", "blocked", "A second live turn needs the canonical multi-turn session contract before provider replay can continue.", "live_multiturn_contract_pending", "evidence-chat-live-model", candidate.id);
+        appendTurn("turn-live-model-followup", "provider", "live-model-followup", "blocked", "A second live turn was blocked with the canonical live-turn provider diagnostic. Deterministic planning remains available.", "live_turn_provider_unknown_error", "evidence-chat-live-model", candidate.id);
         document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-live-second-turn", "task", "live-model-followup", "blocked", "Second live turn pending", "The selected option is preserved while the canonical multi-turn runner integration is pending.", "turn-live-model-followup", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-live-followup" data-task-id="task-itinerary" data-candidate-id="${candidate.id}" data-decision-id="decision-live-followup-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
     }
 }
