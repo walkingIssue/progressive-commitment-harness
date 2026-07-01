@@ -57,23 +57,31 @@ public sealed class PlanningSessionServiceTests
     [Fact]
     public async Task AnswerDtoGeneratedFromValidatedFormAndAcceptedBySession()
     {
-        var service = PlanningService();
+        var runner = new CountingPlannerPrimitiveRunner();
+        var service = PlanningService(runner.RunAsync);
         var result = await service.StartAsync(
             "Plan a live primitive form.",
             EndUserModelRoleSelection.InHarnessActionGenerator);
         var turn = Assert.IsType<EndUserValidatedTurnView>(result.Turn);
 
         var answer = service.BuildDefaultAnswer(turn);
-        var answered = service.SubmitAnswer(result.State, turn, answer);
+        var answered = await service.SubmitAnswer(result.State, turn, answer);
 
         Assert.Empty(answered.ValidationErrors);
         Assert.NotNull(answered.LastAnswer);
         Assert.Equal("primitive-trip-basics-form", answered.LastAnswer.PrimitiveInstanceId);
+        Assert.Equal(2, runner.CallCount);
+        Assert.Equal(
+            ["turn-end-user-planner-primitive", "turn-end-user-planner-primitive-followup"],
+            runner.TurnIds);
         Assert.Equal("second_turn_attempted", answered.State.ProviderRequestState);
-        Assert.Equal("second_validated_turn_rendered", answered.Turn?.OutcomeCode);
-        Assert.Contains(answered.Turn!.Primitives, primitive => primitive.RendererKey == "candidate-deck");
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, answered.State.ProviderOutcome);
+        Assert.Equal(PlanningSessionService.AwaitingUserInput, answered.Turn?.OutcomeCode);
+        Assert.Contains(answered.Turn!.Primitives, primitive => primitive.RendererKey == "form");
         Assert.Contains(answered.State.Turns, turnItem => turnItem.TurnId == "turn-primitive-answer-submitted"
             && turnItem.OutcomeCode == PlanningSessionService.AnswerAccepted);
+        Assert.Contains(answered.State.Turns, turnItem => turnItem.TurnId == "turn-live-model-followup"
+            && turnItem.OutcomeCode == PlannerPrimitiveRunner.OutcomeAccepted);
         AssertRawTextAbsent(JsonSerializer.Serialize(answered));
     }
 
@@ -93,7 +101,7 @@ public sealed class PlanningSessionServiceTests
             form.InstanceId,
             form.Fields.ToDictionary(field => field.FieldId, _ => string.Empty, StringComparer.Ordinal));
 
-        var answered = service.SubmitAnswer(result.State, turn, invalid);
+        var answered = await service.SubmitAnswer(result.State, turn, invalid);
 
         Assert.Equal("answer_validation_failed", answered.State.FinalState);
         Assert.Equal("PCH_UI_PRIMITIVE_ANSWER_INVALID", answered.State.ErrorCode);
@@ -139,8 +147,8 @@ public sealed class PlanningSessionServiceTests
         AssertRawTextAbsent(JsonSerializer.Serialize(result));
     }
 
-    private static PlanningSessionService PlanningService() =>
-        new(LiveChatService(), new FormBuilder(), LiveEnvironment, AcceptedPlannerPrimitiveRun);
+    private static PlanningSessionService PlanningService(PlannerPrimitiveModelRunner? runner = null) =>
+        new(LiveChatService(), new FormBuilder(), LiveEnvironment, runner ?? AcceptedPlannerPrimitiveRun);
 
     private static Task<PlannerModelResult> AcceptedPlannerPrimitiveRun(
         PlannerModelRequest request,
@@ -185,6 +193,24 @@ public sealed class PlanningSessionServiceTests
             RequestId: "request-planner-primitive-safe");
 
         return Task.FromResult(result);
+    }
+
+    private sealed class CountingPlannerPrimitiveRunner
+    {
+        private readonly List<string> _turnIds = [];
+
+        public int CallCount => _turnIds.Count;
+
+        public IReadOnlyList<string> TurnIds => _turnIds;
+
+        public Task<PlannerModelResult> RunAsync(
+            PlannerModelRequest request,
+            PlannerModelOptions options,
+            CancellationToken cancellationToken)
+        {
+            _turnIds.Add(request.TurnId);
+            return AcceptedPlannerPrimitiveRun(request, options, cancellationToken);
+        }
     }
 
     private static EndUserChatService LiveChatService()

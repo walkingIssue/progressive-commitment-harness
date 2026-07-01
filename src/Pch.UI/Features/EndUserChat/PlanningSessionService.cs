@@ -61,7 +61,13 @@ public sealed class PlanningSessionService
 
         var session = CreatePrimitiveSession();
         var manifest = _manifestCompiler.Compile(session, HarnessStage.Intake);
-        var model = await RunPlannerModelAsync(manifest, prompt, cancellationToken).ConfigureAwait(false);
+        var model = await RunPlannerModelAsync(
+            manifest,
+            prompt,
+            "run-end-user-planner-primitive",
+            "turn-end-user-planner-primitive",
+            "attempted",
+            cancellationToken).ConfigureAwait(false);
         var canonical = model.Result is null
             ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
             : ValidateModelResult(session, manifest, model.Result);
@@ -70,10 +76,11 @@ public sealed class PlanningSessionService
         return new(ApplyTurnState(state, turn), turn, null, []);
     }
 
-    public PlanningSessionUiResult SubmitAnswer(
+    public async Task<PlanningSessionUiResult> SubmitAnswer(
         EndUserChatState state,
         EndUserValidatedTurnView turn,
-        PrimitiveAnswerDto answer)
+        PrimitiveAnswerDto answer,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(turn);
@@ -114,16 +121,21 @@ public sealed class PlanningSessionService
                 errors);
         }
 
-        var nextTurn = BuildSecondTurn(turn);
-        var nextState = state with
+        var session = CreatePrimitiveSession();
+        var manifest = _manifestCompiler.Compile(session, HarnessStage.Intake);
+        var model = await RunPlannerModelAsync(
+            manifest,
+            SecondTurnPrompt(answer),
+            "run-end-user-planner-primitive-followup",
+            "turn-end-user-planner-primitive-followup",
+            "second_turn_attempted",
+            cancellationToken).ConfigureAwait(false);
+        var canonical = model.Result is null
+            ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
+            : ValidateModelResult(session, manifest, model.Result);
+        var nextTurn = ProjectTurn(canonical, manifest, model.ProviderRequestState, model.ProviderOutcome);
+        var answeredState = state with
         {
-            FinalState = AwaitingUserInput,
-            ComposerState = AwaitingUserInput,
-            ProviderRequestState = "second_turn_attempted",
-            ProviderOutcome = "planner_primitive_second_turn_pending_live_provider",
-            LiveProposalState = AwaitingUserInput,
-            HarnessValidationState = AnswerAccepted,
-            LatestTurnSource = "validated_primitive_turn",
             Turns = AppendTurn(state.Turns, new(
                 "turn-primitive-answer-submitted",
                 "user",
@@ -132,12 +144,23 @@ public sealed class PlanningSessionService
                 "Validated primitive answers were accepted by the server session.",
                 AnswerAccepted,
                 "evidence-primitive-answer",
-                null)),
-            Tasks = nextTurn.Tasks.Select(ToEndUserTask).ToArray(),
-            PlanningTimeline = nextTurn.Timeline,
-            Evidence = nextTurn.Evidence,
-            ErrorCode = null,
-            BlockedReason = null
+                null))
+        };
+        var nextState = ApplyTurnState(answeredState, nextTurn) with
+        {
+            HarnessValidationState = nextTurn.Source == "provider_blocked" ? "not_run" : nextTurn.OutcomeCode,
+            LatestTurnSource = nextTurn.Source == "provider_blocked" ? "provider_blocked" : "validated_primitive_turn",
+            Turns = AppendTurn(answeredState.Turns, new(
+                "turn-live-model-followup",
+                "assistant",
+                "live-model-followup",
+                nextTurn.Source == "provider_blocked" ? "blocked" : "awaiting_user_input",
+                nextTurn.Source == "provider_blocked"
+                    ? "The follow-up live planner turn returned a fixed sanitized blocker."
+                    : "The follow-up live planner turn rendered validated primitives.",
+                nextTurn.ProviderOutcome,
+                nextTurn.Evidence.FirstOrDefault()?.EvidenceId,
+                null))
         };
 
         return new(nextState, nextTurn, answer, []);
@@ -164,9 +187,23 @@ public sealed class PlanningSessionService
     public EndUserChatState RequestDeterministicApproval(EndUserChatState state) =>
         _chatService.RequestApproval(state);
 
+    private static string SecondTurnPrompt(PrimitiveAnswerDto answer)
+    {
+        var fieldList = string.Join(
+            ",",
+            answer.FieldValues.Keys
+                .Where(key => !string.IsNullOrWhiteSpace(key))
+                .OrderBy(key => key, StringComparer.Ordinal)
+                .Take(12));
+        return $"Continue from the validated primitive answer. Use only trusted server state and field ids: {fieldList}.";
+    }
+
     private async Task<PlannerModelRun> RunPlannerModelAsync(
         PlannerToolManifest manifest,
         string prompt,
+        string runId,
+        string turnId,
+        string attemptedState,
         CancellationToken cancellationToken)
     {
         var environment = WithKeyFileAvailability(_environment());
@@ -177,8 +214,8 @@ public sealed class PlanningSessionService
         }
 
         var request = new PlannerModelRequest(
-            RunId: "run-end-user-planner-primitive",
-            TurnId: "turn-end-user-planner-primitive",
+            RunId: runId,
+            TurnId: turnId,
             Manifest: ToProviderMirror(manifest),
             Locale: "en-US",
             RuntimePrompt: prompt,
@@ -187,11 +224,11 @@ public sealed class PlanningSessionService
         try
         {
             var result = await _plannerRunner(request, options, cancellationToken).ConfigureAwait(false);
-            return new("attempted", PlannerPrimitiveRunner.OutcomeAccepted, result);
+            return new(attemptedState, PlannerPrimitiveRunner.OutcomeAccepted, result);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new("attempted", OutcomeForException(ex), null);
+            return new(attemptedState, OutcomeForException(ex), null);
         }
     }
 
@@ -534,48 +571,6 @@ public sealed class PlanningSessionService
             _ => primitive.Answers.TryGetValue("value", out var text) ? text ?? string.Empty : string.Empty
         };
 
-    private static EndUserValidatedTurnView BuildSecondTurn(EndUserValidatedTurnView previous)
-    {
-        var primitive = CandidateDeckPrimitive();
-        var media = ResolveMedia(primitive.MediaToken);
-        return previous with
-        {
-            TurnId = "turn-validated-primitive-2",
-            GraphRevision = $"{previous.GraphRevision}-answer",
-            Source = "server_validated",
-            OutcomeCode = "second_validated_turn_rendered",
-            ProviderRequestState = "second_turn_attempted",
-            ProviderOutcome = "planner_primitive_second_turn_pending_live_provider",
-            Primitives = [primitive],
-            Tasks = LivePrimitiveTasksAfterAnswer(),
-            Timeline =
-            [
-                new(
-                    "timeline-primitive-choice-deck",
-                    "task",
-                    "candidate-deck",
-                    "active",
-                    "Choose planning mood",
-                    "Second validated turn rendered after server answer submission.",
-                    null,
-                    null,
-                    "task-live-options",
-                    null,
-                    "decision-primitive-choice-deck",
-                    "evidence-primitive-answer",
-                    "turn-validated-primitive-2",
-                    media,
-                    "second_validated_turn_rendered")
-            ],
-            Evidence =
-            [
-                new("evidence-primitive-answer", "Validated answer DTO accepted", "answer", AnswerAccepted),
-                new("evidence-primitive-second-turn", "Second primitive turn", "validated-turn", "second_validated_turn_rendered")
-            ],
-            CanonicalTurn = null
-        };
-    }
-
     private static EndUserChatState ApplyTurnState(EndUserChatState state, EndUserValidatedTurnView turn) =>
         state with
         {
@@ -618,23 +613,6 @@ public sealed class PlanningSessionService
                 : primitive)
             .ToArray();
 
-    private static ValidatedPrimitive CandidateDeckPrimitive() =>
-        new(
-            "primitive-trip-style-deck",
-            PlannerPrimitiveIds.CandidateDeck,
-            "candidate-deck",
-            "Choose a planning mood",
-            "Pick one validated option or ask for a different direction.",
-            PlannerMoodTokens.ReflectiveCulture,
-            PlannerMoodTokens.ReflectiveCulture,
-            AwaitingUserInput,
-            [],
-            [
-                Candidate("candidate-live-culture", "reflective-culture", PlannerMoodTokens.ReflectiveCulture, "Classic culture", "Temples, neighborhoods, and calm evenings.", ["evidence-primitive-second-turn"]),
-                Candidate("candidate-live-nature", "soft-nature", PlannerMoodTokens.SoftNature, "Soft nature", "A quieter route with restorative outdoor time.", ["evidence-primitive-second-turn"])
-            ],
-            ["evidence-primitive-second-turn"]);
-
     private static ValidatedPrimitive ProviderBlockedPrimitive(string providerOutcome) =>
         new(
             "primitive-provider-blocked",
@@ -663,12 +641,6 @@ public sealed class PlanningSessionService
     private static IReadOnlyList<ValidatedTaskPrimitive> ProviderBlockedTasks(string outcome) =>
     [
         new("task-live-intake", "Live provider request", "blocked", 20, "Blocked", [new("step-live-provider", outcome, "blocked")])
-    ];
-
-    private static IReadOnlyList<ValidatedTaskPrimitive> LivePrimitiveTasksAfterAnswer() =>
-    [
-        new("task-live-intake", "Answer live planner form", "accepted", 100, "Accepted", [new("step-live-form", "Validated answer accepted", "accepted")]),
-        new("task-live-options", "Generate planning options", "needs_user", 65, "Review", [new("step-live-second-turn", "Second provider turn attempted", "needs_user")])
     ];
 
     private static EndUserTask ToEndUserTask(ValidatedTaskPrimitive task) =>

@@ -289,14 +289,14 @@
         FocusedTurnId = "turn-form-submitted";
     }
 
-    private void SubmitPrimitiveAnswer(PrimitiveAnswerDto answer)
+    private async Task SubmitPrimitiveAnswer(PrimitiveAnswerDto answer)
     {
         if (CurrentTurn is null)
         {
             return;
         }
 
-        var result = PlanningSession.SubmitAnswer(Chat, CurrentTurn, answer);
+        var result = await PlanningSession.SubmitAnswer(Chat, CurrentTurn, answer);
         Chat = result.State;
         CurrentTurn = result.Turn;
         LastPrimitiveAnswer = result.LastAnswer;
@@ -304,14 +304,14 @@
         FocusedTurnId = ValidationErrors.Count == 0 ? "turn-primitive-answer-submitted" : "turn-live-model-run";
     }
 
-    private void SubmitCurrentPrimitiveAnswer()
+    private async Task SubmitCurrentPrimitiveAnswer()
     {
         if (CurrentTurn is null)
         {
             return;
         }
 
-        SubmitPrimitiveAnswer(PlanningSession.BuildDefaultAnswer(CurrentTurn));
+        await SubmitPrimitiveAnswer(PlanningSession.BuildDefaultAnswer(CurrentTurn));
     }
 
     private void SelectCandidate(string candidateId)
