@@ -1,5 +1,5 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
-@inject EndUserChatService ChatService
+@inject PlanningSessionService PlanningSession
 @rendermode InteractiveServer
 
 <section class="chat-shell chat-shell--v18"
@@ -16,6 +16,14 @@
          data-provider-request-state="@Chat.ProviderRequestState"
          data-role-status="@Chat.RoleStatusOutcome"
          data-provider-outcome="@Chat.ProviderOutcome"
+         data-validated-turn-id="@CurrentTurn?.TurnId"
+         data-validated-turn-source="@CurrentTurn?.Source"
+         data-validated-turn-outcome="@CurrentTurn?.OutcomeCode"
+         data-manifest-version="@CurrentTurn?.ManifestVersion"
+         data-graph-revision="@CurrentTurn?.GraphRevision"
+         data-browser-circuit-state="connected"
+         data-browser-transport="blazor_server"
+         data-http-session-id=""
          data-live-turn-attempt-count="@LiveTurnAttemptCount"
          data-live-second-turn-state="@LiveSecondTurnState"
          data-approval-state="@Chat.ApprovalState"
@@ -85,6 +93,25 @@
 
             <AssistantWorkBubble FormCard="Chat.FormCard" OnSubmitForm="SubmitForm" />
 
+            @if (CurrentTurn is not null)
+            {
+            <PrimitiveRenderer Turn="CurrentTurn"
+                               ValidationErrors="ValidationErrors"
+                               OnSubmitAnswer="SubmitPrimitiveAnswer"
+                               OnSelectCandidate="SelectCandidate"
+                               OnDeferCandidate="DeferCandidate" />
+            @if (CurrentTurn.Primitives.Any(primitive => primitive.RendererKey == "form"))
+            {
+                <button type="button"
+                        class="secondary-button primitive-server-submit"
+                        data-answer-submit="primitive-trip-basics-form"
+                        aria-label="Submit validated primitive form"
+                        @onclick="SubmitCurrentPrimitiveAnswer">
+                    Submit answers
+                </button>
+            }
+        }
+
             @if (Chat.ChoiceSet is not null)
             {
                 <ChoiceDeck ChoiceSet="Chat.ChoiceSet"
@@ -119,6 +146,10 @@
     private string TimelineMode { get; set; } = "day";
     private string? FocusedTurnId { get; set; }
     private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.InHarnessActionGenerator;
+    private EndUserValidatedTurnView? CurrentTurn { get; set; }
+    private PrimitiveAnswerDto? LastPrimitiveAnswer { get; set; }
+    private IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
+    private int _liveRequestSerial;
 
     private string ComposerState => HasSubmitted
         ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
@@ -150,7 +181,7 @@
 
     protected override void OnInitialized()
     {
-        Chat = ChatService.CreateInitialState();
+        Chat = PlanningSession.CreateInitialState();
         Prompt = Chat.Prompt;
     }
 
@@ -161,7 +192,44 @@
 
     private async Task SendPromptAsync()
     {
-        Chat = await ChatService.SendAsync(Prompt, SelectedModelRole);
+        var role = EndUserModelRoleSelection.Normalize(SelectedModelRole);
+        if (role != EndUserModelRoleSelection.DeterministicOffline)
+        {
+            var promptSnapshot = Prompt;
+            var requestSerial = ++_liveRequestSerial;
+            HasSubmitted = true;
+            DrawerOpen = false;
+            DeckIndex = 0;
+            FocusedTurnId = "turn-live-model-run";
+            Chat = Chat with
+            {
+                ModeLabel = "Live in-harness pending",
+                ModeState = "live-model-pending",
+                SelectedModelRole = role,
+                SelectedProvider = "openrouter",
+                LivePreflightState = "preflight_pending",
+                LiveProposalState = "provider_request_pending",
+                HarnessValidationState = "not_run",
+                LatestTurnSource = "live_provider_pending",
+                ProviderRequestState = "attempted",
+                ProviderOutcome = "planner_model_pending",
+                ProviderHealth = "provider_request_pending",
+                Prompt = promptSnapshot,
+                ComposerState = "collapsed_drawer",
+                FinalState = "pending",
+                ErrorCode = null,
+                BlockedReason = null
+            };
+            _ = CompleteLivePromptAsync(promptSnapshot, role, requestSerial);
+            await Task.CompletedTask;
+            return;
+        }
+
+        var result = await PlanningSession.StartAsync(Prompt, SelectedModelRole);
+        Chat = result.State;
+        CurrentTurn = result.Turn;
+        LastPrimitiveAnswer = result.LastAnswer;
+        ValidationErrors = result.ValidationErrors;
         SelectedModelRole = Chat.SelectedModelRole;
         Prompt = Chat.Prompt;
         HasSubmitted = true;
@@ -170,27 +238,99 @@
         FocusedTurnId = "turn-assistant-final";
     }
 
+    private async Task CompleteLivePromptAsync(string prompt, string role, int requestSerial)
+    {
+        try
+        {
+            var result = await PlanningSession.StartAsync(prompt, role);
+            await InvokeAsync(() =>
+            {
+                if (requestSerial != _liveRequestSerial)
+                {
+                    return;
+                }
+
+                Chat = result.State;
+                CurrentTurn = result.Turn;
+                LastPrimitiveAnswer = result.LastAnswer;
+                ValidationErrors = result.ValidationErrors;
+                SelectedModelRole = Chat.SelectedModelRole;
+                Prompt = Chat.Prompt;
+                HasSubmitted = true;
+                DrawerOpen = false;
+                DeckIndex = 0;
+                FocusedTurnId = "turn-assistant-final";
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            await InvokeAsync(() =>
+            {
+                Chat = Chat with
+                {
+                    ModeState = "live-model-blocked",
+                    LivePreflightState = "preflight_blocked",
+                    LiveProposalState = "provider_blocked",
+                    HarnessValidationState = "not_run",
+                    LatestTurnSource = "live_provider_blocked",
+                    ProviderRequestState = "attempted",
+                    ProviderOutcome = "planner_model_provider_unavailable",
+                    FinalState = "provider_blocked",
+                    ErrorCode = "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE",
+                    BlockedReason = "planner_model_provider_unavailable"
+                };
+                StateHasChanged();
+            });
+        }
+    }
+
     private void SubmitForm()
     {
-        Chat = ChatService.SubmitForm(Chat);
+        Chat = PlanningSession.SubmitDeterministicForm(Chat);
         FocusedTurnId = "turn-form-submitted";
+    }
+
+    private async Task SubmitPrimitiveAnswer(PrimitiveAnswerDto answer)
+    {
+        if (CurrentTurn is null)
+        {
+            return;
+        }
+
+        var result = await PlanningSession.SubmitAnswer(Chat, CurrentTurn, answer);
+        Chat = result.State;
+        CurrentTurn = result.Turn;
+        LastPrimitiveAnswer = result.LastAnswer;
+        ValidationErrors = result.ValidationErrors;
+        FocusedTurnId = ValidationErrors.Count == 0 ? "turn-primitive-answer-submitted" : "turn-live-model-run";
+    }
+
+    private async Task SubmitCurrentPrimitiveAnswer()
+    {
+        if (CurrentTurn is null)
+        {
+            return;
+        }
+
+        await SubmitPrimitiveAnswer(PlanningSession.BuildDefaultAnswer(CurrentTurn));
     }
 
     private void SelectCandidate(string candidateId)
     {
-        Chat = ChatService.SelectCandidate(Chat, candidateId);
+        Chat = PlanningSession.SelectDeterministicCandidate(Chat, candidateId);
         FocusedTurnId = "turn-choice-selected";
     }
 
     private void DeferCandidate(string candidateId)
     {
-        Chat = ChatService.DeferCandidate(Chat, candidateId);
+        Chat = PlanningSession.DeferDeterministicCandidate(Chat, candidateId);
         FocusedTurnId = "turn-choice-deferred";
     }
 
     private void RequestApproval()
     {
-        Chat = ChatService.RequestApproval(Chat);
+        Chat = PlanningSession.RequestDeterministicApproval(Chat);
         FocusedTurnId = "turn-approval-blocked";
     }
 
@@ -212,7 +352,9 @@
     private void SetModelRole(string role)
     {
         SelectedModelRole = EndUserModelRoleSelection.Normalize(role);
-        Chat = ChatService.ApplyModelRole(Chat, SelectedModelRole);
+        Chat = PlanningSession.ApplyModelRole(Chat, SelectedModelRole);
+        CurrentTurn = null;
+        ValidationErrors = [];
     }
 
     private void FocusTurn(string turnId)
