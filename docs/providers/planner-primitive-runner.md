@@ -15,7 +15,7 @@ Provider-local shapes:
 - `PlannerModelRequest` carries run/turn ids, manifest mirror, locale, optional prompt digest, runtime-only raw prompt text marked `JsonIgnore`, runtime submitted answer values, and provider-local context/tool refs.
 - `PlannerContextToolResult` is the provider-neutral context mirror for future web/search/booking sources. Sprint 023 uses only explicitly named `mock_context_provider` context and must not present it as live web/search.
 - `PlannerModelResult` carries output kind, primitive invocations, task invocations, repair status, prompt-specific status, response length, duration, and accepted provider/model/request metadata.
-- `SanitizedPlannerModelLogRow` carries only fixed outcomes, safe ids, manifest version, primitive ids/kinds/counts, task count, option count, repair flag, timing, response length, and accepted provider metadata.
+- `SanitizedPlannerModelLogRow` carries only fixed outcomes, safe ids, manifest version, primitive ids/kinds/counts, task ids/count, option count, repair flag, timing, response length, and accepted provider metadata.
 
 Sprint 024 primitive menu:
 
@@ -54,7 +54,7 @@ Runner behavior:
 - unsupported primitive validation against manifest ids/kinds/renderers;
 - prompt-specific acceptance; generic/static output is blocked as schema invalid;
 - semantic primitive acceptance: destination confirmation as `text_input`, exact date/date-range as `text_input`, and pace as `text_input` with available options are blocked as `planner_model_primitive_renderer_mismatch`;
-- composite-form acceptance requires at least one non-text interactive primitive plus `task_decomposition` and task records, otherwise the row is blocked with fixed renderer-mismatch or task-decomposition-missing outcomes;
+- composite-form acceptance requires at least one non-text interactive primitive plus `task_decomposition`, task refs, and task records with safe ids/titles/state/order; otherwise the runner/evaluator blocks with fixed renderer-mismatch or task-decomposition-missing outcomes before reporting accepted;
 - no paid-provider fallback unless explicitly configured by the caller and reported.
 
 Provider clients:

@@ -89,35 +89,95 @@ public sealed class PlannerPrimitiveRunner
         }
 
         var stopwatch = Stopwatch.StartNew();
-        var first = await CompleteOnceAsync(request, options, isRepair: false, operationToken, cancellationToken).ConfigureAwait(false);
+        var first = await CompleteOnceAsync(request, options, isRepair: false, null, operationToken, cancellationToken).ConfigureAwait(false);
         if (TryParse(request, first, stopwatch.Elapsed, wasRepaired: false, out var parsed, out var failure))
         {
-            return parsed;
+            GuardParsedResult(parsed);
+            var semanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, parsed);
+            if (semanticFailure is null)
+            {
+                return parsed;
+            }
+
+            if (options.RepairEnabled)
+            {
+                var semanticRepair = await CompleteOnceAsync(
+                    request,
+                    options,
+                    isRepair: true,
+                    semanticFailure.FailureClassCode,
+                    operationToken,
+                    cancellationToken).ConfigureAwait(false);
+                if (TryParse(request, semanticRepair, stopwatch.Elapsed, wasRepaired: true, out var semanticParsed, out var semanticRepairFailure))
+                {
+                    GuardParsedResult(semanticParsed);
+                    var repairedSemanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, semanticParsed);
+                    if (repairedSemanticFailure is null)
+                    {
+                        return semanticParsed;
+                    }
+
+                    semanticFailure = repairedSemanticFailure;
+                }
+                else
+                {
+                    ThrowParseFailure(options.Provider, semanticRepairFailure);
+                }
+            }
+
+            throw new PlannerModelGuardException(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
         }
 
         if (options.RepairEnabled &&
             failure is PlannerParseFailure.MalformedJson or PlannerParseFailure.SchemaInvalid)
         {
-            var repaired = await CompleteOnceAsync(request, options, isRepair: true, operationToken, cancellationToken).ConfigureAwait(false);
+            var repaired = await CompleteOnceAsync(request, options, isRepair: true, "schema_or_json_invalid", operationToken, cancellationToken).ConfigureAwait(false);
             if (TryParse(request, repaired, stopwatch.Elapsed, wasRepaired: true, out var repairedParsed, out var repairedFailure))
             {
-                return repairedParsed;
+                GuardParsedResult(repairedParsed);
+                var semanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, repairedParsed);
+                if (semanticFailure is null)
+                {
+                    return repairedParsed;
+                }
+
+                throw new PlannerModelGuardException(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
             }
 
             failure = repairedFailure;
         }
 
+        ThrowParseFailure(options.Provider, failure);
+        throw new UnreachableException();
+    }
+
+    private static void ThrowParseFailure(string provider, PlannerParseFailure failure)
+    {
         throw failure switch
         {
-            PlannerParseFailure.MalformedJson => new ProviderMalformedResponseException(options.Provider, "Planner primitive provider returned malformed JSON."),
-            _ => new ProviderMalformedResponseException(options.Provider, "Planner primitive provider returned malformed schema.")
+            PlannerParseFailure.MalformedJson => new ProviderMalformedResponseException(provider, "Planner primitive provider returned malformed JSON."),
+            _ => new ProviderMalformedResponseException(provider, "Planner primitive provider returned malformed schema.")
         };
+    }
+
+    private static void GuardParsedResult(PlannerModelResult result)
+    {
+        if (result.HasUnsafeValue)
+        {
+            throw new PlannerModelGuardException(OutcomeUnsafeText, "unsafe_text");
+        }
+
+        if (!result.HasPromptSpecificContent)
+        {
+            throw new PlannerModelGuardException(OutcomeSchemaInvalid, "provider_schema_invalid");
+        }
     }
 
     private async Task<ModelCompletionResponse> CompleteOnceAsync(
         PlannerModelRequest request,
         PlannerModelOptions options,
         bool isRepair,
+        string? failureReason,
         CancellationToken operationToken,
         CancellationToken callerCancellationToken)
     {
@@ -127,7 +187,7 @@ public sealed class PlannerPrimitiveRunner
                 new ModelCompletionRequest(
                     [
                         new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitive invocations. Use the primitive tool menu as callable form tools, not generic prose. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
-                        new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason: isRepair ? "schema_or_json_invalid" : null))
+                        new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason))
                     ],
                     options.Model,
                     "planner_primitive_output",
@@ -280,7 +340,11 @@ public sealed class PlannerPrimitiveRunner
             task.TaskId ?? string.Empty,
             task.PrimitiveRefs ?? [],
             task.Title,
-            task.Summary);
+            task.Summary)
+        {
+            State = task.State ?? string.Empty,
+            Order = task.Order ?? -1
+        };
 
     internal static bool IsSafeIdentifier(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
@@ -479,7 +543,9 @@ public sealed class PlannerPrimitiveRunner
         string? TaskId,
         IReadOnlyList<string>? PrimitiveRefs,
         string? Title,
-        string? Summary);
+        string? Summary,
+        string? State,
+        int? Order);
 
     private enum PlannerParseFailure
     {

@@ -123,12 +123,6 @@ public sealed class PlannerPrimitiveEvaluator
                 return Rejected(PlannerPrimitiveRunner.OutcomeToolNotAllowed, "tool_not_allowed");
             }
 
-            if (result.OutputKind == PlannerModelOutputKind.CompositeForm &&
-                HasSemanticTextInputMismatch(primitive))
-            {
-                return Rejected(PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch, "primitive_renderer_mismatch");
-            }
-
             optionCount += primitive.Options.Count;
             primitiveIds.Add(definition.PrimitiveId);
             primitiveKinds.Add(definition.PrimitiveKind);
@@ -143,17 +137,9 @@ public sealed class PlannerPrimitiveEvaluator
             return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
         }
 
-        if (result.OutputKind == PlannerModelOutputKind.CompositeForm)
+        if (PlannerPrimitiveSemanticValidator.Validate(evalCase.Request, result) is { } semanticFailure)
         {
-            if (!primitiveIds.Contains("task_decomposition", StringComparer.Ordinal) || result.Tasks.Count == 0)
-            {
-                return Rejected(PlannerPrimitiveRunner.OutcomeTaskDecompositionMissing, "task_decomposition_missing");
-            }
-
-            if (!primitiveIds.Any(id => PlannerPrimitiveToolCatalog.NonTextInteractivePrimitiveIds.Contains(id, StringComparer.Ordinal)))
-            {
-                return Rejected(PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch, "primitive_renderer_mismatch");
-            }
+            return Rejected(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
         }
 
         return Accepted(
@@ -161,6 +147,7 @@ public sealed class PlannerPrimitiveEvaluator
             result,
             primitiveIds.Order(StringComparer.Ordinal).ToArray(),
             primitiveKinds.Order(StringComparer.Ordinal).ToArray(),
+            result.Tasks.Select(task => task.TaskId).Order(StringComparer.Ordinal).ToArray(),
             optionCount);
     }
 
@@ -169,6 +156,7 @@ public sealed class PlannerPrimitiveEvaluator
         PlannerModelResult result,
         IReadOnlyList<string> primitiveIds,
         IReadOnlyList<string> primitiveKinds,
+        IReadOnlyList<string> taskIds,
         int optionCount)
     {
         var outcome = result.OutputKind switch
@@ -191,6 +179,7 @@ public sealed class PlannerPrimitiveEvaluator
             result.OutputKind,
             primitiveIds,
             primitiveKinds,
+            taskIds,
             primitiveIds.Count,
             result.Tasks.Count,
             optionCount,
@@ -267,6 +256,7 @@ public sealed class PlannerPrimitiveEvaluator
             null,
             [],
             [],
+            [],
             0,
             0,
             0,
@@ -277,29 +267,6 @@ public sealed class PlannerPrimitiveEvaluator
             null,
             null,
             null);
-
-    private static bool HasSemanticTextInputMismatch(PlannerPrimitiveInvocation primitive)
-    {
-        if (!IsTextPrimitive(primitive.PrimitiveId))
-        {
-            return false;
-        }
-
-        var fieldPath = primitive.FieldPath ?? string.Empty;
-        if (fieldPath.Contains("destination", StringComparison.OrdinalIgnoreCase) ||
-            fieldPath.Contains("date", StringComparison.OrdinalIgnoreCase) ||
-            fieldPath.Contains("start", StringComparison.OrdinalIgnoreCase) ||
-            fieldPath.Contains("end", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return fieldPath.Contains("pace", StringComparison.OrdinalIgnoreCase) &&
-            primitive.Options.Count > 0;
-    }
-
-    private static bool IsTextPrimitive(string primitiveId) =>
-        primitiveId is "text_input" or "textarea";
 
     private static string DurationBucket(TimeSpan duration)
     {
