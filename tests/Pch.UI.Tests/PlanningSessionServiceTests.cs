@@ -110,6 +110,65 @@ public sealed class PlanningSessionServiceTests
     }
 
     [Fact]
+    public async Task BlockedContractResultSerializesSanitizedProviderPrimitiveTrace()
+    {
+        Task<PlannerModelResult> missingTaskRunner(
+            PlannerModelRequest request,
+            PlannerModelOptions options,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(new PlannerModelResult(
+                request.Manifest.ManifestId,
+                request.Manifest.ManifestVersion,
+                request.Manifest.GraphRevision,
+                request.Manifest.SessionId,
+                PlannerModelOutputKind.CompositeForm,
+                [
+                    Primitive(
+                        "select",
+                        "select",
+                        "primitive-destination-country",
+                        "select",
+                        "/mission/destination_country",
+                        null,
+                        "RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST",
+                        "RAW_USER_PROMPT_SHOULD_NOT_LEAK",
+                        [Option("japan", "Japan"), Option("south_korea", "South Korea")])
+                ],
+                [],
+                WasRepaired: false,
+                HasUnsafeValue: false,
+                HasPromptSpecificContent: true,
+                Duration: TimeSpan.FromMilliseconds(25),
+                ResponseContentLength: 256,
+                Provider: "mock",
+                Model: "mock-planner-primitive",
+                RequestId: "request-missing-task-decomposition"));
+        }
+
+        var store = new PlanningSessionStore();
+        var service = PlanningService(missingTaskRunner);
+
+        var response = await store.StartAsync(
+            service,
+            new("RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with missing task decomposition.", EndUserModelRoleSelection.InHarnessActionGenerator));
+
+        Assert.Equal("PCH_UI_TASK_DECOMPOSITION_MISSING", response.State.ErrorCode);
+        Assert.Equal("task_decomposition_missing", response.State.BlockedReason);
+        var trace = Assert.Single(response.Trace);
+        var primitiveTrace = Assert.Single(trace.ProviderPrimitiveTraces);
+        Assert.Equal("select", primitiveTrace.PrimitiveId);
+        Assert.Equal("select", primitiveTrace.RendererKey);
+        Assert.Equal("primitive-destination-country", primitiveTrace.InstanceId);
+        Assert.Equal("/mission/destination_country", primitiveTrace.FieldPath);
+        Assert.Equal(2, primitiveTrace.OptionCount);
+        Assert.Contains("japan", primitiveTrace.OptionIds);
+        Assert.Empty(trace.ProviderTaskTraces);
+        AssertRawTextAbsent(JsonSerializer.Serialize(response));
+    }
+
+    [Fact]
     public async Task PlanningSessionStoreAnswerInvokesSecondRunner()
     {
         var runner = new CountingPlannerPrimitiveRunner();

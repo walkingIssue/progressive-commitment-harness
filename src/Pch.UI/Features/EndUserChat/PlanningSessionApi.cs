@@ -39,6 +39,25 @@ public sealed record PlanningSessionApiResponse(
             EndUserChatService.RawAbsenceState);
 }
 
+public sealed record PlanningSessionProviderPrimitiveTrace(
+    string PrimitiveId,
+    string PrimitiveKind,
+    string InstanceId,
+    string RendererKey,
+    string? FieldPath,
+    string? MoodToken,
+    string? MediaToken,
+    int OptionCount,
+    IReadOnlyList<string> OptionIds,
+    IReadOnlyList<string> CandidateIds,
+    IReadOnlyList<string> TaskRefs,
+    IReadOnlyList<string> EvidenceRefs,
+    IReadOnlyList<string> ToolContextRefs);
+
+public sealed record PlanningSessionProviderTaskTrace(
+    string TaskId,
+    IReadOnlyList<string> PrimitiveRefs);
+
 public sealed record PlanningSessionTraceEntry(
     string TraceId,
     string ProviderRequestState,
@@ -51,7 +70,9 @@ public sealed record PlanningSessionTraceEntry(
     string PrimitiveHash,
     IReadOnlyList<string> PrimitiveInstanceIds,
     IReadOnlyList<string> TaskIds,
-    IReadOnlyList<string> AnswerIds)
+    IReadOnlyList<string> AnswerIds,
+    IReadOnlyList<PlanningSessionProviderPrimitiveTrace> ProviderPrimitiveTraces,
+    IReadOnlyList<PlanningSessionProviderTaskTrace> ProviderTaskTraces)
 {
     public static PlanningSessionTraceEntry FromModelRun(
         PlannerModelRun model,
@@ -101,7 +122,87 @@ public sealed record PlanningSessionTraceEntry(
             hash,
             primitiveIds,
             taskIds,
-            answerIds);
+            answerIds,
+            BuildProviderPrimitiveTraces(model.Result),
+            BuildProviderTaskTraces(model.Result));
+    }
+
+    private static IReadOnlyList<PlanningSessionProviderPrimitiveTrace> BuildProviderPrimitiveTraces(PlannerModelResult? result) =>
+        result?.Primitives
+            .Where(primitive => primitive is not null)
+            .Take(24)
+            .Select(primitive => new PlanningSessionProviderPrimitiveTrace(
+                SafeTraceId(primitive.PrimitiveId),
+                SafeTraceId(primitive.PrimitiveKind),
+                SafeTraceId(primitive.InstanceId),
+                SafeTraceId(primitive.RendererKey),
+                SafeTraceNullableId(primitive.FieldPath),
+                SafeTraceNullableId(primitive.MoodToken),
+                SafeTraceNullableId(primitive.MediaToken),
+                primitive.Options.Count,
+                SafeTraceIds(primitive.Options.Select(option => option.OptionId)),
+                SafeTraceIds(primitive.CandidateIds),
+                SafeTraceIds(primitive.TaskRefs),
+                SafeTraceIds(primitive.EvidenceRefs),
+                SafeTraceIds(primitive.ToolContextRefs)))
+            .ToArray() ?? [];
+
+    private static IReadOnlyList<PlanningSessionProviderTaskTrace> BuildProviderTaskTraces(PlannerModelResult? result) =>
+        result?.Tasks
+            .Where(task => task is not null)
+            .Take(24)
+            .Select(task => new PlanningSessionProviderTaskTrace(
+                SafeTraceId(task.TaskId),
+                SafeTraceIds(task.PrimitiveRefs)))
+            .ToArray() ?? [];
+
+    private static IReadOnlyList<string> SafeTraceIds(IEnumerable<string?> values) =>
+        values
+            .Select(SafeTraceNullableId)
+            .Where(value => value is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .Take(32)
+            .ToArray();
+
+    private static string SafeTraceId(string? value) =>
+        SafeTraceNullableId(value) ?? "redacted";
+
+    private static string? SafeTraceNullableId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 160 || ContainsUnsafeTraceMarker(value))
+        {
+            return null;
+        }
+
+        foreach (var ch in value)
+        {
+            if (!char.IsLetterOrDigit(ch) && ch is not '_' and not '-' and not '/' and not ':' and not '.')
+            {
+                return null;
+            }
+        }
+
+        return value;
+    }
+
+    private static bool ContainsUnsafeTraceMarker(string value)
+    {
+        var upper = value.ToUpperInvariant();
+        return upper.Contains("RAW_", StringComparison.Ordinal) ||
+            upper.Contains("SHOULD_NOT_PERSIST", StringComparison.Ordinal) ||
+            upper.Contains("SECRET", StringComparison.Ordinal) ||
+            upper.Contains("SENTINEL", StringComparison.Ordinal) ||
+            upper.Contains("CREDENTIAL", StringComparison.Ordinal) ||
+            upper.Contains("API_KEY", StringComparison.Ordinal) ||
+            upper.Contains("PAYLOAD", StringComparison.Ordinal) ||
+            upper.Contains("COMPLETION", StringComparison.Ordinal) ||
+            upper.Contains("APPROVAL", StringComparison.Ordinal) ||
+            upper.Contains("HOLD", StringComparison.Ordinal) ||
+            upper.Contains("BOOKING", StringComparison.Ordinal) ||
+            upper.Contains("PAYMENT", StringComparison.Ordinal) ||
+            upper.Contains("CANDIDATE_DISPLAY", StringComparison.Ordinal) ||
+            upper.StartsWith("SK-", StringComparison.Ordinal);
     }
 }
 
