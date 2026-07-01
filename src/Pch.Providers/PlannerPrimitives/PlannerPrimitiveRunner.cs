@@ -26,7 +26,10 @@ public sealed class PlannerPrimitiveRunner
     public const string OutcomeEmptyContent = "planner_model_empty_content";
     public const string OutcomeMalformedJson = "planner_model_malformed_json";
     public const string OutcomeSchemaInvalid = "planner_model_schema_invalid";
+    public const string OutcomeUnsafeText = "planner_model_unsafe_text";
     public const string OutcomeUnsupportedPrimitive = "planner_model_unsupported_primitive";
+    public const string OutcomeFieldPathNotAllowed = "planner_model_field_path_not_allowed";
+    public const string OutcomeToolNotAllowed = "planner_model_tool_not_allowed";
     public const string OutcomeProviderUnavailable = "planner_model_provider_unavailable";
     public const string OutcomeFallbackDisabled = "planner_model_fallback_disabled";
 
@@ -121,7 +124,7 @@ public sealed class PlannerPrimitiveRunner
                 new ModelCompletionRequest(
                     [
                         new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitives. Use only primitive ids from the manifest. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
-                        new ModelMessage(ModelMessageRole.User, CreateSanitizedProbe(request, isRepair))
+                        new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason: isRepair ? "schema_or_json_invalid" : null))
                     ],
                     options.Model,
                     "planner_primitive_output",
@@ -181,8 +184,10 @@ public sealed class PlannerPrimitiveRunner
             parsed.SessionId,
             ParseOutputKind(parsed.OutputKind),
             parsed.Primitives.Select(ToPrimitive).ToArray(),
+            parsed.Tasks?.Select(ToTask).ToArray() ?? [],
             wasRepaired,
             HasUnsafeValues(parsed),
+            HasPromptSpecificContent(request, parsed),
             duration,
             completion.Content.Length,
             completion.Provider,
@@ -210,7 +215,17 @@ public sealed class PlannerPrimitiveRunner
                 string.IsNullOrWhiteSpace(primitive.PrimitiveId) ||
                 string.IsNullOrWhiteSpace(primitive.PrimitiveKind) ||
                 string.IsNullOrWhiteSpace(primitive.RendererKey)) ||
-            request.Manifest.MaxPrimitiveCount <= 0)
+            request.Manifest.MaxPrimitiveCount <= 0 ||
+            request.SubmittedAnswers.Any(answer =>
+                answer is null ||
+                string.IsNullOrWhiteSpace(answer.AnswerId) ||
+                string.IsNullOrWhiteSpace(answer.FieldPath)) ||
+            request.ContextToolResults.Any(result =>
+                result is null ||
+                string.IsNullOrWhiteSpace(result.ToolId) ||
+                string.IsNullOrWhiteSpace(result.ResultId) ||
+                string.IsNullOrWhiteSpace(result.Category) ||
+                string.IsNullOrWhiteSpace(result.SourceClass)))
         {
             throw new ProviderMalformedResponseException("planner-primitive", "Planner primitive request schema is malformed.");
         }
@@ -224,33 +239,6 @@ public sealed class PlannerPrimitiveRunner
         }
     }
 
-    private static string CreateSanitizedProbe(PlannerModelRequest request, bool isRepair)
-    {
-        var manifest = request.Manifest;
-        return JsonSerializer.Serialize(new
-        {
-            request.RunId,
-            request.TurnId,
-            manifest.ManifestId,
-            manifest.ManifestVersion,
-            manifest.GraphRevision,
-            manifest.SessionId,
-            manifest.Stage,
-            request.Locale,
-            request.PromptDigest,
-            RepairAttempt = isRepair,
-            AllowedPrimitives = manifest.AllowedPrimitives.Select(primitive => new
-            {
-                primitive.PrimitiveId,
-                primitive.PrimitiveKind,
-                primitive.RendererKey
-            }).ToArray(),
-            manifest.AllowedFieldPaths,
-            manifest.AllowedMoodTokens,
-            manifest.MaxPrimitiveCount
-        }, JsonOptions);
-    }
-
     private static PlannerPrimitiveInvocation ToPrimitive(PlannerPrimitiveEnvelope primitive) =>
         new(
             primitive.PrimitiveId ?? string.Empty,
@@ -259,15 +247,66 @@ public sealed class PlannerPrimitiveRunner
             primitive.RendererKey ?? string.Empty,
             primitive.FieldPath,
             primitive.MoodToken,
+            primitive.MediaToken,
             primitive.CandidateIds ?? [],
+            primitive.TaskRefs ?? [],
+            primitive.EvidenceRefs ?? [],
+            primitive.ToolContextRefs ?? [],
+            primitive.Options?.Select(ToOption).ToArray() ?? [],
             primitive.Label,
-            primitive.PromptText);
+            primitive.PromptText,
+            primitive.HelpText,
+            primitive.DefaultValue,
+            primitive.RendererHints ?? new Dictionary<string, string>());
+
+    private static PlannerPrimitiveOption ToOption(PlannerPrimitiveOptionEnvelope option) =>
+        new(
+            option.OptionId ?? string.Empty,
+            option.MoodToken,
+            option.MediaToken,
+            option.ToolContextRefs ?? [],
+            option.Label,
+            option.Summary);
+
+    private static PlannerTaskInvocation ToTask(PlannerTaskEnvelope task) =>
+        new(
+            task.TaskId ?? string.Empty,
+            task.PrimitiveRefs ?? [],
+            task.Title,
+            task.Summary);
 
     internal static bool IsSafeIdentifier(string? value) =>
-        LiveMissionProposalRunner.IsSafeIdentifier(value);
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 120 &&
+        value.All(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' or '/' or ':' or '.') &&
+        !ContainsUnsafeMarker(value);
 
     internal static bool ContainsUnsafeMarker(string? value) =>
-        LiveMissionProposalRunner.ContainsUnsafeMarker(value);
+        ContainsPlannerUnsafeMarker(value);
+
+    private static bool ContainsPlannerUnsafeMarker(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var upper = value.ToUpperInvariant();
+        return upper.Contains("RAW_", StringComparison.Ordinal) ||
+            upper.Contains("SHOULD_NOT_PERSIST", StringComparison.Ordinal) ||
+            upper.Contains("SECRET", StringComparison.Ordinal) ||
+            upper.Contains("SENTINEL", StringComparison.Ordinal) ||
+            upper.Contains("CREDENTIAL", StringComparison.Ordinal) ||
+            upper.Contains("API_KEY", StringComparison.Ordinal) ||
+            upper.Contains("PAYLOAD", StringComparison.Ordinal) ||
+            upper.Contains("COMPLETION", StringComparison.Ordinal) ||
+            upper.Contains("APPROVAL", StringComparison.Ordinal) ||
+            upper.Contains("HOLD", StringComparison.Ordinal) ||
+            upper.Contains("BOOKING", StringComparison.Ordinal) ||
+            upper.Contains("PAYMENT", StringComparison.Ordinal) ||
+            upper.Contains("CANDIDATE_DISPLAY", StringComparison.Ordinal) ||
+            upper.StartsWith("SK-", StringComparison.Ordinal);
+    }
 
     private static bool HasUnsafeValues(PlannerModelEnvelope parsed) =>
         ContainsUnsafeMarker(parsed.ManifestId) ||
@@ -282,9 +321,90 @@ public sealed class PlannerPrimitiveRunner
             ContainsUnsafeMarker(primitive.RendererKey) ||
             ContainsUnsafeMarker(primitive.FieldPath) ||
             ContainsUnsafeMarker(primitive.MoodToken) ||
+            ContainsUnsafeMarker(primitive.MediaToken) ||
             ContainsUnsafeMarker(primitive.Label) ||
             ContainsUnsafeMarker(primitive.PromptText) ||
-            primitive.CandidateIds?.Any(id => !IsSafeIdentifier(id)) == true);
+            ContainsUnsafeMarker(primitive.HelpText) ||
+            ContainsUnsafeMarker(primitive.DefaultValue) ||
+            primitive.CandidateIds?.Any(id => !IsSafeIdentifier(id)) == true ||
+            primitive.TaskRefs?.Any(id => !IsSafeIdentifier(id)) == true ||
+            primitive.EvidenceRefs?.Any(id => !IsSafeIdentifier(id)) == true ||
+            primitive.ToolContextRefs?.Any(id => !IsSafeIdentifier(id)) == true ||
+            primitive.RendererHints?.Any(hint => !IsSafeIdentifier(hint.Key) || ContainsUnsafeMarker(hint.Value)) == true ||
+            primitive.Options?.Any(option =>
+                !IsSafeIdentifier(option.OptionId) ||
+                ContainsUnsafeMarker(option.MoodToken) ||
+                ContainsUnsafeMarker(option.MediaToken) ||
+                ContainsUnsafeMarker(option.Label) ||
+                ContainsUnsafeMarker(option.Summary) ||
+                option.ToolContextRefs?.Any(id => !IsSafeIdentifier(id)) == true) == true) ||
+        parsed.Tasks?.Any(task =>
+            !IsSafeIdentifier(task.TaskId) ||
+            ContainsUnsafeMarker(task.Title) ||
+            ContainsUnsafeMarker(task.Summary) ||
+            task.PrimitiveRefs?.Any(id => !IsSafeIdentifier(id)) == true) == true;
+
+    private static bool HasPromptSpecificContent(PlannerModelRequest request, PlannerModelEnvelope parsed)
+    {
+        var tokens = PromptSpecificTokens(request.RuntimePrompt);
+        if (tokens.Count == 0)
+        {
+            return true;
+        }
+
+        var text = string.Join(' ', parsed.Primitives.SelectMany(primitive => new[]
+            {
+                primitive.PrimitiveId,
+                primitive.FieldPath,
+                primitive.MoodToken,
+                primitive.MediaToken,
+                primitive.Label,
+                primitive.PromptText,
+                primitive.HelpText,
+                primitive.DefaultValue
+            })
+            .Concat(parsed.Primitives.SelectMany(primitive => primitive.Options ?? [])
+                .SelectMany(option => new[]
+                {
+                    option.OptionId,
+                    option.MoodToken,
+                    option.MediaToken,
+                    option.Label,
+                    option.Summary
+                }))
+            .Concat((parsed.Tasks ?? []).SelectMany(task => new[] { task.TaskId, task.Title, task.Summary }))
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        return tokens.Any(token => text.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal static IReadOnlyList<string> PromptSpecificTokens(string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return [];
+        }
+
+        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "plan", "trip", "with", "from", "that", "this", "into", "make", "focus", "focused", "early", "late", "nights", "option", "options"
+        };
+        var tokens = new List<string>();
+        foreach (var token in prompt.Split(
+            [' ', ',', '.', ';', ':', '!', '?', '/', '\\', '-', '_', '(', ')', '[', ']', '{', '}', '\r', '\n', '\t'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (token.Length >= 4 &&
+                !stopWords.Contains(token) &&
+                !ContainsUnsafeMarker(token) &&
+                token.All(char.IsLetterOrDigit))
+            {
+                tokens.Add(token);
+            }
+        }
+
+        return tokens.Distinct(StringComparer.OrdinalIgnoreCase).Take(12).ToArray();
+    }
 
     internal static PlannerModelOutputKind ParseOutputKind(string? outputKind) =>
         outputKind switch
@@ -318,7 +438,8 @@ public sealed class PlannerPrimitiveRunner
         string? GraphRevision,
         string? SessionId,
         string? OutputKind,
-        IReadOnlyList<PlannerPrimitiveEnvelope> Primitives);
+        IReadOnlyList<PlannerPrimitiveEnvelope> Primitives,
+        IReadOnlyList<PlannerTaskEnvelope>? Tasks);
 
     private sealed record PlannerPrimitiveEnvelope(
         string? PrimitiveId,
@@ -327,9 +448,31 @@ public sealed class PlannerPrimitiveRunner
         string? RendererKey,
         string? FieldPath,
         string? MoodToken,
+        string? MediaToken,
         IReadOnlyList<string>? CandidateIds,
+        IReadOnlyList<string>? TaskRefs,
+        IReadOnlyList<string>? EvidenceRefs,
+        IReadOnlyList<string>? ToolContextRefs,
+        IReadOnlyList<PlannerPrimitiveOptionEnvelope>? Options,
         string? Label,
-        string? PromptText);
+        string? PromptText,
+        string? HelpText,
+        string? DefaultValue,
+        IReadOnlyDictionary<string, string>? RendererHints);
+
+    private sealed record PlannerPrimitiveOptionEnvelope(
+        string? OptionId,
+        string? MoodToken,
+        string? MediaToken,
+        IReadOnlyList<string>? ToolContextRefs,
+        string? Label,
+        string? Summary);
+
+    private sealed record PlannerTaskEnvelope(
+        string? TaskId,
+        IReadOnlyList<string>? PrimitiveRefs,
+        string? Title,
+        string? Summary);
 
     private enum PlannerParseFailure
     {

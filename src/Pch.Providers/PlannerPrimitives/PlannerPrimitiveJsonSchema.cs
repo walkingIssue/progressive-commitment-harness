@@ -6,7 +6,7 @@ internal static class PlannerPrimitiveJsonSchema
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["manifestId", "manifestVersion", "graphRevision", "sessionId", "outputKind", "primitives"],
+          "required": ["manifestId", "manifestVersion", "graphRevision", "sessionId", "outputKind", "primitives", "tasks"],
           "properties": {
             "manifestId": { "type": "string" },
             "manifestVersion": { "type": "string" },
@@ -18,7 +18,7 @@ internal static class PlannerPrimitiveJsonSchema
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["primitiveId", "primitiveKind", "instanceId", "rendererKey", "fieldPath", "moodToken", "candidateIds", "label", "promptText"],
+                "required": ["primitiveId", "primitiveKind", "instanceId", "rendererKey", "fieldPath", "moodToken", "mediaToken", "candidateIds", "taskRefs", "evidenceRefs", "toolContextRefs", "options", "label", "promptText", "helpText", "defaultValue", "rendererHints"],
                 "properties": {
                   "primitiveId": { "type": "string" },
                   "primitiveKind": { "type": "string" },
@@ -26,9 +26,54 @@ internal static class PlannerPrimitiveJsonSchema
                   "rendererKey": { "type": "string" },
                   "fieldPath": { "type": ["string", "null"] },
                   "moodToken": { "type": ["string", "null"] },
+                  "mediaToken": { "type": ["string", "null"] },
                   "candidateIds": { "type": "array", "items": { "type": "string" } },
+                  "taskRefs": { "type": "array", "items": { "type": "string" } },
+                  "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+                  "toolContextRefs": { "type": "array", "items": { "type": "string" } },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["optionId", "moodToken", "mediaToken", "toolContextRefs", "label", "summary"],
+                      "properties": {
+                        "optionId": { "type": "string" },
+                        "moodToken": { "type": ["string", "null"] },
+                        "mediaToken": { "type": ["string", "null"] },
+                        "toolContextRefs": { "type": "array", "items": { "type": "string" } },
+                        "label": { "type": "string" },
+                        "summary": { "type": "string" }
+                      }
+                    }
+                  },
                   "label": { "type": "string" },
-                  "promptText": { "type": "string" }
+                  "promptText": { "type": "string" },
+                  "helpText": { "type": "string" },
+                  "defaultValue": { "type": ["string", "null"] },
+                  "rendererHints": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["layout", "variant"],
+                    "properties": {
+                      "layout": { "type": "string" },
+                      "variant": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["taskId", "primitiveRefs", "title", "summary"],
+                "properties": {
+                  "taskId": { "type": "string" },
+                  "primitiveRefs": { "type": "array", "items": { "type": "string" } },
+                  "title": { "type": "string" },
+                  "summary": { "type": "string" }
                 }
               }
             }

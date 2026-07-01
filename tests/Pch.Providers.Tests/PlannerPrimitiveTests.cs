@@ -57,6 +57,8 @@ public sealed class PlannerPrimitiveTests
         Assert.Null(row.FailureClassCode);
         Assert.Equal(PlannerModelOutputKind.CompositeForm, row.OutputKind);
         Assert.Equal(2, row.PrimitiveCount);
+        Assert.Equal(1, row.TaskCount);
+        Assert.Equal(2, row.OptionCount);
         Assert.Contains("assistant_message", row.PrimitiveIds);
         Assert.Contains("text_input", row.PrimitiveIds);
         Assert.Equal("openrouter", row.Provider);
@@ -65,10 +67,28 @@ public sealed class PlannerPrimitiveTests
         Assert.NotNull(row.DurationMilliseconds);
         Assert.NotNull(row.DurationBucket);
         Assert.Equal("planner_primitive_output", client.LastRequest?.JsonSchemaName);
-        Assert.DoesNotContain(RawPrompt, client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
+        Assert.Contains("Plan an Osaka ramen market trip", client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
 
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
-        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(client.LastRequest.Messages, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task AcceptedDynamicOutputCarriesRuntimeOptionsTasksAndTextInMemoryOnly()
+    {
+        var runner = new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateContent("composite_form")),
+            new StaticCreditClient());
+
+        var result = await runner.RunAsync(CreateRequest(), CreateOptions());
+        var purpose = Assert.Single(result.Primitives, primitive => primitive.PrimitiveId == "text_input");
+
+        Assert.Contains("Osaka", purpose.Label, StringComparison.Ordinal);
+        Assert.Contains("ramen", purpose.PromptText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, purpose.Options.Count);
+        Assert.Contains(purpose.Options, option => option.OptionId == "late_ramen");
+        Assert.Single(result.Tasks);
+        Assert.Contains("Osaka", result.Tasks[0].Title, StringComparison.Ordinal);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(result, SensitiveSentinels);
     }
 
     [Fact]
@@ -95,6 +115,44 @@ public sealed class PlannerPrimitiveTests
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
+    [Fact]
+    public async Task PromptBuilderIncludesRuntimePromptAnswersAndContextButRowsDoNotPersistThem()
+    {
+        var request = CreateRequest() with
+        {
+            RuntimePrompt = $"{RawPrompt} Plan an Osaka ramen trip.",
+            SubmittedAnswers =
+            [
+                new PlannerSubmittedAnswer("answer-01", "/mission/purpose", "late ramen and no temples", "primitive-purpose")
+            ],
+            ContextToolResults =
+            [
+                new PlannerContextToolResult(
+                    "mock_context_provider",
+                    "context-osaka-food",
+                    "dining",
+                    "mock_context_provider",
+                    ["evidence-safe"],
+                    Title: "Osaka food note",
+                    Summary: $"{RawProviderPayload} should redact")
+            ]
+        };
+        var client = new StaticCompletionClient(CreateContent("composite_form"));
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase($"{RawPrompt}-{Credential}", request)],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        var providerBody = client.LastRequest!.Messages.Last().Content;
+        Assert.Contains(RawPrompt, providerBody, StringComparison.Ordinal);
+        Assert.Contains("late ramen and no temples", providerBody, StringComparison.Ordinal);
+        Assert.Contains("context-osaka-food", providerBody, StringComparison.Ordinal);
+        Assert.Contains("context_redacted", providerBody, StringComparison.Ordinal);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
     [Theory]
     [InlineData("tool_search_request", "planner_model_tool_search_requested", PlannerModelOutputKind.ToolSearchRequest)]
     [InlineData("tool_gap_request", "planner_model_tool_gap_requested", PlannerModelOutputKind.ToolGapRequest)]
@@ -115,6 +173,65 @@ public sealed class PlannerPrimitiveTests
         Assert.Equal(expectedOutcome, row.OutcomeCode);
         Assert.Equal(expectedKind, row.OutputKind);
         Assert.Equal(1, row.PrimitiveCount);
+        Assert.Equal(1, row.TaskCount);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task GenericStaticOutputIsRejectedAsSchemaInvalid()
+    {
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateGenericContent()),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("generic-form", CreateRequest())],
+            CreateOptions()));
+
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeSchemaInvalid, "provider_schema_invalid");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task PromptABOutputsDifferInStructuralDimensions()
+    {
+        var osakaRunner = new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateContent("composite_form")),
+            new StaticCreditClient());
+        var icelandRunner = new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateIcelandContent()),
+            new StaticCreditClient());
+        var osaka = await osakaRunner.RunAsync(CreateRequest(), CreateOptions());
+        var iceland = await icelandRunner.RunAsync(CreateIcelandRequest(), CreateOptions());
+
+        Assert.NotEqual(
+            osaka.Primitives.SelectMany(primitive => primitive.Options.Select(option => option.OptionId)).Order().ToArray(),
+            iceland.Primitives.SelectMany(primitive => primitive.Options.Select(option => option.OptionId)).Order().ToArray());
+        Assert.NotEqual(
+            osaka.Tasks.Select(task => task.TaskId).Order().ToArray(),
+            iceland.Tasks.Select(task => task.TaskId).Order().ToArray());
+    }
+
+    [Theory]
+    [InlineData("field", "planner_model_field_path_not_allowed", "field_path_not_allowed")]
+    [InlineData("tool", "planner_model_tool_not_allowed", "tool_not_allowed")]
+    public async Task InvalidFieldPathAndToolRefsUseSpecificFixedOutcomes(
+        string failure,
+        string expectedOutcome,
+        string expectedFailureClass)
+    {
+        var content = failure == "field"
+            ? CreateContent("composite_form", fieldPath: "/mission/untrusted")
+            : CreateContent("composite_form", toolContextRefs: ["untrusted_live_search"]);
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(content),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("invalid-dynamic-form", CreateRequest())],
+            CreateOptions()));
+
+        AssertRejected(row, expectedOutcome, expectedFailureClass);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -221,7 +338,7 @@ public sealed class PlannerPrimitiveTests
             CreateOptions()));
 
         Assert.True(result.HasUnsafeValue);
-        AssertRejected(row, PlannerPrimitiveRunner.OutcomeSchemaInvalid, "provider_schema_invalid");
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeUnsafeText, "unsafe_text");
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(result, SensitiveSentinels);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
@@ -275,15 +392,26 @@ public sealed class PlannerPrimitiveTests
                 [
                     new PlannerPrimitiveDefinition("assistant_message", "assistant_message", "assistant_message"),
                     new PlannerPrimitiveDefinition("text_input", "text_input", "text_input"),
+                    new PlannerPrimitiveDefinition("single_select", "single_select", "single_select"),
                     new PlannerPrimitiveDefinition("tool_search_request", "tool_search_request", "tool_search_request"),
                     new PlannerPrimitiveDefinition("tool_gap_request", "tool_gap_request", "tool_gap_request")
                 ],
                 ["/mission/purpose", "/mission/date_window"],
-                ["neutral", "calm_morning", "logistics"],
-                4),
+                ["neutral", "calm_morning", "logistics", "lively_food"],
+                4)
+            {
+                AllowedMediaTokens = ["neutral", "calm_morning", "logistics", "lively_food"],
+                AllowedToolIds = ["mock_context_provider"]
+            },
             "en-US",
-            $"{RawPrompt} {Credential}",
+            "Plan an Osaka ramen market trip with lively food options.",
             "prompt-digest-safe");
+
+    private static PlannerModelRequest CreateIcelandRequest() =>
+        CreateRequest() with
+        {
+            RuntimePrompt = "Plan a quiet Iceland hiking trip focused on glaciers and hot springs."
+        };
 
     private static PlannerModelOptions CreateOptions(
         bool apiKeyAvailable = true,
@@ -300,8 +428,10 @@ public sealed class PlannerPrimitiveTests
     private static string CreateContent(
         string outputKind,
         string primitiveId = "assistant_message",
-        string label = "Safe label",
-        string promptText = "Safe question") =>
+        string label = "Osaka ramen planning",
+        string promptText = "Shape the Osaka ramen and market plan.",
+        string fieldPath = "/mission/purpose",
+        IReadOnlyList<string>? toolContextRefs = null) =>
         JsonSerializer.Serialize(new
         {
             manifestId = "manifest-intake",
@@ -311,7 +441,7 @@ public sealed class PlannerPrimitiveTests
             outputKind,
             primitives = outputKind switch
             {
-                "tool_search_request" => new[]
+                "tool_search_request" => new object[]
                 {
                     new
                     {
@@ -321,12 +451,20 @@ public sealed class PlannerPrimitiveTests
                         rendererKey = "tool_search_request",
                         fieldPath = string.Empty,
                         moodToken = "neutral",
+                        mediaToken = "neutral",
                         candidateIds = Array.Empty<string>(),
+                        taskRefs = new[] { "task-osaka-search" },
+                        evidenceRefs = Array.Empty<string>(),
+                        toolContextRefs = Array.Empty<string>(),
+                        options = Array.Empty<object>(),
                         label,
-                        promptText
+                        promptText,
+                        helpText = "Use a tool before claiming live facts.",
+                        defaultValue = (string?)null,
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice" }
                     }
                 },
-                "tool_gap_request" => new[]
+                "tool_gap_request" => new object[]
                 {
                     new
                     {
@@ -336,12 +474,20 @@ public sealed class PlannerPrimitiveTests
                         rendererKey = "tool_gap_request",
                         fieldPath = string.Empty,
                         moodToken = "neutral",
+                        mediaToken = "neutral",
                         candidateIds = Array.Empty<string>(),
+                        taskRefs = new[] { "task-osaka-gap" },
+                        evidenceRefs = Array.Empty<string>(),
+                        toolContextRefs = Array.Empty<string>(),
+                        options = Array.Empty<object>(),
                         label,
-                        promptText
+                        promptText,
+                        helpText = "Ask for context rather than inventing it.",
+                        defaultValue = (string?)null,
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice" }
                     }
                 },
-                _ => new[]
+                _ => new object[]
                 {
                     new
                     {
@@ -350,10 +496,18 @@ public sealed class PlannerPrimitiveTests
                         instanceId = "primitive-message",
                         rendererKey = primitiveId,
                         fieldPath = string.Empty,
-                        moodToken = "neutral",
+                        moodToken = "lively_food",
+                        mediaToken = "lively_food",
                         candidateIds = Array.Empty<string>(),
+                        taskRefs = new[] { "task-osaka-shape" },
+                        evidenceRefs = Array.Empty<string>(),
+                        toolContextRefs = toolContextRefs ?? [],
+                        options = Array.Empty<object>(),
                         label,
-                        promptText
+                        promptText,
+                        helpText = "Keep the planning question specific to Osaka.",
+                        defaultValue = (string?)null,
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "message" }
                     },
                     new
                     {
@@ -361,12 +515,156 @@ public sealed class PlannerPrimitiveTests
                         primitiveKind = "text_input",
                         instanceId = "primitive-purpose",
                         rendererKey = "text_input",
-                        fieldPath = "/mission/purpose",
-                        moodToken = "calm_morning",
+                        fieldPath,
+                        moodToken = "lively_food",
+                        mediaToken = "lively_food",
                         candidateIds = Array.Empty<string>(),
-                        label = "Safe purpose",
-                        promptText = "Safe purpose question"
+                        taskRefs = new[] { "task-osaka-shape" },
+                        evidenceRefs = Array.Empty<string>(),
+                        toolContextRefs = toolContextRefs ?? [],
+                        options = new object[]
+                        {
+                            new
+                            {
+                                optionId = "late_ramen",
+                                moodToken = "lively_food",
+                                mediaToken = "lively_food",
+                                toolContextRefs = Array.Empty<string>(),
+                                label = "Late ramen",
+                                summary = "Prioritize Osaka late-night ramen lanes."
+                            },
+                            new
+                            {
+                                optionId = "markets",
+                                moodToken = "lively_food",
+                                mediaToken = "lively_food",
+                                toolContextRefs = Array.Empty<string>(),
+                                label = "Market snacks",
+                                summary = "Keep Osaka markets in the plan."
+                            }
+                        },
+                        label = "Osaka food purpose",
+                        promptText = "What should the Osaka ramen and market plan optimize for?",
+                        helpText = "Mention constraints such as no temples or early mornings.",
+                        defaultValue = (string?)"late_ramen_markets",
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "form_field" }
                     }
+                }
+            },
+            tasks = new[]
+            {
+                new
+                {
+                    taskId = outputKind == "tool_gap_request" ? "task-osaka-gap" : outputKind == "tool_search_request" ? "task-osaka-search" : "task-osaka-shape",
+                    primitiveRefs = new[] { outputKind == "composite_form" ? "primitive-purpose" : outputKind == "tool_search_request" ? "primitive-search" : "primitive-gap" },
+                    title = "Shape the Osaka food-first plan",
+                    summary = "Collect ramen, market, and constraint details before itinerary choices."
+                }
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static string CreateIcelandContent() =>
+        JsonSerializer.Serialize(new
+        {
+            manifestId = "manifest-intake",
+            manifestVersion = "v1",
+            graphRevision = "graph-01",
+            sessionId = "session-01",
+            outputKind = "composite_form",
+            primitives = new object[]
+            {
+                new
+                {
+                    primitiveId = "single_select",
+                    primitiveKind = "single_select",
+                    instanceId = "primitive-iceland-style",
+                    rendererKey = "single_select",
+                    fieldPath = "/mission/purpose",
+                    moodToken = "calm_morning",
+                    mediaToken = "calm_morning",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-iceland-shape" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = new object[]
+                    {
+                        new
+                        {
+                            optionId = "glacier_hikes",
+                            moodToken = "calm_morning",
+                            mediaToken = "calm_morning",
+                            toolContextRefs = Array.Empty<string>(),
+                            label = "Glacier hikes",
+                            summary = "Center Iceland glacier walking and daylight pacing."
+                        },
+                        new
+                        {
+                            optionId = "hot_springs",
+                            moodToken = "calm_morning",
+                            mediaToken = "calm_morning",
+                            toolContextRefs = Array.Empty<string>(),
+                            label = "Hot springs",
+                            summary = "Keep Iceland hot springs as restorative anchors."
+                        }
+                    },
+                    label = "Iceland hiking style",
+                    promptText = "Should Iceland lean more toward glaciers or hot springs?",
+                    helpText = "Choose the quiet outdoors emphasis.",
+                    defaultValue = (string?)"glacier_hikes",
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "choice_cards" }
+                }
+            },
+            tasks = new[]
+            {
+                new
+                {
+                    taskId = "task-iceland-shape",
+                    primitiveRefs = new[] { "primitive-iceland-style" },
+                    title = "Shape the Iceland hiking plan",
+                    summary = "Choose glacier, hot spring, and quiet-night priorities."
+                }
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static string CreateGenericContent() =>
+        JsonSerializer.Serialize(new
+        {
+            manifestId = "manifest-intake",
+            manifestVersion = "v1",
+            graphRevision = "graph-01",
+            sessionId = "session-01",
+            outputKind = "composite_form",
+            primitives = new object[]
+            {
+                new
+                {
+                    primitiveId = "text_input",
+                    primitiveKind = "text_input",
+                    instanceId = "primitive-purpose",
+                    rendererKey = "text_input",
+                    fieldPath = "/mission/purpose",
+                    moodToken = "neutral",
+                    mediaToken = "neutral",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-generic" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = Array.Empty<object>(),
+                    label = "Trip basics",
+                    promptText = "Tell us the basics.",
+                    helpText = "Add a few details.",
+                    defaultValue = (string?)"trip-planning",
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "form_field" }
+                }
+            },
+            tasks = new[]
+            {
+                new
+                {
+                    taskId = "task-generic",
+                    primitiveRefs = new[] { "primitive-purpose" },
+                    title = "Answer live planner form",
+                    summary = "Generate planning options."
                 }
             }
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -387,6 +685,8 @@ public sealed class PlannerPrimitiveTests
         Assert.Null(row.OutputKind);
         Assert.Empty(row.PrimitiveIds);
         Assert.Equal(0, row.PrimitiveCount);
+        Assert.Equal(0, row.TaskCount);
+        Assert.Equal(0, row.OptionCount);
         Assert.False(row.WasRepaired);
         Assert.Null(row.DurationMilliseconds);
         Assert.Null(row.DurationBucket);
