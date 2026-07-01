@@ -624,7 +624,7 @@ Detailed sprint plan: `docs/sprints/sprint-022.md`.
 
 ## Sprint 022 Result
 
-Sprint 022 is merged to `main` at `db2a011` and should be treated as functionally complete for the corrected acceptance gate, with one explicit transport caveat.
+Sprint 022 is merged to `main` at `db2a011` and added the server-side HTTP planning session transport. It should not be treated as proof that the live planner is dynamically model-driven.
 
 Delivered:
 
@@ -658,11 +658,13 @@ Acceptance evidence:
   - second provider turn was attempted and accepted with `data-live-turn-attempt-count=2`;
   - raw prompt/provider/key/credential/approval/hold/booking/payment/candidate-display/secret sentinels were absent from observed DOM markers and committed reports.
 
-Important caveat:
+Important caveats:
 
 - The Blazor Server circuit remains unreliable in the in-app browser after live provider latency. Sprint 022 did not fix the SignalR/circuit instability directly.
 - The accepted repair is architectural: live model interaction no longer depends on that circuit. The client requests sanitized next-turn DTOs from the server HTTP planning session boundary.
 - If the product later stays on Blazor Server for high-interaction surfaces, circuit health still needs a separate hardening sprint. If not, the HTTP session API is the more robust direction.
+- Post-merge investigation showed the live primitive projection is still prompt-insensitive: different prompts can produce the same `Trip basics` UI with static defaults such as `Japan`, `2027-04-01`, `balanced`, and `comfortable`.
+- The provider can return `planner_model_accepted` while the UI still renders hard-coded adapter state. Sprint 023 exists to remove that semantic failure.
 
 Still not complete MVP:
 
@@ -671,3 +673,20 @@ Still not complete MVP:
 - Model-authored options/forms are now possible and validated, but quality and breadth still need live trace iteration.
 - Real availability/search/booking/payment remain guarded or mocked. Booking/payment should stay mocked until explicit approval and provider safety gates exist.
 - Edit repair and dependency merge behavior have harness prototypes, but they are not fully wired into the end-user live editing loop.
+
+## Sprint 023 Target
+
+Sprint 023 must make the live end-user planner actually dynamic.
+
+Detailed sprint plan: `docs/sprints/sprint-023.md`.
+
+Target outcomes:
+
+- the model receives transient raw prompt plus sanitized planning context server-side;
+- the live planning session persists harness state across turns instead of recreating synthetic state;
+- safe model-authored labels, prompts, options, defaults, task titles, mood tokens, and media tokens survive validation and render in the UI;
+- static live defaults such as `Japan`, `2027-04-01`, `balanced`, and `comfortable` disappear unless the model actually returns them;
+- card/deck renderers submit the same `PrimitiveAnswerDto` shape as normal form controls;
+- the task rail is derived from validated model/harness task primitives, not static arrays;
+- answer submission sends actual values and updated harness state to a second provider turn;
+- real in-context browser testing proves two different starter prompts produce different visible validated content and at least one provider reaches a second turn, or the sprint is explicitly BLOCKED with fixed provider/harness/browser failure codes.

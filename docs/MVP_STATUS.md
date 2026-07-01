@@ -115,9 +115,16 @@ Current state after the correction sprint:
 
 What this fixes:
 
-- The product now has a real path from browser input to server-side model request to harness validation to UI primitive render to answer submission to a second provider turn.
+- The product now has a transport path from browser input to server-side model request to harness validation to UI primitive render to answer submission to a second provider turn.
 - The UI no longer has to rely on a healthy Blazor circuit for live provider turns. When the circuit disconnects, the HTTP planning session API can continue the interaction using sanitized DTOs.
 - Server-owned model/tool/form logic is no longer leaked into browser JavaScript.
+
+Post-merge correction:
+
+- Sprint 022 did not prove prompt-sensitive dynamic planner behavior.
+- Investigation showed different prompts can still render the same live `Trip basics` form with static values like `Japan`, `2027-04-01`, `balanced`, and `comfortable`.
+- The provider request path may return `planner_model_accepted`, while the UI adapter replaces model output with fixed labels, prompts, defaults, and task rail entries.
+- Sprint 023 is required before this can be considered a dynamic model-driven planner.
 
 What is still not an MVP:
 
@@ -127,3 +134,17 @@ What is still not an MVP:
 - The evidence/timeline/edit-repair loop is not fully connected to live primitive answers.
 - Real search, availability, booking, payment, and external provider side effects are still out of scope or guarded. Real booking/payment should remain mocked until explicit approval and safety gates exist.
 - Blazor Server circuit instability remains a known browser transport issue. Sprint 022 bypassed it for live planning with the HTTP session API rather than repairing SignalR itself.
+
+## Sprint 023 Target
+
+Sprint 023 must correct the remaining semantic failure. Its detailed plan lives at `docs/sprints/sprint-023.md`.
+
+Required correction:
+
+- pass transient raw prompt and current planning context into the server-side model form-builder request;
+- preserve safe model-authored labels, prompts, options, defaults, task items, mood tokens, and media tokens after validation;
+- remove static live defaults and generic task rail entries from the live path;
+- persist planning session state across turns;
+- send actual answer values and updated harness graph state to the second provider turn;
+- render cards/decks as visual wrappers over the same primitive answer contract used by normal forms;
+- prove in real browser testing that two different prompts produce different visible validated content.
