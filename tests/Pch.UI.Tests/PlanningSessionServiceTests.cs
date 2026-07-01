@@ -86,6 +86,89 @@ public sealed class PlanningSessionServiceTests
     }
 
     [Fact]
+    public async Task PlanningSessionStoreStartReturnsSanitizedValidatedForm()
+    {
+        var runner = new CountingPlannerPrimitiveRunner();
+        var store = new PlanningSessionStore();
+        var service = PlanningService(runner.RunAsync);
+
+        var response = await store.StartAsync(
+            service,
+            new("RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with primitives.", EndUserModelRoleSelection.InHarnessActionGenerator));
+
+        Assert.Equal("started", response.Status);
+        Assert.StartsWith("planning-http-session-", response.SessionId, StringComparison.Ordinal);
+        Assert.Equal(1, runner.CallCount);
+        Assert.NotNull(response.Turn);
+        Assert.Null(response.Turn.CanonicalTurn);
+        Assert.Contains(response.Turn.Primitives, primitive => primitive.RendererKey == "form");
+        Assert.Equal("attempted", response.State.ProviderRequestState);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, response.State.ProviderOutcome);
+        AssertRawTextAbsent(JsonSerializer.Serialize(response));
+    }
+
+    [Fact]
+    public async Task PlanningSessionStoreAnswerInvokesSecondRunner()
+    {
+        var runner = new CountingPlannerPrimitiveRunner();
+        var store = new PlanningSessionStore();
+        var service = PlanningService(runner.RunAsync);
+        var started = await store.StartAsync(
+            service,
+            new("Plan a live primitive form.", EndUserModelRoleSelection.InHarnessActionGenerator));
+        var form = Assert.Single(started.Turn!.Primitives, primitive => primitive.RendererKey == "form");
+
+        var answered = await store.AnswerAsync(
+            service,
+            started.SessionId,
+            new(
+                form.InstanceId,
+                form.Fields.ToDictionary(field => field.FieldId, field => field.Value, StringComparer.Ordinal)));
+
+        Assert.Equal("answered", answered.Status);
+        Assert.Equal(2, runner.CallCount);
+        Assert.Equal(
+            ["turn-end-user-planner-primitive", "turn-end-user-planner-primitive-followup"],
+            runner.TurnIds);
+        Assert.Equal("second_turn_attempted", answered.State.ProviderRequestState);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, answered.State.ProviderOutcome);
+        Assert.NotNull(answered.Turn);
+        Assert.Null(answered.Turn.CanonicalTurn);
+        AssertRawTextAbsent(JsonSerializer.Serialize(answered));
+    }
+
+    [Fact]
+    public async Task PlanningSessionStoreUnknownSessionReturnsFixedErrorWithoutProviderCall()
+    {
+        var runner = new CountingPlannerPrimitiveRunner();
+        var store = new PlanningSessionStore();
+        var service = PlanningService(runner.RunAsync);
+
+        var response = await store.AnswerAsync(
+            service,
+            "missing-session",
+            new("primitive-trip-basics-form", new Dictionary<string, string>(StringComparer.Ordinal)));
+
+        Assert.Equal("planning_session_unknown", response.Status);
+        Assert.Equal(0, runner.CallCount);
+        Assert.Equal("PCH_UI_PLANNING_SESSION_UNKNOWN", response.State.ErrorCode);
+        Assert.Equal("planning_session_unknown", response.State.BlockedReason);
+        AssertRawTextAbsent(JsonSerializer.Serialize(response));
+    }
+
+    [Fact]
+    public void BrowserHelperUsesHttpTransportForDisconnectedLiveMode()
+    {
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Pch.UI", "ClientApp", "endUserChat.ts"));
+
+        Assert.Contains("/api/planning/session/start", source, StringComparison.Ordinal);
+        Assert.Contains("/api/planning/session/${encodeURIComponent(sessionId)}/answer", source, StringComparison.Ordinal);
+        Assert.Contains("\"data-browser-transport\": \"http_api\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("no fallback provider request was attempted", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("could not send the live provider request", source, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task InvalidAnswerShowsValidationErrorWithoutAdvancingTurn()
     {
         var service = PlanningService();
@@ -251,6 +334,17 @@ public sealed class PlanningSessionServiceTests
         Assert.DoesNotContain("sk-live-secret", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("api_key", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("json_schema", serialized, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string RepoRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null && !Directory.Exists(Path.Combine(current.FullName, "src", "Pch.UI")))
+        {
+            current = current.Parent;
+        }
+
+        return current?.FullName ?? throw new InvalidOperationException("Could not find repository root.");
     }
 
     private sealed class PreflightCompletionClient : IModelCompletionClient

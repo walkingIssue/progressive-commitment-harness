@@ -122,12 +122,21 @@ const calmMorningMedia = mediaAsset("calm_morning");
 const restorativeDowntimeMedia = mediaAsset("restorative_downtime");
 const FALLBACK_DELAY_MS = 350;
 const CIRCUIT_HEALTH_DELAY_MS = 1500;
+const HTTP_TRANSPORT_DELAY_MS = 1800;
+let pendingHttpPlanning = false;
 function sanitizeText(value) {
     let sanitized = value.trim();
     for (const sentinel of RAW_SENTINELS) {
         sanitized = sanitized.replaceAll(sentinel, "[redacted]");
     }
     return sanitized.slice(0, 160);
+}
+function escapeHtml(value) {
+    return sanitizeText(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
 }
 function root() {
     return document.querySelector("[data-end-user-chat='v0']");
@@ -148,6 +157,22 @@ function scheduleFallback(shouldRun, action) {
         }
     }, FALLBACK_DELAY_MS);
     void action;
+}
+function circuitUnavailable() {
+    const modal = document.getElementById("components-reconnect-modal");
+    return root()?.dataset.browserCircuitState === "browser_circuit_disconnected" ||
+        !Boolean(window.Blazor) ||
+        isReconnectBlocked(modal);
+}
+function scheduleHttpTransport(shouldRun, action) {
+    window.setTimeout(() => {
+        if (!shouldRun())
+            return;
+        if (!circuitUnavailable() && root()?.dataset.providerOutcome !== "planner_model_pending")
+            return;
+        showDisconnectedState();
+        void action();
+    }, HTTP_TRANSPORT_DELAY_MS);
 }
 function showDisconnectedState() {
     document.documentElement.dataset.endUserChatFallback = "disabled";
@@ -217,6 +242,181 @@ function appendTurn(id, role, kind, state, text, outcome, evidence, candidateId)
     panel.append(article);
     panel.dataset.turnCount = String(panel.querySelectorAll("[data-turn-id]").length);
     return article;
+}
+async function startLivePlanningViaHttp() {
+    if (pendingHttpPlanning)
+        return;
+    pendingHttpPlanning = true;
+    try {
+        const prompt = document.querySelector("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']");
+        setRootState({
+            "data-browser-transport": "http_api",
+            "data-provider-request-state": "attempted",
+            "data-provider-outcome": "planner_model_pending",
+            "data-final-state": "pending",
+        });
+        const response = await fetch("/api/planning/session/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                prompt: prompt?.value ?? "",
+                selectedModelRole: selectedModelRole(),
+            }),
+        });
+        const payload = await response.json();
+        applyPlanningApiResponse(payload, "http_api");
+    }
+    catch {
+        setRootState({
+            "data-browser-transport": "http_api",
+            "data-final-state": "provider_blocked",
+            "data-provider-request-state": "attempted",
+            "data-provider-outcome": "planner_http_transport_failed",
+            "data-error-code": "PCH_UI_PLANNING_HTTP_TRANSPORT_FAILED",
+            "data-blocked-reason": "planner_http_transport_failed",
+        });
+    }
+    finally {
+        pendingHttpPlanning = false;
+    }
+}
+async function submitPrimitiveAnswerViaHttp(primitiveInstanceId) {
+    const sessionId = root()?.dataset.httpSessionId;
+    if (!sessionId || pendingHttpPlanning)
+        return;
+    pendingHttpPlanning = true;
+    try {
+        const fieldValues = {};
+        document.querySelectorAll("[data-http-primitive-turn] [data-field-input]").forEach((field) => {
+            const fieldId = field.dataset.fieldInput;
+            if (fieldId) {
+                fieldValues[fieldId] = field.value;
+            }
+        });
+        setRootState({
+            "data-browser-transport": "http_api",
+            "data-provider-request-state": "second_turn_attempted",
+            "data-provider-outcome": "planner_model_pending",
+            "data-live-second-turn-state": "pending",
+        });
+        const response = await fetch(`/api/planning/session/${encodeURIComponent(sessionId)}/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                primitiveInstanceId,
+                fieldValues,
+            }),
+        });
+        const payload = await response.json();
+        applyPlanningApiResponse(payload, "http_api");
+    }
+    catch {
+        setRootState({
+            "data-browser-transport": "http_api",
+            "data-final-state": "provider_blocked",
+            "data-provider-request-state": "second_turn_attempted",
+            "data-provider-outcome": "planner_http_transport_failed",
+            "data-live-second-turn-state": "blocked",
+            "data-error-code": "PCH_UI_PLANNING_HTTP_TRANSPORT_FAILED",
+            "data-blocked-reason": "planner_http_transport_failed",
+        });
+    }
+    finally {
+        pendingHttpPlanning = false;
+    }
+}
+function applyPlanningApiResponse(response, transport) {
+    const state = response.state;
+    setRootState({
+        "data-browser-transport": transport,
+        "data-http-session-id": response.sessionId,
+        "data-deterministic-mode": state.modeState,
+        "data-selected-model-role": state.selectedModelRole,
+        "data-selected-provider": state.selectedProvider,
+        "data-live-preflight-state": state.livePreflightState,
+        "data-live-proposal-state": state.liveProposalState,
+        "data-harness-validation-state": state.harnessValidationState,
+        "data-latest-turn-source": state.latestTurnSource,
+        "data-provider-request-state": state.providerRequestState,
+        "data-provider-outcome": state.providerOutcome,
+        "data-provider-health": state.providerHealth,
+        "data-final-state": state.finalState,
+        "data-error-code": state.errorCode ?? "",
+        "data-blocked-reason": state.blockedReason ?? "",
+        "data-raw-absence-state": response.rawAbsenceState,
+        "data-validated-turn-id": response.turn?.turnId ?? "",
+        "data-validated-turn-source": response.turn?.source ?? "",
+        "data-validated-turn-outcome": response.turn?.outcomeCode ?? "",
+        "data-manifest-version": response.turn?.manifestVersion ?? "",
+        "data-graph-revision": response.turn?.graphRevision ?? "",
+        "data-live-turn-attempt-count": state.providerRequestState === "second_turn_attempted" ? "2" : "1",
+        "data-live-second-turn-state": state.providerRequestState === "second_turn_attempted"
+            ? (state.finalState === "provider_blocked" ? "blocked" : "attempted")
+            : "not_started",
+    });
+    document.documentElement.dataset.endUserChatFallback = "http_api";
+    renderApiTurn(response.turn);
+    if (!document.querySelector("[data-ask-action='open']")) {
+        document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<button type="button" class="ask-tab" data-ask-action="open" aria-label="Open Ask drawer">Ask</button>`);
+    }
+}
+function renderApiTurn(turn) {
+    document.querySelectorAll("[data-http-primitive-turn]").forEach((element) => element.remove());
+    document.querySelectorAll(".primitive-work:not([data-http-primitive-turn]), .primitive-server-submit:not([data-http-answer-submit])").forEach((element) => element.remove());
+    if (!turn)
+        return;
+    const panel = transcript();
+    if (!panel)
+        return;
+    for (const primitive of turn.primitives) {
+        if (primitive.rendererKey === "form") {
+            panel.insertAdjacentHTML("beforeend", formPrimitiveHtml(turn, primitive));
+        }
+        else {
+            panel.insertAdjacentHTML("beforeend", primitiveMessageHtml(turn, primitive));
+        }
+    }
+    panel.dataset.turnCount = String(panel.querySelectorAll("[data-turn-id], [data-http-primitive-turn]").length);
+}
+function formPrimitiveHtml(turn, primitive) {
+    const fields = primitive.fields.map((field) => `
+    <label class="form-field" data-field-id="${escapeHtml(field.fieldId)}" data-primitive-id="${escapeHtml(field.primitiveId)}" data-field-state="${escapeHtml(field.state)}" data-evidence-id="${escapeHtml(field.evidenceId)}">
+      <span>${escapeHtml(field.label)}</span>
+      <input value="${escapeHtml(field.value)}" data-field-input="${escapeHtml(field.fieldId)}" aria-label="${escapeHtml(field.label)}" />
+    </label>`).join("");
+    return `<article class="work-bubble primitive-work"
+      data-http-primitive-turn="${escapeHtml(turn.turnId)}"
+      data-turn-id="${escapeHtml(turn.turnId)}"
+      data-primitive-renderer="form"
+      data-primitive-id="${escapeHtml(primitive.primitiveId)}"
+      data-primitive-instance-id="${escapeHtml(primitive.instanceId)}"
+      data-primitive-state="${escapeHtml(primitive.state)}"
+      data-provider-outcome="${escapeHtml(turn.providerOutcome)}"
+      data-validated-turn-source="${escapeHtml(turn.source)}"
+      data-validated-turn-outcome="${escapeHtml(turn.outcomeCode)}"
+      data-raw-absence-state="${escapeHtml(turn.rawAbsenceState)}">
+      <p class="work-lead">${escapeHtml(primitive.prompt)}</p>
+      <section class="form-card" data-form-id="${escapeHtml(primitive.instanceId)}" data-form-state="${escapeHtml(primitive.state)}">
+        <h2>${escapeHtml(primitive.title)}</h2>
+        ${fields}
+        <button type="button" class="secondary-button primitive-server-submit" data-http-answer-submit="true" data-answer-submit="${escapeHtml(primitive.instanceId)}" aria-label="Submit validated primitive form">Submit answers</button>
+      </section>
+    </article>`;
+}
+function primitiveMessageHtml(turn, primitive) {
+    return `<article class="provider-notice"
+      data-http-primitive-turn="${escapeHtml(turn.turnId)}"
+      data-turn-id="${escapeHtml(turn.turnId)}"
+      data-primitive-renderer="${escapeHtml(primitive.rendererKey)}"
+      data-primitive-id="${escapeHtml(primitive.primitiveId)}"
+      data-primitive-instance-id="${escapeHtml(primitive.instanceId)}"
+      data-provider-outcome="${escapeHtml(turn.providerOutcome)}"
+      data-error-code="${escapeHtml(primitive.errorCode)}"
+      data-blocked-reason="${escapeHtml(primitive.blockedReason)}"
+      data-raw-absence-state="${escapeHtml(turn.rawAbsenceState)}">
+      <strong>${escapeHtml(primitive.title)}</strong>
+      <p>${escapeHtml(primitive.prompt)}</p>
+    </article>`;
 }
 function candidateCard(candidate, state = "available") {
     return `<article class="candidate-card candidate-card--${candidate.tone}"
@@ -302,35 +502,31 @@ function sendPrompt() {
     const livePreflightState = root()?.dataset.livePreflightState;
     const liveConfigured = liveSelected && (livePreflightState === "preflight_ready" || livePreflightState === "preflight_passed");
     const liveFallbackOutcome = liveConfigured ? "browser_circuit_disconnected" : "live_preflight_disabled";
+    if (liveSelected) {
+        void startLivePlanningViaHttp();
+        return;
+    }
     document.querySelector("[data-composer-layout='expanded_start']")?.setAttribute("hidden", "");
     setRootState({
-        "data-final-state": liveSelected ? "live_model_blocked" : "applied",
+        "data-final-state": "applied",
         "data-composer-state": "collapsed_drawer",
         "data-ask-drawer": "closed",
-        "data-provider-outcome": liveSelected ? liveFallbackOutcome : "deterministic_fallback_active",
-        "data-live-preflight-state": liveSelected ? livePreflightState ?? "blocked_by_guard" : "deterministic_default",
-        "data-live-proposal-state": liveSelected ? "not_run" : "not_requested",
+        "data-provider-outcome": "deterministic_fallback_active",
+        "data-live-preflight-state": "deterministic_default",
+        "data-live-proposal-state": "not_requested",
         "data-harness-validation-state": "not_run",
-        "data-latest-turn-source": liveSelected ? "live_model_proposal_blocked" : "deterministic_fallback",
+        "data-latest-turn-source": "deterministic_fallback",
         "data-provider-request-state": "not_attempted",
-        "data-live-turn-attempt-count": liveSelected ? "1" : "0",
+        "data-live-turn-attempt-count": "0",
         "data-live-second-turn-state": "not_started",
-        "data-error-code": liveSelected ? "PCH_UI_BROWSER_CIRCUIT_DISCONNECTED" : "",
-        "data-blocked-reason": liveSelected ? liveFallbackOutcome : "",
+        "data-error-code": "",
+        "data-blocked-reason": "",
     });
     toggleDrawer(false);
     appendTurn("turn-user-1", "user", "prompt", "submitted", `Trip request accepted with ${promptLength} characters. Raw prompt text is kept out of transcript storage.`, "prompt_received");
-    appendTurn("turn-provider-role-status", "provider", "role-status", liveSelected ? "blocked" : "applied", liveSelected
-        ? "Live in-harness mode is selected, but the browser circuit is disconnected; no fallback provider request was attempted in this tab."
-        : "Offline deterministic model role is active by explicit selection.", "model_role_status_ready");
-    if (liveSelected) {
-        appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "The browser circuit is disconnected, so this tab could not send the live provider request. The server live path remains configured.", liveFallbackOutcome, "evidence-chat-live-model");
-        appendTurn("turn-live-work-item-1", "assistant", "live-blocked", "blocked", "Live model output was not used in this browser fallback. Reload in a healthy Blazor circuit or switch to deterministic mode explicitly.", liveFallbackOutcome, "evidence-chat-live-model");
-    }
-    else {
-        appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
-        ensureWorkObjects();
-    }
+    appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active by explicit selection.", "model_role_status_ready");
+    appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
+    ensureWorkObjects();
     if (!document.querySelector("[data-ask-action='open']")) {
         document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<button type="button" class="ask-tab" data-ask-action="open" aria-label="Open Ask drawer">Ask</button>`);
     }
@@ -466,6 +662,7 @@ function closeDrawerOnOutsidePointer(target) {
 const chatActionSelector = [
     "[data-send-action]",
     "[data-form-submit]",
+    "[data-answer-submit]",
     "[data-choice-action]",
     "[data-approval-action]",
     "[data-ask-action]",
@@ -489,11 +686,20 @@ function handleChatInteraction(target) {
     if (action.sendAction === "planner" || action.sendAction === "planner-drawer" || action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
         const beforeFinalState = root()?.dataset.finalState;
         const beforeTurnCount = transcript()?.dataset.turnCount;
-        scheduleFallback(() => root()?.dataset.finalState === beforeFinalState && transcript()?.dataset.turnCount === beforeTurnCount, sendPrompt);
+        if (selectedModelRole() !== "deterministic-offline") {
+            scheduleHttpTransport(() => root()?.dataset.finalState === beforeFinalState || transcript()?.dataset.turnCount === beforeTurnCount || root()?.dataset.providerOutcome === "planner_model_pending", startLivePlanningViaHttp);
+        }
+        else {
+            scheduleFallback(() => root()?.dataset.finalState === beforeFinalState && transcript()?.dataset.turnCount === beforeTurnCount, sendPrompt);
+        }
     }
     const formAction = closestAction(target, "[data-form-submit]")?.dataset ?? {};
     if (formAction.formSubmit === "form-trip-basics") {
         scheduleFallback(() => document.querySelector("[data-form-id='form-trip-basics']")?.dataset.formState !== "accepted", submitForm);
+    }
+    const answerSubmit = closestAction(target, "[data-answer-submit]")?.dataset.answerSubmit;
+    if (answerSubmit) {
+        scheduleHttpTransport(() => root()?.dataset.providerRequestState !== "second_turn_attempted", () => submitPrimitiveAnswerViaHttp(answerSubmit));
     }
     const choiceAction = closestAction(target, "[data-choice-action]")?.dataset ?? {};
     if (choiceAction.choiceAction === "select" && choiceAction.candidateId) {

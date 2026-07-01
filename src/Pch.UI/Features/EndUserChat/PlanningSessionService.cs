@@ -574,15 +574,19 @@ public sealed class PlanningSessionService
     private static EndUserChatState ApplyTurnState(EndUserChatState state, EndUserValidatedTurnView turn) =>
         state with
         {
+            ModeLabel = turn.Source == "provider_blocked" ? "Live planner blocked" : "Live planner attached",
+            ModeState = turn.Source == "provider_blocked" ? "live-model-blocked" : "live-model-attached",
             ComposerState = AwaitingUserInput,
             FinalState = turn.Source == "provider_blocked" || turn.Primitives.Any(primitive => primitive.RendererKey == "provider-failure")
                 ? "provider_blocked"
                 : AwaitingUserInput,
+            LivePreflightState = turn.ProviderRequestState == "not_attempted" ? state.LivePreflightState : "preflight_passed",
             LiveProposalState = turn.Source == "provider_blocked" ? "provider_blocked" : AwaitingUserInput,
             HarnessValidationState = turn.Source == "provider_blocked" ? "not_run" : turn.OutcomeCode,
             LatestTurnSource = "validated_primitive_turn",
             ProviderRequestState = turn.ProviderRequestState,
             ProviderOutcome = turn.ProviderOutcome,
+            ProviderHealth = turn.Source == "provider_blocked" ? turn.ProviderOutcome : "provider_request_accepted",
             Tasks = turn.Tasks.Select(ToEndUserTask).ToArray(),
             FormCard = null,
             ChoiceSet = null,

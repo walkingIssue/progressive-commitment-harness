@@ -26,6 +26,7 @@ builder.Services.AddScoped(sp => new PlanningSessionService(
     sp.GetRequiredService<FormBuilder>(),
     ReadProcessEnvironment,
     CreatePlannerPrimitiveRunner()));
+builder.Services.AddSingleton<PlanningSessionStore>();
 builder.Services.AddScoped<HarnessStageCockpitService>();
 
 var app = builder.Build();
@@ -43,6 +44,36 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapPost("/api/planning/session/start", async (
+    PlanningSessionStore store,
+    PlanningSessionService service,
+    PlanningSessionStartRequest request,
+    CancellationToken cancellationToken) =>
+{
+    var response = await store.StartAsync(service, request, cancellationToken);
+    return Results.Json(response);
+});
+app.MapPost("/api/planning/session/{sessionId}/answer", async (
+    PlanningSessionStore store,
+    PlanningSessionService service,
+    string sessionId,
+    PlanningSessionAnswerRequest request,
+    CancellationToken cancellationToken) =>
+{
+    var response = await store.AnswerAsync(service, sessionId, request, cancellationToken);
+    return response.Status == "planning_session_unknown"
+        ? Results.NotFound(response)
+        : Results.Json(response);
+});
+app.MapGet("/api/planning/session/{sessionId}", (
+    PlanningSessionStore store,
+    string sessionId) =>
+{
+    var response = store.Get(sessionId);
+    return response.Status == "planning_session_unknown"
+        ? Results.NotFound(response)
+        : Results.Json(response);
+});
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

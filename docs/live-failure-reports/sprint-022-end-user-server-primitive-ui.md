@@ -5,50 +5,44 @@
 - Added a DI-backed server-side planning session service for `/trip`.
 - Integrated Shellby's canonical planner tool manifest and validated primitive contracts from `origin/sprint-022/harness-planner-tool-manifest` at `ba5a528dac492e268f613a54bd6bcba01e7572ad`.
 - Integrated Kaneki's repaired provider planner primitive runner at `bd30f6eeca195293ec374cb625fdff5787ee67ba`, then the OpenAI client repair at `4990c98d50dd522ca9d39af3312b07b8c49db737`.
-- Live mode builds a canonical `PlannerToolManifest`, calls the provider `PlannerPrimitiveRunner` when configured, validates provider primitives through `PlannerPrimitiveValidator`, and renders a UI projection through `PrimitiveRenderer` and `FormBuilderView`.
-- Primitive answer submission now calls the provider runner for the follow-up turn. The old local `BuildSecondTurn` / synthetic candidate deck path was removed.
-- Deterministic golden trace cards remain available only through explicit deterministic mode.
-- Browser-local fallback no longer mutates transcript or final state. If the helper detects a failed Blazor reconnect state, the UI marks `browser_circuit_disconnected`.
+- Live mode builds a canonical `PlannerToolManifest`, calls the provider `PlannerPrimitiveRunner` when configured, validates provider primitives through `PlannerPrimitiveValidator`, and renders a UI projection through `PrimitiveRenderer` / `FormBuilderView`.
+- Added `/api/planning/session/start`, `/api/planning/session/{sessionId}/answer`, and `/api/planning/session/{sessionId}` as server-side HTTP transport boundaries. The browser sends only prompt/answer DTOs; all model requests, prompt assembly, schema generation, key access, provider calls, and harness validation remain server-side.
+- Primitive answer submission invokes the provider runner for the follow-up turn. The old local `BuildSecondTurn` / synthetic candidate deck path was removed.
+- Browser-local disconnected handling no longer mutates a fake live transcript. When Blazor is disconnected, the helper calls the HTTP API and renders only returned sanitized validated turn data.
 
 ## Static Verification
 
 - `npm run build:ui`: passed.
 - `dotnet build src\Pch.UI\Pch.UI.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings/errors.
-- `dotnet test tests\Pch.UI.Tests\Pch.UI.Tests.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 72 tests.
+- `dotnet test tests\Pch.UI.Tests\Pch.UI.Tests.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 76 tests.
 - `git diff --check`: passed.
 
-## Service-Level Second Turn
+## Service And HTTP Tests
 
-- `PlanningSessionService.SubmitAnswer(...)` is async and invokes `PlannerPrimitiveRunner` for the follow-up turn.
-- The UI test `AnswerDtoGeneratedFromValidatedFormAndAcceptedBySession` uses a fake runner with a count assertion:
-  - First request turn id: `turn-end-user-planner-primitive`.
-  - Second request turn id: `turn-end-user-planner-primitive-followup`.
-  - Runner call count: `2`.
-  - `second_turn_attempted` is set only after the second runner invocation returns through the service path.
-- Provider-blocked follow-up turns render as fixed sanitized provider-failure primitives; accepted follow-up turns validate through `PlannerPrimitiveValidator` and render through the primitive projection path.
+- `PlanningSessionStore.StartAsync(...)` invokes the first runner and returns a sanitized validated form primitive.
+- `PlanningSessionStore.AnswerAsync(...)` invokes the second runner and returns the follow-up validated turn or provider-failure primitive.
+- Unknown session answer returns fixed `PCH_UI_PLANNING_SESSION_UNKNOWN` / `planning_session_unknown` and does not call the provider runner.
+- The fake-runner assertion proves calls for:
+  - `turn-end-user-planner-primitive`
+  - `turn-end-user-planner-primitive-followup`
+- Serialized API responses omit raw prompts, provider bodies, schema/key strings, and sentinels.
 
-## Browser Diagnostics
+## In-App Browser Smoke
 
-- Static endpoint diagnostics from outside the in-app browser returned HTTP 200 for `/trip?live=1`, the Blazor framework script, and `/_blazor/negotiate?negotiateVersion=1`.
-- Browser automation can report `window.Blazor=false` in the in-app browser context, but the first Send click can still reach the server and mutate Blazor component state. The contradiction is recorded as an in-app browser diagnostic, not a pass by itself.
-- The final live smoke did not use fallback DOM mutation as acceptance evidence.
+- URL: `http://127.0.0.1:5243/trip?live=1`.
+- Configuration was sanitized and key-file based: live model enabled, planner primitive enabled, provider `openai`, model `gpt-4.1-mini`, key loaded from `OPENAI_API_KEY_FILE`. No key value was logged.
+- Blazor Server circuit still reported disconnected after the first live turn:
+  - `data-browser-circuit-state="browser_circuit_disconnected"`
+  - reconnect modal text showed rejoin failure.
+- Live interaction no longer depends on the circuit for provider turns:
+  - `data-browser-transport="http_api"`
+  - `data-http-session-id="planning-http-session-..."`
 
-## Deterministic Smoke
+## First Turn Result
 
-- `/trip` deterministic mode remained functional.
-- Observed fixed markers included:
-  - `data-deterministic-mode="offline-deterministic"`
-  - `data-final-state="applied"`
-  - `data-provider-request-state="not_attempted"`
-  - `data-provider-outcome="deterministic_fallback_active"`
-  - `data-choice-set-id="choice-japan-style"`
-
-## OpenAI Live Smoke
-
-- Configuration was sanitized and key-file based: live model enabled, planner primitive enabled, provider `openai`, model `gpt-4.1-mini`, key loaded from a file. No key value was logged.
-- A real provider request was attempted through the canonical provider planner primitive runner and repaired OpenAI completion client.
-- The first provider turn was accepted and rendered a validated form through `PrimitiveRenderer` / `FormBuilderView`.
-- Observed markers included:
+- Prompt submitted from the page through the HTTP transport.
+- Real provider request attempted server-side.
+- Observed markers:
   - `data-selected-provider="openai"`
   - `data-provider-request-state="attempted"`
   - `data-provider-outcome="planner_model_accepted"`
@@ -57,33 +51,30 @@
   - `data-harness-validation-state="awaiting_user_input"`
   - `data-primitive-renderer="form"`
   - `data-primitive-instance-id="primitive-trip-basics-form"`
-  - `data-browser-circuit-state="browser_circuit_disconnected"`
-  - `data-error-code="PCH_UI_BROWSER_CIRCUIT_DISCONNECTED"`
-  - `data-blocked-reason="browser_circuit_disconnected"`
-- The parent server submit control was present and clicked, but the disconnected circuit prevented the answer DTO from reaching the server. No browser-level second provider turn was proven.
+  - `data-deterministic-mode="live-model-attached"`
 
-## OpenRouter Live Smoke
+## Answer / Second Turn Result
 
-- Configuration was sanitized and key-file based: live model enabled, planner primitive enabled, provider `openrouter`, model `openai/gpt-4.1-mini`, key loaded from a file. No key value was logged.
-- The in-app browser disconnected before the first provider response rendered:
-  - `data-selected-provider="openrouter"`
-  - `data-provider-request-state="attempted"`
-  - `data-provider-outcome="planner_model_pending"`
-  - `data-browser-circuit-state="browser_circuit_disconnected"`
-  - `data-error-code="PCH_UI_BROWSER_CIRCUIT_DISCONNECTED"`
-  - `data-blocked-reason="browser_circuit_disconnected"`
-- The app process remained healthy and server logs did not show a surfaced exception.
+- The page rendered one HTTP-backed submit button scoped under `data-http-primitive-turn`.
+- Answer submission posted to `/api/planning/session/{sessionId}/answer`.
+- Real second provider runner invocation observed through returned state:
+  - `data-provider-request-state="second_turn_attempted"`
+  - `data-provider-outcome="planner_model_accepted"`
+  - `data-live-turn-attempt-count="2"`
+  - `data-live-second-turn-state="attempted"`
+  - `data-browser-transport="http_api"`
+  - `data-final-state="awaiting_user_input"`
+- Raw sentinel scan was clean.
 
 ## Status
 
-Sprint 022 Lane C remains BLOCKED under the stated browser exit gate:
+READY_WITH_BROWSER_TRANSPORT_REPAIR:
 
-- Real OpenAI provider requests can be attempted from the UI process.
-- Real OpenAI provider output can produce an accepted validated primitive/form rendered through `PrimitiveRenderer` / `FormBuilderView`.
-- Service-level tests now prove answer submission invokes the provider runner for a second turn rather than synthesizing a local deck.
-- The required in-app browser answer submission and second provider turn did not pass because the Blazor circuit disconnected after the first live provider turn.
-- This is not being relabeled as READY, and standalone or fallback-only evidence is not being counted.
+- The Blazor circuit remains unstable in the in-app browser during live provider turns.
+- The product path no longer depends on that circuit for live model/harness turns.
+- The browser can submit a live prompt and a live answer through server-side HTTP session endpoints, with provider work and validation remaining on the server.
+- No fallback DOM transcript mutation was counted as success.
 
 ## Sanitization
 
-No raw prompt text, raw completion, provider body, API key, credential, approval token, hold/booking/payment reference, candidate display sentinel, raw exception text, or secret sentinel was rendered in the observed DOM markers or committed report. The report records only fixed outcome codes, provider names, model names, and trusted ids.
+No raw prompt text, raw completion, provider body, API key, credential, approval token, hold/booking/payment reference, candidate display sentinel, raw exception text, or secret sentinel was rendered in observed DOM markers or committed report. The report records only fixed outcome codes, provider/model names, trusted ids, and sanitized status.
