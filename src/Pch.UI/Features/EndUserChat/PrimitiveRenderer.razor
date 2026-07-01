@@ -1,0 +1,72 @@
+@foreach (var primitive in Turn.Primitives)
+{
+    <article class="work-bubble primitive-work @PlanningSessionService.MoodCssClass(primitive.MoodToken)"
+             data-primitive-renderer="@primitive.RendererKey"
+             data-primitive-id="@primitive.PrimitiveId"
+             data-primitive-instance-id="@primitive.InstanceId"
+             data-primitive-state="@primitive.State"
+             data-mood-token="@primitive.MoodToken"
+             data-media-token="@primitive.MediaToken"
+             data-media-asset-id="@PlanningSessionService.ResolveMedia(primitive.MediaToken).AssetId"
+             data-error-code="@primitive.ErrorCode"
+             data-blocked-reason="@primitive.BlockedReason"
+             data-raw-absence-state="@Turn.RawAbsenceState">
+        @switch (primitive.RendererKey)
+        {
+            case "form":
+                <FormBuilderView Turn="Turn"
+                                 Primitive="primitive"
+                                 ValidationErrors="ValidationErrors"
+                                 OnSubmit="OnSubmitAnswer" />
+                break;
+            case "candidate-deck":
+                <section class="primitive-candidate-deck" data-validated-candidate-deck="@primitive.InstanceId">
+                    <div>
+                        <p class="work-lead">@primitive.Prompt</p>
+                        <h2>@primitive.Title</h2>
+                    </div>
+                    <div class="candidate-deck__track" data-choice-set-id="@primitive.InstanceId">
+                        @foreach (var candidate in primitive.Candidates)
+                        {
+                            <OptionCard Candidate="candidate"
+                                        IsActive="true"
+                                        OnSelect="OnSelectCandidate"
+                                        OnDefer="OnDeferCandidate" />
+                        }
+                    </div>
+                </section>
+                break;
+            case "provider-failure":
+                <section class="provider-failure primitive-provider-failure"
+                         data-provider-failure-primitive="@primitive.InstanceId"
+                         data-provider-outcome="@Turn.ProviderOutcome">
+                    <p class="work-lead">The live request stopped at a guarded server boundary.</p>
+                    <h2>@primitive.Title</h2>
+                    <p>@primitive.Prompt</p>
+                </section>
+                break;
+            default:
+                <section data-primitive-renderer-blocked="@primitive.RendererKey" data-error-code="unsupported_primitive_renderer">
+                    <p class="work-lead">This validated primitive needs a renderer before it can be shown.</p>
+                </section>
+                break;
+        }
+    </article>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedTurnView Turn { get; set; } = default!;
+
+    [Parameter]
+    public IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public EventCallback<PrimitiveAnswerDto> OnSubmitAnswer { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnSelectCandidate { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> OnDeferCandidate { get; set; }
+}

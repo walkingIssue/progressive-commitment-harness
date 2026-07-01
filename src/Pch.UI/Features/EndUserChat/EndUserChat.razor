@@ -1,5 +1,5 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
-@inject EndUserChatService ChatService
+@inject PlanningSessionService PlanningSession
 @rendermode InteractiveServer
 
 <section class="chat-shell chat-shell--v18"
@@ -16,6 +16,12 @@
          data-provider-request-state="@Chat.ProviderRequestState"
          data-role-status="@Chat.RoleStatusOutcome"
          data-provider-outcome="@Chat.ProviderOutcome"
+         data-validated-turn-id="@CurrentTurn?.TurnId"
+         data-validated-turn-source="@CurrentTurn?.Source"
+         data-validated-turn-outcome="@CurrentTurn?.OutcomeCode"
+         data-manifest-version="@CurrentTurn?.ManifestVersion"
+         data-graph-revision="@CurrentTurn?.GraphRevision"
+         data-browser-circuit-state="connected"
          data-live-turn-attempt-count="@LiveTurnAttemptCount"
          data-live-second-turn-state="@LiveSecondTurnState"
          data-approval-state="@Chat.ApprovalState"
@@ -85,6 +91,15 @@
 
             <AssistantWorkBubble FormCard="Chat.FormCard" OnSubmitForm="SubmitForm" />
 
+            @if (CurrentTurn is not null)
+            {
+                <PrimitiveRenderer Turn="CurrentTurn"
+                                   ValidationErrors="ValidationErrors"
+                                   OnSubmitAnswer="SubmitPrimitiveAnswer"
+                                   OnSelectCandidate="SelectCandidate"
+                                   OnDeferCandidate="DeferCandidate" />
+            }
+
             @if (Chat.ChoiceSet is not null)
             {
                 <ChoiceDeck ChoiceSet="Chat.ChoiceSet"
@@ -119,6 +134,9 @@
     private string TimelineMode { get; set; } = "day";
     private string? FocusedTurnId { get; set; }
     private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.InHarnessActionGenerator;
+    private ValidatedTurnView? CurrentTurn { get; set; }
+    private PrimitiveAnswerDto? LastPrimitiveAnswer { get; set; }
+    private IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
 
     private string ComposerState => HasSubmitted
         ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
@@ -150,7 +168,7 @@
 
     protected override void OnInitialized()
     {
-        Chat = ChatService.CreateInitialState();
+        Chat = PlanningSession.CreateInitialState();
         Prompt = Chat.Prompt;
     }
 
@@ -161,7 +179,11 @@
 
     private async Task SendPromptAsync()
     {
-        Chat = await ChatService.SendAsync(Prompt, SelectedModelRole);
+        var result = await PlanningSession.StartAsync(Prompt, SelectedModelRole);
+        Chat = result.State;
+        CurrentTurn = result.Turn;
+        LastPrimitiveAnswer = result.LastAnswer;
+        ValidationErrors = result.ValidationErrors;
         SelectedModelRole = Chat.SelectedModelRole;
         Prompt = Chat.Prompt;
         HasSubmitted = true;
@@ -172,25 +194,40 @@
 
     private void SubmitForm()
     {
-        Chat = ChatService.SubmitForm(Chat);
+        Chat = PlanningSession.SubmitDeterministicForm(Chat);
         FocusedTurnId = "turn-form-submitted";
+    }
+
+    private void SubmitPrimitiveAnswer(PrimitiveAnswerDto answer)
+    {
+        if (CurrentTurn is null)
+        {
+            return;
+        }
+
+        var result = PlanningSession.SubmitAnswer(Chat, CurrentTurn, answer);
+        Chat = result.State;
+        CurrentTurn = result.Turn;
+        LastPrimitiveAnswer = result.LastAnswer;
+        ValidationErrors = result.ValidationErrors;
+        FocusedTurnId = ValidationErrors.Count == 0 ? "turn-primitive-answer-submitted" : "turn-live-model-run";
     }
 
     private void SelectCandidate(string candidateId)
     {
-        Chat = ChatService.SelectCandidate(Chat, candidateId);
+        Chat = PlanningSession.SelectDeterministicCandidate(Chat, candidateId);
         FocusedTurnId = "turn-choice-selected";
     }
 
     private void DeferCandidate(string candidateId)
     {
-        Chat = ChatService.DeferCandidate(Chat, candidateId);
+        Chat = PlanningSession.DeferDeterministicCandidate(Chat, candidateId);
         FocusedTurnId = "turn-choice-deferred";
     }
 
     private void RequestApproval()
     {
-        Chat = ChatService.RequestApproval(Chat);
+        Chat = PlanningSession.RequestDeterministicApproval(Chat);
         FocusedTurnId = "turn-approval-blocked";
     }
 
@@ -212,7 +249,9 @@
     private void SetModelRole(string role)
     {
         SelectedModelRole = EndUserModelRoleSelection.Normalize(role);
-        Chat = ChatService.ApplyModelRole(Chat, SelectedModelRole);
+        Chat = PlanningSession.ApplyModelRole(Chat, SelectedModelRole);
+        CurrentTurn = null;
+        ValidationErrors = [];
     }
 
     private void FocusTurn(string turnId)

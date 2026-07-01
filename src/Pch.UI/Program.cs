@@ -18,6 +18,8 @@ builder.Services.AddScoped(_ => new EndUserChatService(
     new GoldenTurnTraceRunner(),
     new ModelRoleStatusEvaluator(new MockModelRoleStatusSource()),
     _.GetRequiredService<EndUserLiveModelTurnService>()));
+builder.Services.AddScoped<FormBuilder>();
+builder.Services.AddScoped<PlanningSessionService>();
 builder.Services.AddScoped<HarnessStageCockpitService>();
 
 var app = builder.Build();

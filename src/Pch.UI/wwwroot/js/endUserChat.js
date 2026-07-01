@@ -139,23 +139,22 @@ function chatMain() {
 }
 function scheduleFallback(shouldRun, action) {
     window.setTimeout(() => {
+        if (Boolean(window.Blazor)) {
+            return;
+        }
         if (shouldRun()) {
-            suppressReconnectModal();
-            action();
+            showDisconnectedState();
         }
     }, FALLBACK_DELAY_MS);
+    void action;
 }
-function suppressReconnectModal() {
-    document.documentElement.dataset.endUserChatFallback = "active";
-    const modal = document.getElementById("components-reconnect-modal");
-    if (!modal)
-        return;
-    modal.dataset.endUserFallbackMuted = "true";
-    modal.style.display = "none";
-    modal.style.pointerEvents = "none";
-    if (typeof modal.close === "function" && modal.open) {
-        modal.close();
-    }
+function showDisconnectedState() {
+    document.documentElement.dataset.endUserChatFallback = "disabled";
+    setRootState({
+        "data-browser-circuit-state": "browser_circuit_disconnected",
+        "data-error-code": "PCH_UI_BROWSER_CIRCUIT_DISCONNECTED",
+        "data-blocked-reason": "browser_circuit_disconnected",
+    });
 }
 function setRootState(attrs) {
     const element = root();
@@ -537,7 +536,7 @@ document.documentElement.dataset.endUserChatHelper = "ready";
 window.setTimeout(() => {
     const modal = document.getElementById("components-reconnect-modal");
     if (modal?.open || modal?.className.includes("components-reconnect")) {
-        suppressReconnectModal();
+        showDisconnectedState();
     }
 }, FALLBACK_DELAY_MS);
 document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);

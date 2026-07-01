@@ -1,0 +1,95 @@
+@inject FormBuilder FormBuilder
+
+<section class="form-card primitive-form"
+         data-form-builder="validated"
+         data-form-id="@Primitive.InstanceId"
+         data-manifest-version="@Turn.ManifestVersion"
+         data-graph-revision="@Turn.GraphRevision"
+         aria-labelledby="@TitleId">
+    <div>
+        <p class="work-lead">@Primitive.Prompt</p>
+        <h2 id="@TitleId">@Primitive.Title</h2>
+    </div>
+    @foreach (var field in Primitive.Fields)
+    {
+        var error = ValidationErrors.FirstOrDefault(item => item.FieldId == field.FieldId);
+        <label class="form-field"
+               data-field-id="@field.FieldId"
+               data-field-primitive-id="@field.PrimitiveId"
+               data-field-renderer="@field.RendererKey"
+               data-field-state="@(error is null ? field.State : "validation_blocked")"
+               data-evidence-id="@field.EvidenceId"
+               data-error-code="@error?.ErrorCode">
+            <span>@field.Label</span>
+            @if (field.RendererKey == "select")
+            {
+                <select value="@CurrentValue(field)"
+                        aria-label="@field.Label"
+                        @onchange="eventArgs => SetField(field.FieldId, eventArgs.Value?.ToString() ?? string.Empty)">
+                    @foreach (var option in field.AllowedValues)
+                    {
+                        <option value="@option">@option</option>
+                    }
+                </select>
+            }
+            else
+            {
+                <input value="@CurrentValue(field)"
+                       aria-label="@field.Label"
+                       data-answer-field="@field.FieldId"
+                       @oninput="eventArgs => SetField(field.FieldId, eventArgs.Value?.ToString() ?? string.Empty)" />
+            }
+            @if (error is not null)
+            {
+                <span class="field-error" data-field-error="@field.FieldId">@error.Message</span>
+            }
+        </label>
+    }
+    <button type="button"
+            class="secondary-button"
+            data-answer-submit="@Primitive.InstanceId"
+            aria-label="Submit validated primitive form"
+            @onclick="Submit">
+        Submit answers
+    </button>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedTurnView Turn { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public ValidatedPrimitive Primitive { get; set; } = default!;
+
+    [Parameter]
+    public IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public EventCallback<PrimitiveAnswerDto> OnSubmit { get; set; }
+
+    private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+
+    private string TitleId => $"{Primitive.InstanceId}-title";
+
+    protected override void OnParametersSet()
+    {
+        foreach (var field in Primitive.Fields)
+        {
+            _values.TryAdd(field.FieldId, field.Value);
+        }
+    }
+
+    private string CurrentValue(ValidatedPrimitiveField field) =>
+        _values.TryGetValue(field.FieldId, out var value) ? value : field.Value;
+
+    private void SetField(string fieldId, string value)
+    {
+        _values[fieldId] = value;
+    }
+
+    private Task Submit()
+    {
+        var answer = FormBuilder.BuildAnswer(Turn, Primitive, _values);
+        return OnSubmit.InvokeAsync(answer);
+    }
+}
