@@ -2,7 +2,7 @@
 
 Coordinator: Collin
 
-Dispatch base: pending at sprint start.
+Dispatch base: `739df37182e509bf9a56e5547103ff4f945ad74c`.
 
 ## Objective
 
