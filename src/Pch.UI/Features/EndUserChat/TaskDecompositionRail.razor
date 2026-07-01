@@ -1,0 +1,48 @@
+<aside class="task-rail" data-task-rail="trip" data-task-source="@TaskSource" data-error-code="@ErrorCode" data-blocked-reason="@BlockedReason">
+    <div>
+        <p class="eyebrow">Tasks</p>
+        <h2>Agent plan</h2>
+    </div>
+    @foreach (var task in VisibleTasks)
+    {
+        <details class="task-row"
+                 data-task-id="@task.TaskId"
+                 data-task-state="@task.State"
+                 data-task-progress="@task.Progress"
+                 open="@task.IsExpanded">
+            <summary>
+                <span class="status-dot" aria-hidden="true"></span>
+                <span>@task.Title</span>
+                <strong>@task.StatusLabel</strong>
+            </summary>
+            <div>
+                @foreach (var step in task.Steps)
+                {
+                    <p data-task-step-id="@step.StepId" data-task-step-state="@step.State">@step.Label</p>
+                }
+            </div>
+        </details>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<EndUserTask> Tasks { get; set; } = [];
+
+    [Parameter]
+    public string? ProviderOutcome { get; set; }
+
+    [Parameter]
+    public string? BlockedReason { get; set; }
+
+    [Parameter]
+    public string? ErrorCode { get; set; }
+
+    private string TaskSource => VisibleTasks.Any(task => task.TaskId == "task-decomposition-missing")
+        ? "task_decomposition_missing"
+        : "validated_task_decomposition";
+
+    private IReadOnlyList<EndUserTask> VisibleTasks => Tasks.Count > 0
+        ? Tasks
+        : [new("task-decomposition-missing", "Task decomposition missing", "blocked", 0, "Review", [new("step-task-decomposition-missing", "Planner did not provide validated task decomposition data.", "blocked")], true)];
+}

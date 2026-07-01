@@ -1,0 +1,21 @@
+<select value="@Value"
+        aria-label="@Field.Label"
+        data-field-input="@Field.FieldId"
+        data-dom-renderer="select"
+        @onchange="eventArgs => ValueChanged.InvokeAsync(eventArgs.Value?.ToString() ?? string.Empty)">
+    @foreach (var option in Field.AllowedValues)
+    {
+        <option value="@option">@option</option>
+    }
+</select>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+}

@@ -21,23 +21,62 @@
                data-evidence-id="@field.EvidenceId"
                data-error-code="@error?.ErrorCode">
             <span>@field.Label</span>
-            @if (field.RendererKey == "select")
+            @switch (NormalizeRenderer(field.RendererKey))
             {
-                <select value="@CurrentValue(field)"
-                        aria-label="@field.Label"
-                        @onchange="eventArgs => SetField(field.FieldId, eventArgs.Value?.ToString() ?? string.Empty)">
-                    @foreach (var option in field.AllowedValues)
+                case "text_input":
+                    <TextInputPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "textarea":
+                    <TextareaPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "number_input":
+                    <NumberPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "slider":
+                    <SliderPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "date":
+                    <DatePrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "date_range":
+                    <DateRangePrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                case "radio_group":
+                    @if (field.AllowedValues.Count > 0)
                     {
-                        <option value="@option">@option</option>
+                        <RadioGroupPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
                     }
-                </select>
-            }
-            else
-            {
-                <input value="@CurrentValue(field)"
-                       aria-label="@field.Label"
-                       data-answer-field="@field.FieldId"
-                       @oninput="eventArgs => SetField(field.FieldId, eventArgs.Value?.ToString() ?? string.Empty)" />
+                    else
+                    {
+                        <PrimitiveRendererMissing Field="field" RendererKey="radio_group" />
+                    }
+                    break;
+                case "select":
+                    @if (field.AllowedValues.Count > 0)
+                    {
+                        <SelectPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    }
+                    else
+                    {
+                        <PrimitiveRendererMissing Field="field" RendererKey="select" />
+                    }
+                    break;
+                case "multi_select":
+                    @if (field.AllowedValues.Count > 0)
+                    {
+                        <MultiSelectPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    }
+                    else
+                    {
+                        <PrimitiveRendererMissing Field="field" RendererKey="multi_select" />
+                    }
+                    break;
+                case "checkbox":
+                    <CheckboxPrimitive Field="field" Value="@CurrentValue(field)" ValueChanged="value => SetField(field.FieldId, value)" />
+                    break;
+                default:
+                    <PrimitiveRendererMissing Field="field" RendererKey="@field.RendererKey" />
+                    break;
             }
             @if (error is not null)
             {
@@ -86,6 +125,9 @@
     {
         _values[fieldId] = value;
     }
+
+    private static string NormalizeRenderer(string rendererKey) =>
+        rendererKey.Replace('-', '_');
 
     private Task Submit()
     {

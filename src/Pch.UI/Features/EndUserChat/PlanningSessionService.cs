@@ -841,8 +841,8 @@ public sealed class PlanningSessionService
             primitive.InstanceId,
             primitive.PrimitiveId,
             string.Equals(canonical.Code, "primitive_turn_accepted", StringComparison.Ordinal)
-                ? "assistant-message"
-                : "provider-failure",
+                ? "assistant_message"
+                : "provider_failure",
             primitive.Label ?? "Live planner update",
             primitive.Prompt ?? "The live planner returned a sanitized update.",
             primitive.MoodToken ?? PlannerMoodTokens.Logistics,
@@ -858,7 +858,7 @@ public sealed class PlanningSessionService
         new(
             primitive.InstanceId,
             primitive.PrimitiveId,
-            "candidate-deck",
+            "candidate_deck",
             primitive.Label ?? "Choose a validated option",
             primitive.Prompt ?? "Pick one validated option.",
             primitive.MoodToken ?? PlannerMoodTokens.Neutral,
@@ -883,22 +883,27 @@ public sealed class PlanningSessionService
     private static string LabelFor(string fieldId) =>
         fieldId.Replace('_', ' ');
 
-    private static string FieldRenderer(ValidatedPrimitiveView primitive) =>
-        primitive.AnswerSchema.Kind switch
+    private static string FieldRenderer(ValidatedPrimitiveView primitive)
+    {
+        var rendererKey = primitive.RendererKey.Replace('-', '_');
+        return rendererKey switch
         {
-            PlannerAnswerSchemaKinds.DateRange => "date",
-            PlannerAnswerSchemaKinds.SingleSelect or PlannerAnswerSchemaKinds.Confirmation => "select",
-            _ => "text"
+            "text_input" or "textarea" or "number_input" or "slider" or "date" or "date_range" or
+                "radio_group" or "select" or "multi_select" or "checkbox" => rendererKey,
+            _ => primitive.AnswerSchema.Kind switch
+            {
+                PlannerAnswerSchemaKinds.DateRange => "date_range",
+                PlannerAnswerSchemaKinds.SingleSelect => "select",
+                PlannerAnswerSchemaKinds.MultiSelect => "multi_select",
+                PlannerAnswerSchemaKinds.RankedChoice => "multi_select",
+                PlannerAnswerSchemaKinds.Confirmation => primitive.AnswerSchema.Options.Count <= 3 ? "radio_group" : "select",
+                _ => "text_input"
+            }
         };
+    }
 
-    private static string FieldValue(ValidatedPrimitiveView primitive) =>
-        primitive.AnswerSchema.Kind switch
-        {
-            PlannerAnswerSchemaKinds.DateRange => primitive.Answers.TryGetValue("start", out var start) ? start ?? string.Empty : string.Empty,
-            PlannerAnswerSchemaKinds.SingleSelect => primitive.Answers.TryGetValue("selected", out var selected) ? selected ?? string.Empty : string.Empty,
-            PlannerAnswerSchemaKinds.Confirmation => primitive.Answers.TryGetValue("value", out var value) ? value ?? string.Empty : string.Empty,
-            _ => primitive.Answers.TryGetValue("value", out var text) ? text ?? string.Empty : string.Empty
-        };
+    private static bool IsProviderFailure(ValidatedPrimitive primitive) =>
+        primitive.RendererKey.Replace('-', '_') == "provider_failure";
 
     private static EndUserChatState ApplyTurnState(EndUserChatState state, EndUserValidatedTurnView turn) =>
         state with
@@ -906,7 +911,7 @@ public sealed class PlanningSessionService
             ModeLabel = turn.Source == "provider_blocked" ? "Live planner blocked" : "Live planner attached",
             ModeState = turn.Source == "provider_blocked" ? "live-model-blocked" : "live-model-attached",
             ComposerState = AwaitingUserInput,
-            FinalState = turn.Source == "provider_blocked" || turn.Primitives.Any(primitive => primitive.RendererKey == "provider-failure")
+            FinalState = turn.Source == "provider_blocked" || turn.Primitives.Any(IsProviderFailure)
                 ? "provider_blocked"
                 : AwaitingUserInput,
             LivePreflightState = turn.ProviderRequestState == "not_attempted" ? state.LivePreflightState : "preflight_passed",
@@ -924,6 +929,15 @@ public sealed class PlanningSessionService
             PlanningTimeline = turn.Timeline,
             ErrorCode = turn.Source == "provider_blocked" ? "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE" : null,
             BlockedReason = turn.Source == "provider_blocked" ? turn.ProviderOutcome : null
+        };
+
+    private static string FieldValue(ValidatedPrimitiveView primitive) =>
+        primitive.AnswerSchema.Kind switch
+        {
+            PlannerAnswerSchemaKinds.DateRange => primitive.Answers.TryGetValue("start", out var start) ? start ?? string.Empty : string.Empty,
+            PlannerAnswerSchemaKinds.SingleSelect => primitive.Answers.TryGetValue("selected", out var selected) ? selected ?? string.Empty : string.Empty,
+            PlannerAnswerSchemaKinds.Confirmation => primitive.Answers.TryGetValue("value", out var value) ? value ?? string.Empty : string.Empty,
+            _ => primitive.Answers.TryGetValue("value", out var text) ? text ?? string.Empty : string.Empty
         };
 
     private static IReadOnlyList<ValidatedPrimitive> MarkPrimitiveValidationBlocked(
@@ -950,7 +964,7 @@ public sealed class PlanningSessionService
         new(
             "primitive-provider-blocked",
             PlannerPrimitiveIds.AssistantMessage,
-            "provider-failure",
+            "provider_failure",
             "Live provider blocked",
             "The server-side live request returned a fixed sanitized blocker.",
             PlannerMoodTokens.Logistics,

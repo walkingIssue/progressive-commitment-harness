@@ -1,0 +1,26 @@
+<fieldset class="primitive-radio-group" data-dom-renderer="radio_group">
+    <legend>@Field.Label</legend>
+    @foreach (var option in Field.AllowedValues)
+    {
+        <label class="primitive-choice-option" data-option-id="@option">
+            <input type="radio"
+                   name="@Field.FieldId"
+                   value="@option"
+                   checked="@string.Equals(option, Value, StringComparison.Ordinal)"
+                   data-field-input="@Field.FieldId"
+                   @onchange="() => ValueChanged.InvokeAsync(option)" />
+            <span>@option</span>
+        </label>
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+}

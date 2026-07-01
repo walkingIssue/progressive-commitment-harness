@@ -48,7 +48,7 @@ public sealed class PlanningSessionServiceTests
         Assert.Null(result.State.FormCard);
         Assert.Contains(result.Turn.Primitives, primitive => primitive.RendererKey == "form"
             && primitive.PrimitiveId == "composite_form"
-            && primitive.Fields.Any(field => field.PrimitiveId == "date_range"));
+            && primitive.Fields.Any(field => field.PrimitiveId == "date_range" && field.RendererKey == "date_range"));
         Assert.All(result.Turn.Primitives.SelectMany(primitive => primitive.Candidates), candidate =>
             Assert.Equal("validated_primitive", candidate.Source));
         AssertRawTextAbsent(JsonSerializer.Serialize(result));
@@ -346,7 +346,7 @@ public sealed class PlanningSessionServiceTests
         Assert.Equal("planner_model_accepted", answered.State.ProviderOutcome);
         Assert.Equal("awaiting_user_input", answered.State.FinalState);
         var primitive = Assert.Single(answered.Turn!.Primitives);
-        Assert.Equal("assistant-message", primitive.RendererKey);
+        Assert.Equal("assistant_message", primitive.RendererKey);
         Assert.Null(primitive.ErrorCode);
         AssertRawTextAbsent(JsonSerializer.Serialize(answered));
     }
@@ -410,6 +410,49 @@ public sealed class PlanningSessionServiceTests
         Assert.Contains("data-answer-choice", browserHelper, StringComparison.Ordinal);
         Assert.Contains("fieldValues.candidate_id = selectedCandidateId", browserHelper, StringComparison.Ordinal);
         Assert.Contains("submitPrimitiveAnswerViaHttp(answerSubmit, selectedChoice)", browserHelper, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HtmlPrimitiveRendererComponentsExistAndUseNativeControls()
+    {
+        var featureRoot = Path.Combine(RepoRoot(), "src", "Pch.UI", "Features", "EndUserChat");
+        var clientSource = File.ReadAllText(Path.Combine(RepoRoot(), "src", "Pch.UI", "ClientApp", "endUserChat.ts"));
+
+        Assert.Contains("<select", File.ReadAllText(Path.Combine(featureRoot, "SelectPrimitive.razor")), StringComparison.Ordinal);
+        Assert.Contains("type=\"radio\"", File.ReadAllText(Path.Combine(featureRoot, "RadioGroupPrimitive.razor")), StringComparison.Ordinal);
+        Assert.Contains("type=\"date\"", File.ReadAllText(Path.Combine(featureRoot, "DateRangePrimitive.razor")), StringComparison.Ordinal);
+        Assert.Contains("type=\"range\"", File.ReadAllText(Path.Combine(featureRoot, "SliderPrimitive.razor")), StringComparison.Ordinal);
+        Assert.Contains("data-dom-renderer=\"candidate_deck\"", File.ReadAllText(Path.Combine(featureRoot, "CandidateDeckPrimitive.razor")), StringComparison.Ordinal);
+        Assert.Contains("data-development-status-dock=\"trip\"", File.ReadAllText(Path.Combine(featureRoot, "DevelopmentStatusDock.razor")), StringComparison.Ordinal);
+        Assert.Contains("data-task-source", File.ReadAllText(Path.Combine(featureRoot, "TaskDecompositionRail.razor")), StringComparison.Ordinal);
+        Assert.Contains("data-dom-renderer=\"select\"", clientSource, StringComparison.Ordinal);
+        Assert.Contains("data-dom-renderer=\"radio_group\"", clientSource, StringComparison.Ordinal);
+        Assert.Contains("data-dom-renderer=\"date_range\"", clientSource, StringComparison.Ordinal);
+        Assert.Contains("data-dom-renderer=\"slider\"", clientSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AcceptedSessionClearsStaleProviderBlockedState()
+    {
+        var service = PlanningService();
+        var blocked = service.CreateInitialState() with
+        {
+            FinalState = "provider_blocked",
+            ErrorCode = "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE",
+            BlockedReason = "planner_model_malformed_json",
+            Tasks =
+            [
+                new("task-live-intake", "Live provider blocked", "blocked", 20, "Blocked", [new("step-provider-blocked", "Live provider blocked", "blocked")], true)
+            ]
+        };
+        var result = await service.StartAsync("Plan a live primitive form.", EndUserModelRoleSelection.InHarnessActionGenerator);
+        var answer = service.BuildDefaultAnswer(result.Turn!);
+        var answered = await service.SubmitAnswer(blocked, result.Turn!, answer);
+
+        Assert.Equal("awaiting_user_input", answered.State.FinalState);
+        Assert.Null(answered.State.ErrorCode);
+        Assert.Null(answered.State.BlockedReason);
+        Assert.DoesNotContain(answered.State.Tasks, task => task.Title.Contains("provider blocked", StringComparison.OrdinalIgnoreCase));
     }
 
     private static PlanningSessionService PlanningService(PlannerPrimitiveModelRunner? runner = null) =>

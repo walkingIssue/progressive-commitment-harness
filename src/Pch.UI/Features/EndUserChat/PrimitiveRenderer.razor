@@ -11,7 +11,7 @@
              data-error-code="@primitive.ErrorCode"
              data-blocked-reason="@primitive.BlockedReason"
              data-raw-absence-state="@Turn.RawAbsenceState">
-        @switch (primitive.RendererKey)
+        @switch (NormalizeRenderer(primitive.RendererKey))
         {
             case "form":
                 <FormBuilderView Turn="Turn"
@@ -19,30 +19,21 @@
                                  ValidationErrors="ValidationErrors"
                                  OnSubmit="OnSubmitAnswer" />
                 break;
-            case "candidate-deck":
-                <section class="primitive-candidate-deck" data-validated-candidate-deck="@primitive.InstanceId">
-                    <div>
-                        <p class="work-lead">@primitive.Prompt</p>
-                        <h2>@primitive.Title</h2>
-                    </div>
-                    <div class="candidate-deck__track" data-choice-set-id="@primitive.InstanceId">
-                        @foreach (var candidate in primitive.Candidates)
-                        {
-                            <OptionCard Candidate="candidate"
-                                        IsActive="true"
-                                        OnSelect="candidateId => SubmitCandidateAnswer(primitive, candidateId)"
-                                        OnDefer="candidateId => SubmitCandidateAnswer(primitive, candidateId)" />
-                        }
-                    </div>
-                </section>
+            case "candidate_deck":
+                <CandidateDeckPrimitive Primitive="primitive"
+                                        SubmitCandidate="candidateId => SubmitCandidateAnswer(primitive, candidateId)" />
                 break;
-            case "assistant-message":
+            case "choice_card":
+                <ChoiceCardPrimitive Primitive="primitive"
+                                     SubmitCandidate="candidateId => SubmitCandidateAnswer(primitive, candidateId)" />
+                break;
+            case "assistant_message":
                 <section class="primitive-assistant-message" data-assistant-message-primitive="@primitive.InstanceId">
                     <p class="work-lead">@primitive.Title</p>
                     <p>@primitive.Prompt</p>
                 </section>
                 break;
-            case "provider-failure":
+            case "provider_failure":
                 <section class="provider-failure primitive-provider-failure"
                          data-provider-failure-primitive="@primitive.InstanceId"
                          data-provider-outcome="@Turn.ProviderOutcome">
@@ -75,6 +66,9 @@
 
     [Parameter, EditorRequired]
     public EventCallback<string> OnDeferCandidate { get; set; }
+
+    private static string NormalizeRenderer(string rendererKey) =>
+        rendererKey.Replace('-', '_');
 
     private Task SubmitCandidateAnswer(ValidatedPrimitive primitive, string candidateId)
     {

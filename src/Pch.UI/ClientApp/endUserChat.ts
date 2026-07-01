@@ -31,6 +31,35 @@ type CandidateOption = {
   evidence: string;
 };
 
+type PlanningApiTaskStep = {
+  stepId: string;
+  label: string;
+  state: string;
+};
+
+type PlanningApiTask = {
+  taskId: string;
+  title: string;
+  state: string;
+  progress: number;
+  statusLabel: string;
+  steps: PlanningApiTaskStep[];
+  isExpanded: boolean;
+};
+
+type PlanningApiTrace = {
+  providerRequestState: string;
+  providerOutcome: string;
+  provider?: string | null;
+  model?: string | null;
+  requestId?: string | null;
+  validatedTurnId: string;
+  validationCode: string;
+  primitiveInstanceIds: string[];
+  taskIds: string[];
+  answerIds: string[];
+};
+
 type PlanningApiField = {
   fieldId: string;
   label: string;
@@ -86,6 +115,7 @@ type PlanningApiState = {
   finalState: string;
   errorCode?: string | null;
   blockedReason?: string | null;
+  tasks: PlanningApiTask[];
 };
 
 type PlanningApiResponse = {
@@ -93,6 +123,7 @@ type PlanningApiResponse = {
   status: string;
   state: PlanningApiState;
   turn?: PlanningApiTurn | null;
+  trace: PlanningApiTrace[];
   rawAbsenceState: string;
 };
 
@@ -292,6 +323,10 @@ function selectedModelRole(): string {
   return root()?.dataset.selectedModelRole ?? "in-harness-action-generator";
 }
 
+function cssEscape(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
 function setModelRole(role: string): void {
   const normalized = role === "in-harness-action-generator" || role === "strong-planner"
     ? role
@@ -401,9 +436,35 @@ async function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string, selecte
     } else {
       document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-http-primitive-turn] [data-field-input]").forEach((field) => {
         const fieldId = field.dataset.fieldInput;
-        if (fieldId) {
-          fieldValues[fieldId] = field.value;
+        if (!fieldId) {
+          return;
         }
+
+        if (field instanceof HTMLInputElement && field.type === "radio" && !field.checked) {
+          return;
+        }
+
+        if (field instanceof HTMLInputElement && field.type === "checkbox") {
+          fieldValues[fieldId] = field.checked ? "true" : "false";
+          return;
+        }
+
+        if (field.dataset.dateRangePart === "start") {
+          const end = document.querySelector<HTMLInputElement>(`[data-http-primitive-turn] [data-field-input-end='${cssEscape(fieldId)}']`);
+          fieldValues[fieldId] = `${field.value} to ${end?.value ?? field.value}`;
+          return;
+        }
+
+        fieldValues[fieldId] = field.value;
+      });
+
+      document.querySelectorAll<HTMLInputElement>("[data-http-primitive-turn] [data-field-input-multi]:checked").forEach((field) => {
+        const fieldId = field.dataset.fieldInputMulti;
+        if (!fieldId) {
+          return;
+        }
+
+        fieldValues[fieldId] = [fieldValues[fieldId], field.value].filter(Boolean).join(",");
       });
     }
     setRootState({
@@ -468,6 +529,8 @@ function applyPlanningApiResponse(response: PlanningApiResponse, transport: stri
   });
   document.documentElement.dataset.endUserChatFallback = "http_api";
   renderApiTurn(response.turn);
+  renderApiTaskRail(response.state, response.turn);
+  renderDevelopmentStatusDock(response, transport);
   if (!document.querySelector("[data-ask-action='open']")) {
     document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<button type="button" class="ask-tab" data-ask-action="open" aria-label="Open Ask drawer">Ask</button>`);
   }
@@ -476,15 +539,19 @@ function applyPlanningApiResponse(response: PlanningApiResponse, transport: stri
 function renderApiTurn(turn: PlanningApiTurn | null | undefined): void {
   document.querySelectorAll("[data-http-primitive-turn]").forEach((element) => element.remove());
   document.querySelectorAll(".primitive-work:not([data-http-primitive-turn]), .primitive-server-submit:not([data-http-answer-submit])").forEach((element) => element.remove());
+  document.querySelectorAll("[data-choice-set='choice-japan-routes'], [data-form-id='form-trip-basics'], [data-candidate-category='trip-style']").forEach((element) => element.remove());
   if (!turn) return;
 
   const panel = transcript();
   if (!panel) return;
 
   for (const primitive of turn.primitives) {
-    if (primitive.rendererKey === "form") {
+    const rendererKey = normalizeRenderer(primitive.rendererKey);
+    if (rendererKey === "form") {
       panel.insertAdjacentHTML("beforeend", formPrimitiveHtml(turn, primitive));
-    } else if (primitive.rendererKey === "candidate-deck") {
+    } else if (rendererKey === "candidate_deck") {
+      panel.insertAdjacentHTML("beforeend", candidateDeckPrimitiveHtml(turn, primitive));
+    } else if (rendererKey === "choice_card") {
       panel.insertAdjacentHTML("beforeend", candidateDeckPrimitiveHtml(turn, primitive));
     } else {
       panel.insertAdjacentHTML("beforeend", primitiveMessageHtml(turn, primitive));
@@ -495,9 +562,9 @@ function renderApiTurn(turn: PlanningApiTurn | null | undefined): void {
 
 function formPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string {
   const fields = primitive.fields.map((field) => `
-    <label class="form-field" data-field-id="${escapeHtml(field.fieldId)}" data-primitive-id="${escapeHtml(field.primitiveId)}" data-field-state="${escapeHtml(field.state)}" data-evidence-id="${escapeHtml(field.evidenceId)}">
+    <label class="form-field" data-field-id="${escapeHtml(field.fieldId)}" data-primitive-id="${escapeHtml(field.primitiveId)}" data-field-renderer="${escapeHtml(field.rendererKey)}" data-field-state="${escapeHtml(field.state)}" data-evidence-id="${escapeHtml(field.evidenceId)}">
       <span>${escapeHtml(field.label)}</span>
-      <input value="${escapeHtml(field.value)}" data-field-input="${escapeHtml(field.fieldId)}" aria-label="${escapeHtml(field.label)}" />
+      ${fieldControlHtml(field)}
     </label>`).join("");
   return `<article class="work-bubble primitive-work"
       data-http-primitive-turn="${escapeHtml(turn.turnId)}"
@@ -517,6 +584,67 @@ function formPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitiv
         <button type="button" class="secondary-button primitive-server-submit" data-http-answer-submit="true" data-answer-submit="${escapeHtml(primitive.instanceId)}" aria-label="Submit validated primitive form">Submit answers</button>
       </section>
     </article>`;
+}
+
+function normalizeRenderer(rendererKey: string | null | undefined): string {
+  return (rendererKey ?? "").replaceAll("-", "_");
+}
+
+function fieldControlHtml(field: PlanningApiField): string {
+  const rendererKey = normalizeRenderer(field.rendererKey);
+  const value = escapeHtml(field.value);
+  const label = escapeHtml(field.label);
+  const fieldId = escapeHtml(field.fieldId);
+  switch (rendererKey) {
+    case "text_input":
+      return `<input type="text" value="${value}" data-field-input="${fieldId}" data-dom-renderer="text_input" aria-label="${label}" />`;
+    case "textarea":
+      return `<textarea data-field-input="${fieldId}" data-dom-renderer="textarea" aria-label="${label}">${value}</textarea>`;
+    case "number_input":
+      return `<input type="number" value="${value}" data-field-input="${fieldId}" data-dom-renderer="number_input" aria-label="${label}" />`;
+    case "slider":
+      return `<input type="range" min="0" max="100" step="1" value="${sliderValue(field.value)}" data-field-input="${fieldId}" data-dom-renderer="slider" aria-label="${label}" />`;
+    case "date":
+      return `<input type="date" value="${escapeHtml(firstIsoDate(field.value))}" data-field-input="${fieldId}" data-dom-renderer="date" aria-label="${label}" />`;
+    case "date_range": {
+      const [start, end] = dateRangeValues(field.value);
+      return `<span class="primitive-date-range" data-dom-renderer="date_range"><input type="date" value="${escapeHtml(start)}" data-field-input="${fieldId}" data-date-range-part="start" aria-label="${label} start" /><input type="date" value="${escapeHtml(end)}" data-field-input-end="${fieldId}" data-date-range-part="end" aria-label="${label} end" /></span>`;
+    }
+    case "radio_group":
+      return field.allowedValues.length === 0
+        ? missingRendererHtml(field, rendererKey)
+        : `<fieldset class="primitive-radio-group" data-dom-renderer="radio_group">${field.allowedValues.map((option) => `<label data-option-id="${escapeHtml(option)}"><input type="radio" name="${fieldId}" value="${escapeHtml(option)}" data-field-input="${fieldId}" ${option === field.value ? "checked" : ""} />${escapeHtml(option)}</label>`).join("")}</fieldset>`;
+    case "select":
+      return field.allowedValues.length === 0
+        ? missingRendererHtml(field, rendererKey)
+        : `<select data-field-input="${fieldId}" data-dom-renderer="select" aria-label="${label}">${field.allowedValues.map((option) => `<option value="${escapeHtml(option)}" ${option === field.value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>`;
+    case "multi_select":
+      return field.allowedValues.length === 0
+        ? missingRendererHtml(field, rendererKey)
+        : `<fieldset class="primitive-multi-select" data-dom-renderer="multi_select">${field.allowedValues.map((option) => `<label data-option-id="${escapeHtml(option)}"><input type="checkbox" value="${escapeHtml(option)}" data-field-input-multi="${fieldId}" ${field.value.split(",").map((part) => part.trim()).includes(option) ? "checked" : ""} />${escapeHtml(option)}</label>`).join("")}</fieldset>`;
+    case "checkbox":
+      return `<input type="checkbox" data-field-input="${fieldId}" data-dom-renderer="checkbox" aria-label="${label}" ${field.value === "true" || field.value === "confirm" ? "checked" : ""} />`;
+    default:
+      return missingRendererHtml(field, rendererKey);
+  }
+}
+
+function missingRendererHtml(field: PlanningApiField, rendererKey: string): string {
+  return `<span class="primitive-renderer-missing" data-primitive-renderer-blocked="${escapeHtml(rendererKey)}" data-field-id="${escapeHtml(field.fieldId)}" data-error-code="primitive_renderer_missing">Renderer unavailable for ${escapeHtml(field.label)}</span>`;
+}
+
+function firstIsoDate(value: string): string {
+  return value.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
+}
+
+function dateRangeValues(value: string): [string, string] {
+  const matches = value.match(/\d{4}-\d{2}-\d{2}/g) ?? [];
+  return [matches[0] ?? "", matches[1] ?? matches[0] ?? ""];
+}
+
+function sliderValue(value: string): string {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? String(Math.max(0, Math.min(100, parsed))) : "50";
 }
 
 function candidateDeckPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string {
@@ -577,6 +705,58 @@ function primitiveMessageHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimi
       <strong>${escapeHtml(primitive.title)}</strong>
       <p>${escapeHtml(primitive.prompt)}</p>
     </article>`;
+}
+
+function renderApiTaskRail(state: PlanningApiState, turn: PlanningApiTurn | null | undefined): void {
+  const rail = document.querySelector<HTMLElement>("[data-task-rail='trip']");
+  if (!rail) return;
+  const tasks = state.tasks.length > 0
+    ? state.tasks
+    : [{
+        taskId: "task-decomposition-missing",
+        title: "Task decomposition missing",
+        state: "blocked",
+        progress: 0,
+        statusLabel: "Review",
+        steps: [{ stepId: "step-task-decomposition-missing", label: "Planner did not provide validated task decomposition data.", state: "blocked" }],
+        isExpanded: true,
+      }];
+  rail.dataset.taskSource = state.tasks.length > 0 ? "validated_task_decomposition" : "task_decomposition_missing";
+  rail.dataset.providerOutcome = state.providerOutcome;
+  rail.dataset.blockedReason = state.blockedReason ?? "";
+  rail.dataset.errorCode = state.errorCode ?? "";
+  rail.innerHTML = `<div><p class="eyebrow">Tasks</p><h2>Agent plan</h2></div>${tasks.map((task) => `<details class="task-row" data-task-id="${escapeHtml(task.taskId)}" data-task-state="${escapeHtml(task.state)}" data-task-progress="${task.progress}" open><summary><span class="status-dot" aria-hidden="true"></span><span>${escapeHtml(task.title)}</span><strong>${escapeHtml(task.statusLabel)}</strong></summary><div>${task.steps.map((step) => `<p data-task-step-id="${escapeHtml(step.stepId)}" data-task-step-state="${escapeHtml(step.state)}">${escapeHtml(step.label)}</p>`).join("")}</div></details>`).join("")}`;
+  if (!state.blockedReason && state.providerOutcome === "planner_model_accepted") {
+    rail.querySelectorAll(".task-row").forEach((row) => row.removeAttribute("data-stale-provider-blocked"));
+  }
+  if (turn) {
+    rail.dataset.turnId = turn.turnId;
+  }
+}
+
+function renderDevelopmentStatusDock(response: PlanningApiResponse, transport: string): void {
+  const latestTrace = response.trace.at(-1);
+  let dock = document.querySelector<HTMLElement>("[data-development-status-dock='trip']");
+  if (!dock) {
+    document.querySelector("[data-end-user-chat='v0']")?.insertAdjacentHTML("beforeend", `<aside class="development-status-dock" data-development-status-dock="trip" aria-label="Development status"></aside>`);
+    dock = document.querySelector<HTMLElement>("[data-development-status-dock='trip']");
+  }
+  if (!dock) return;
+  const primitive = response.turn?.primitives[0];
+  dock.dataset.browserTransport = transport;
+  dock.dataset.providerRequestState = response.state.providerRequestState;
+  dock.dataset.providerOutcome = response.state.providerOutcome;
+  dock.dataset.provider = latestTrace?.provider ?? "";
+  dock.dataset.model = latestTrace?.model ?? "";
+  dock.dataset.requestId = latestTrace?.requestId ?? "";
+  dock.dataset.harnessValidationState = response.state.harnessValidationState;
+  dock.dataset.errorCode = response.state.errorCode ?? "";
+  dock.dataset.blockedReason = response.state.blockedReason ?? "";
+  dock.dataset.turnId = response.turn?.turnId ?? "";
+  dock.dataset.primitiveId = primitive?.primitiveId ?? "";
+  dock.dataset.primitiveInstanceId = primitive?.instanceId ?? "";
+  dock.dataset.rawAbsenceState = response.rawAbsenceState;
+  dock.innerHTML = `<strong>${escapeHtml(response.state.providerRequestState)}</strong><span>${escapeHtml(response.state.providerOutcome)}</span><span>${escapeHtml(response.state.harnessValidationState)}</span>${response.state.errorCode ? `<code>${escapeHtml(response.state.errorCode)}</code>` : ""}${latestTrace?.requestId ? `<small>${escapeHtml(latestTrace.requestId)}</small>` : ""}`;
 }
 
 function candidateCard(candidate: (typeof candidates)[number], state = "available"): string {

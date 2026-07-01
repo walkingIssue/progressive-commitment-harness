@@ -1,0 +1,19 @@
+<input type="date"
+       value="@DateValue"
+       aria-label="@Field.Label"
+       data-field-input="@Field.FieldId"
+       data-dom-renderer="date"
+       @oninput="eventArgs => ValueChanged.InvokeAsync(eventArgs.Value?.ToString() ?? string.Empty)" />
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private string DateValue => PlanningPrimitiveValueParser.FirstIsoDate(Value) ?? string.Empty;
+}

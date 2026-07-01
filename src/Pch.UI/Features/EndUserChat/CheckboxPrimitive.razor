@@ -1,0 +1,25 @@
+<label class="primitive-checkbox" data-dom-renderer="checkbox">
+    <input type="checkbox"
+           checked="@Checked"
+           data-field-input="@Field.FieldId"
+           aria-label="@Field.Label"
+           @onchange="SetChecked" />
+    <span>@Field.Label</span>
+</label>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private bool Checked => string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Value, "confirm", StringComparison.OrdinalIgnoreCase);
+
+    private Task SetChecked(ChangeEventArgs eventArgs) =>
+        ValueChanged.InvokeAsync(eventArgs.Value is true ? "true" : "false");
+}

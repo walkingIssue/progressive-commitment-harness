@@ -1,0 +1,44 @@
+<fieldset class="primitive-multi-select" data-dom-renderer="multi_select">
+    <legend>@Field.Label</legend>
+    @foreach (var option in Field.AllowedValues)
+    {
+        <label class="primitive-choice-option" data-option-id="@option">
+            <input type="checkbox"
+                   value="@option"
+                   checked="@Selected.Contains(option)"
+                   data-field-input-multi="@Field.FieldId"
+                   @onchange="eventArgs => Toggle(option, eventArgs.Value is true)" />
+            <span>@option</span>
+        </label>
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private HashSet<string> Selected => Value
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.Ordinal);
+
+    private Task Toggle(string option, bool isChecked)
+    {
+        var selected = Selected;
+        if (isChecked)
+        {
+            selected.Add(option);
+        }
+        else
+        {
+            selected.Remove(option);
+        }
+
+        return ValueChanged.InvokeAsync(string.Join(",", selected.Order(StringComparer.Ordinal)));
+    }
+}

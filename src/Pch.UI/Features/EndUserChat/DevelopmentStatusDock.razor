@@ -1,0 +1,40 @@
+<aside class="development-status-dock"
+       data-development-status-dock="trip"
+       data-provider-request-state="@Chat.ProviderRequestState"
+       data-provider-outcome="@Chat.ProviderOutcome"
+       data-provider="@LatestTrace?.Provider"
+       data-model="@LatestTrace?.Model"
+       data-request-id="@LatestTrace?.RequestId"
+       data-harness-validation-state="@Chat.HarnessValidationState"
+       data-error-code="@Chat.ErrorCode"
+       data-blocked-reason="@Chat.BlockedReason"
+       data-turn-id="@Turn?.TurnId"
+       data-primitive-id="@PrimaryPrimitive?.PrimitiveId"
+       data-primitive-instance-id="@PrimaryPrimitive?.InstanceId"
+       data-raw-absence-state="@Chat.RawAbsenceState"
+       aria-label="Development status">
+    <strong>@Chat.ProviderRequestState</strong>
+    <span>@Chat.ProviderOutcome</span>
+    <span>@Chat.HarnessValidationState</span>
+    @if (!string.IsNullOrWhiteSpace(Chat.ErrorCode))
+    {
+        <code>@Chat.ErrorCode</code>
+    }
+    @if (LatestTrace?.RequestId is { Length: > 0 } requestId)
+    {
+        <small>@requestId</small>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired]
+    public EndUserChatState Chat { get; set; } = default!;
+
+    [Parameter]
+    public EndUserValidatedTurnView? Turn { get; set; }
+
+    [Parameter]
+    public PlanningSessionTraceEntry? LatestTrace { get; set; }
+
+    private ValidatedPrimitive? PrimaryPrimitive => Turn?.Primitives.FirstOrDefault();
+}

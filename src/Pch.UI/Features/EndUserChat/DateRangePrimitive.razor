@@ -1,0 +1,35 @@
+<div class="primitive-date-range" data-dom-renderer="date_range">
+    <input type="date"
+           value="@StartValue"
+           aria-label="@($"{Field.Label} start")"
+           data-field-input="@Field.FieldId"
+           data-date-range-part="start"
+           @oninput="eventArgs => SetStart(eventArgs.Value?.ToString() ?? string.Empty)" />
+    <input type="date"
+           value="@EndValue"
+           aria-label="@($"{Field.Label} end")"
+           data-field-input-end="@Field.FieldId"
+           data-date-range-part="end"
+           @oninput="eventArgs => SetEnd(eventArgs.Value?.ToString() ?? string.Empty)" />
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private string StartValue => PlanningPrimitiveValueParser.DateRange(Value).Start;
+
+    private string EndValue => PlanningPrimitiveValueParser.DateRange(Value).End;
+
+    private Task SetStart(string value) =>
+        ValueChanged.InvokeAsync($"{value} to {EndValue}".Trim());
+
+    private Task SetEnd(string value) =>
+        ValueChanged.InvokeAsync($"{StartValue} to {value}".Trim());
+}
