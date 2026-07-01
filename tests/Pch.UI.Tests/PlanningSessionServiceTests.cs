@@ -217,10 +217,9 @@ public sealed class PlanningSessionServiceTests
 
         Assert.NotNull(result.Turn);
         Assert.Equal(result.Turn.Tasks.Select(task => task.TaskId), result.State.Tasks.Select(task => task.TaskId));
-        var form = Assert.Single(result.Turn.Primitives, primitive => primitive.RendererKey == "form");
-        Assert.Contains(result.State.Tasks, task => task.TaskId == $"task-{form.InstanceId}"
-            && task.Title == form.Title
-            && task.State == "needs_user");
+        Assert.Contains(result.State.Tasks, task => task.TaskId == "task-planner-fixture"
+            && task.Title == "Fixture task"
+            && task.State == "active");
     }
 
     [Fact]
@@ -283,19 +282,16 @@ public sealed class PlanningSessionServiceTests
                 "Plan a weird food-first Osaka trip.",
                 EndUserModelRoleSelection.InHarnessActionGenerator));
         var form = Assert.Single(started.Turn!.Primitives, primitive => primitive.RendererKey == "form");
-        var values = form.Fields.ToDictionary(
-            field => field.FieldId,
-            _ => "osaka ramen markets no temples",
-            StringComparer.Ordinal);
+        var values = ValidAnswerValues(form);
 
         var answered = await store.AnswerAsync(service, started.SessionId, new(form.InstanceId, values));
 
         Assert.Equal(2, runner.Requests.Count);
-        Assert.Contains("osaka ramen markets no temples", runner.Requests[1].RuntimePrompt, StringComparison.Ordinal);
-        Assert.Contains(form.Fields[0].FieldId, runner.Requests[1].RuntimePrompt, StringComparison.Ordinal);
+        Assert.Contains("selected=japan", runner.Requests[1].RuntimePrompt, StringComparison.Ordinal);
+        Assert.Contains("start=2027-05-06", runner.Requests[1].RuntimePrompt, StringComparison.Ordinal);
         Assert.Equal("answered", answered.Status);
         Assert.Equal(2, answered.Trace.Count);
-        Assert.Contains(form.Fields[0].FieldId, answered.Trace.Last().AnswerIds);
+        Assert.Contains("destination_country", answered.LastAnswer!.FieldValues.Keys);
         Assert.Equal(values, answered.LastAnswer!.FieldValues);
         AssertRawTextAbsent(JsonSerializer.Serialize(answered));
     }
@@ -335,10 +331,7 @@ public sealed class PlanningSessionServiceTests
             service,
             new("Plan a weird food-first Osaka trip.", EndUserModelRoleSelection.InHarnessActionGenerator));
         var form = Assert.Single(started.Turn!.Primitives, primitive => primitive.RendererKey == "form");
-        var values = form.Fields.ToDictionary(
-            field => field.FieldId,
-            _ => "osaka ramen markets no temples",
-            StringComparer.Ordinal);
+        var values = ValidAnswerValues(form);
 
         var answered = await store.AnswerAsync(service, started.SessionId, new(form.InstanceId, values));
 
@@ -458,6 +451,19 @@ public sealed class PlanningSessionServiceTests
     private static PlanningSessionService PlanningService(PlannerPrimitiveModelRunner? runner = null) =>
         new(LiveChatService(), new FormBuilder(), LiveEnvironment, runner ?? AcceptedPlannerPrimitiveRun);
 
+    private static IReadOnlyDictionary<string, string> ValidAnswerValues(ValidatedPrimitive form) =>
+        form.Fields.ToDictionary(
+            field => field.FieldId,
+            field => field.RendererKey switch
+            {
+                "date_range" => "2027-05-06 to 2027-05-12",
+                "date" => "2027-05-06",
+                "radio_group" or "select" or "multi_select" => field.AllowedValues.FirstOrDefault() ?? field.Value,
+                "checkbox" => "true",
+                _ => string.IsNullOrWhiteSpace(field.Value) ? "osaka ramen markets no temples" : field.Value
+            },
+            StringComparer.Ordinal);
+
     private static Task<PlannerModelResult> UnsafePlannerPrimitiveRun(
         PlannerModelRequest request,
         PlannerModelOptions options,
@@ -490,23 +496,35 @@ public sealed class PlanningSessionServiceTests
             request,
             [
                 Primitive(
-                    "text_input",
-                    "text_input",
+                    "select",
+                    "select",
                     "primitive-destination-country",
-                    "text-input",
+                    "select",
                     "/mission/destination_country",
                     null,
                     "Destination",
-                    "Confirm destination."),
+                    "Confirm destination.",
+                    [Option("japan", "Japan"), Option("south_korea", "South Korea")]),
                 Primitive(
                     "date_range",
                     "date_range",
                     "primitive-trip-dates",
-                    "date-range",
+                    "date_range",
                     "/mission/start_date",
                     null,
                     "Dates",
-                    "Confirm travel dates.")
+                    "Confirm travel dates.",
+                    defaultValue: "2027-05-06 to 2027-05-12"),
+                Primitive(
+                    "radio_group",
+                    "radio_group",
+                    "primitive-pace",
+                    "radio_group",
+                    "/constraints/pace",
+                    "calm_morning",
+                    "Pace",
+                    "Choose a travel pace.",
+                    [Option("slow", "Slow"), Option("balanced", "Balanced")])
             ],
             "request-planner-primitive-safe");
 
@@ -516,15 +534,31 @@ public sealed class PlanningSessionServiceTests
     private static PlannerModelResult ModelResult(
         PlannerModelRequest request,
         IReadOnlyList<PlannerPrimitiveInvocation> primitives,
-        string requestId) =>
-        new(
+        string requestId)
+    {
+        var withTasks = primitives.Any(primitive => primitive.PrimitiveId == "task_decomposition")
+            ? primitives
+            :
+            [
+                .. primitives,
+                Primitive(
+                    "task_decomposition",
+                    "task_decomposition",
+                    "primitive-task-decomposition",
+                    "task_decomposition",
+                    null,
+                    "logistics",
+                    "Planner tasks",
+                    "Track validated planner tasks.")
+            ];
+        return new(
             request.Manifest.ManifestId,
             request.Manifest.ManifestVersion,
             request.Manifest.GraphRevision,
             request.Manifest.SessionId,
             PlannerModelOutputKind.CompositeForm,
-            primitives,
-            [new("task-planner-fixture", primitives.Select(primitive => primitive.InstanceId).ToArray(), "Fixture task", "Fixture task summary.")],
+            withTasks,
+            [new("task-planner-fixture", withTasks.Select(primitive => primitive.InstanceId).ToArray(), "Fixture task", "Fixture task summary.")],
             WasRepaired: false,
             HasUnsafeValue: false,
             HasPromptSpecificContent: true,
@@ -533,6 +567,7 @@ public sealed class PlanningSessionServiceTests
             Provider: "mock",
             Model: "mock-planner-primitive",
             RequestId: requestId);
+    }
 
     private static PlannerPrimitiveInvocation Primitive(
         string primitiveId,
@@ -542,7 +577,9 @@ public sealed class PlanningSessionServiceTests
         string? fieldPath,
         string? moodToken,
         string? label,
-        string? promptText) =>
+        string? promptText,
+        IReadOnlyList<PlannerPrimitiveOption>? options = null,
+        string? defaultValue = null) =>
         new(
             primitiveId,
             primitiveKind,
@@ -555,12 +592,15 @@ public sealed class PlanningSessionServiceTests
             [],
             ["evidence-planner-primitive"],
             [],
-            [],
+            options ?? [],
             label,
             promptText,
             null,
-            null,
+            defaultValue,
             new Dictionary<string, string>(StringComparer.Ordinal));
+
+    private static PlannerPrimitiveOption Option(string optionId, string label) =>
+        new(optionId, null, null, [], label, label);
 
     private sealed class DynamicPromptPlannerPrimitiveRunner
     {
