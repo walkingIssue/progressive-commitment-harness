@@ -49,7 +49,15 @@ public sealed record LiveModelRunnerOptions(
 
         return new LiveModelRunnerOptions(
             LiveModeEnabled: BoolValue(environment, "PCH_LIVE_MODEL_ENABLED"),
-            ApiKeyAvailable: BoolValue(environment, "PCH_LIVE_MODEL_KEY_AVAILABLE"),
+            ApiKeyAvailable: BoolValue(environment, "PCH_LIVE_MODEL_KEY_AVAILABLE") ||
+                HasValue(environment, "OPENROUTER_API_KEY") ||
+                HasValue(environment, "OPENROUTER_API_KEY_FILE") ||
+                HasValue(environment, "OPENAI_API_KEY") ||
+                HasValue(environment, "OPENAI_API_KEY_FILE") ||
+                HasValue(environment, "XAI_API_KEY") ||
+                HasValue(environment, "XAI_API_KEY_FILE") ||
+                HasValue(environment, "GROK_API_KEY") ||
+                HasValue(environment, "GROK_API_KEY_FILE"),
             CreditGuardEnabled: !BoolValue(environment, "PCH_LIVE_MODEL_SKIP_CREDIT_GUARD"),
             FallbackPolicy: StringValue(environment, "PCH_LIVE_MODEL_FALLBACK_POLICY") == "allow_same_provider"
                 ? LiveModelFallbackPolicy.AllowSameProvider
@@ -63,6 +71,9 @@ public sealed record LiveModelRunnerOptions(
     private static bool BoolValue(IReadOnlyDictionary<string, string?> environment, string key) =>
         environment.TryGetValue(key, out var value) &&
         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasValue(IReadOnlyDictionary<string, string?> environment, string key) =>
+        environment.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
 
     private static string? StringValue(IReadOnlyDictionary<string, string?> environment, string key) =>
         environment.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)

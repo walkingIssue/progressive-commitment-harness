@@ -118,7 +118,7 @@
     private int DeckIndex { get; set; }
     private string TimelineMode { get; set; } = "day";
     private string? FocusedTurnId { get; set; }
-    private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.DeterministicOffline;
+    private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.InHarnessActionGenerator;
 
     private string ComposerState => HasSubmitted
         ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
@@ -132,7 +132,7 @@
         Chat.Turns.Count(turn => turn.Kind is "live-model" or "live-model-followup");
 
     private string LiveSecondTurnState =>
-        Chat.Turns.SingleOrDefault(turn => turn.TurnId == "turn-live-model-followup")?.State ?? "not_started";
+        Chat.Turns.LastOrDefault(turn => turn.TurnId == "turn-live-model-followup")?.State ?? "not_started";
 
     private IReadOnlyList<EndUserCandidateOption> CultureCandidates =>
         Chat.ChoiceSet?.Candidates.Where(candidate => candidate.Mood == "reflective-culture").ToArray() ?? [];
@@ -212,17 +212,7 @@
     private void SetModelRole(string role)
     {
         SelectedModelRole = EndUserModelRoleSelection.Normalize(role);
-        Chat = Chat with
-        {
-            SelectedModelRole = SelectedModelRole,
-            LivePreflightState = SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
-                ? EndUserLiveModelTurnService.PreflightDeterministic
-                : EndUserLiveModelTurnService.PreflightBlockedByGuard,
-            LiveProposalState = SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
-                ? EndUserLiveProposalMarkers.NotRequested
-                : EndUserLiveProposalMarkers.NotRun,
-            HarnessValidationState = EndUserLiveProposalMarkers.NotRun
-        };
+        Chat = ChatService.ApplyModelRole(Chat, SelectedModelRole);
     }
 
     private void FocusTurn(string turnId)

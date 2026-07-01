@@ -14,8 +14,8 @@
                 <span data-raw-absence-marker="@RawAbsenceState">Prompt text is redacted from transcript records</span>
                 <button type="button"
                         class="send-button"
-                        data-send-action="deterministic"
-                        aria-label="Send deterministic trip prompt"
+                        data-send-action="planner"
+                        aria-label="Send trip prompt"
                         @onclick="OnSend">
                     Send
                 </button>
@@ -53,8 +53,8 @@ else
                   rows="5"></textarea>
         <button type="button"
                 class="send-button"
-                data-send-action="deterministic-drawer"
-                aria-label="Send deterministic follow-up prompt"
+                data-send-action="planner-drawer"
+                aria-label="Send follow-up prompt"
                 @onclick="OnSend">
             Send
         </button>

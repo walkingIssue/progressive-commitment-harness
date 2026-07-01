@@ -53,6 +53,14 @@ public sealed class EndUserLiveModelTurnService
         var options = LivePreflightOptions.FromEnvironment(_environmentFactory());
         var role = ToLiveRole(normalizedRole);
         var modelId = ModelIdFor(options, role);
+        if (!options.Enabled || !options.ApiKeyAvailable)
+        {
+            var outcome = options.Enabled
+                ? LivePreflightRunner.OutcomeKeyMissing
+                : LivePreflightRunner.OutcomeDisabled;
+            return BlockedByGuard(normalizedRole, options, modelId, outcome);
+        }
+
         var preflightState = options.Enabled && options.ApiKeyAvailable
             ? PreflightReady
             : PreflightBlockedByGuard;
@@ -65,18 +73,16 @@ public sealed class EndUserLiveModelTurnService
                 ? EndUserLiveProposalMarkers.NotRun
                 : EndUserLiveProposalMarkers.AwaitingUserInput,
             EndUserLiveProposalMarkers.NotRun,
-            LatestDeterministic,
+            LatestLivePreflight,
             ProviderRequestNotAttempted,
-            options.Enabled ? "live_config_present" : "live_guard_disabled",
-            options.ApiKeyAvailable ? "key_available" : "key_unavailable",
+            PreflightReady,
+            "live_config_present",
             options.CreditGuardEnabled ? "credit_guard_enabled" : "credit_guard_skipped",
-            options.Enabled
-                ? options.ApiKeyAvailable ? "none" : LivePreflightRunner.OutcomeKeyMissing
-                : LivePreflightRunner.OutcomeDisabled,
+            "none",
             modelId,
             null,
-            preflightState == PreflightBlockedByGuard ? "PCH_UI_LIVE_MODEL_GUARDED" : null,
-            preflightState == PreflightBlockedByGuard ? "Live model mode is guarded until explicit provider configuration is present." : null,
+            null,
+            null,
             null,
             null);
     }
@@ -137,6 +143,7 @@ public sealed class EndUserLiveModelTurnService
 
             var proposal = await _turnGateway.BuildAsync(
                 start.ModelInput,
+                prompt,
                 normalizedRole,
                 LiveTurnOptions.FromEnvironment(_environmentFactory()),
                 cancellationToken).ConfigureAwait(false);
@@ -180,7 +187,7 @@ public sealed class EndUserLiveModelTurnService
             IsGuardOutcome(row.OutcomeCode) ? PreflightBlockedByGuard : PreflightBlocked,
             EndUserLiveProposalMarkers.NotRun,
             EndUserLiveProposalMarkers.NotRun,
-            LatestDeterministic,
+            LatestLiveBlocked,
             ProviderRequestStateFor(row.OutcomeCode),
             row.OutcomeCode,
             "live_preflight_blocked",
@@ -195,7 +202,7 @@ public sealed class EndUserLiveModelTurnService
                 "provider",
                 "live-model",
                 "blocked",
-                "Live provider preflight was blocked with a sanitized outcome. Deterministic fallback remains available.",
+                "Live provider preflight was blocked with a sanitized outcome. Deterministic mode is available only as an explicit fallback.",
                 row.OutcomeCode,
                 "evidence-chat-live-model",
                 "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE"),
@@ -213,7 +220,7 @@ public sealed class EndUserLiveModelTurnService
             PreflightBlockedByGuard,
             EndUserLiveProposalMarkers.NotRun,
             EndUserLiveProposalMarkers.NotRun,
-            LatestDeterministic,
+            LatestLiveBlocked,
             ProviderRequestNotAttempted,
             outcome,
             "live_guard_blocked",
@@ -228,7 +235,7 @@ public sealed class EndUserLiveModelTurnService
                 "provider",
                 "live-model",
                 "blocked",
-                "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.",
+                "Live model mode is blocked until explicit provider configuration and a key are present. Deterministic mode is available only as an explicit fallback.",
                 outcome,
                 "evidence-chat-live-model",
                 "PCH_UI_LIVE_MODEL_GUARDED"),
@@ -239,7 +246,7 @@ public sealed class EndUserLiveModelTurnService
             "notice-live-model-guard",
             outcome,
             "blocked",
-            "Live model output was not used. The deterministic planner path stayed active with sanitized failure markers.",
+            "Live model output was not used. Configure a provider key, or switch to deterministic mode explicitly.",
             CanRetry: false,
             CanContinueDeterministic: true);
 
@@ -326,7 +333,7 @@ public sealed class EndUserLiveModelTurnService
             EndUserLiveProposalMarkers.Accepted => LatestLiveAccepted,
             EndUserLiveProposalMarkers.Blocked => LatestLiveBlocked,
             EndUserLiveProposalMarkers.StalePacketOrSession => LatestLiveBlocked,
-            _ => LatestDeterministic
+            _ => LatestLiveBlocked
         };
     }
 
@@ -338,7 +345,7 @@ public sealed class EndUserLiveModelTurnService
             EndUserLiveProposalMarkers.Accepted =>
                 "Live model proposal was accepted by the harness boundary and rendered through the existing planning primitives.",
             EndUserLiveProposalMarkers.Blocked =>
-                "Live model proposal was blocked before application. The deterministic planner path remains available.",
+                "Live model proposal was blocked before application. Deterministic mode is available only as an explicit fallback.",
             EndUserLiveProposalMarkers.StalePacketOrSession =>
                 "Live model proposal was blocked because the provider packet did not match the current session.",
             _ =>
@@ -460,6 +467,7 @@ public interface IEndUserLiveTurnGateway
 {
     Task<EndUserLiveTurnCandidate> BuildAsync(
         LiveModelInputFragment modelInput,
+        string? transientUserPrompt,
         string selectedRole,
         LiveTurnOptions options,
         CancellationToken cancellationToken = default);
@@ -498,6 +506,7 @@ public sealed class EndUserLiveTurnGateway : IEndUserLiveTurnGateway
 
     public async Task<EndUserLiveTurnCandidate> BuildAsync(
         LiveModelInputFragment modelInput,
+        string? transientUserPrompt,
         string selectedRole,
         LiveTurnOptions options,
         CancellationToken cancellationToken = default)
@@ -527,14 +536,12 @@ public sealed class EndUserLiveTurnGateway : IEndUserLiveTurnGateway
             role,
             "en-US",
             [
-                LiveTurnOutputKind.MissionProposal,
-                LiveTurnOutputKind.PendingConfirmationQuestion,
-                LiveTurnOutputKind.ChoiceSet,
-                LiveTurnOutputKind.SummaryFallbackNotice
+                LiveTurnOutputKind.MissionProposal
             ],
             [],
             RequiresFallback: false,
-            ProjectionDigest: "end-user-chat-bounded-live-turn-projection");
+            ProjectionDigest: "end-user-chat-bounded-live-turn-projection",
+            TransientUserPrompt: transientUserPrompt);
 
         try
         {
@@ -754,6 +761,7 @@ public sealed class EndUserLiveTurnGatewayFixture : IEndUserLiveTurnGateway
 
     public Task<EndUserLiveTurnCandidate> BuildAsync(
         LiveModelInputFragment modelInput,
+        string? transientUserPrompt,
         string selectedRole,
         LiveTurnOptions options,
         CancellationToken cancellationToken = default)
@@ -781,6 +789,7 @@ public sealed class EndUserLiveProposalGateway : IEndUserLiveTurnGateway
 
     public Task<EndUserLiveTurnCandidate> BuildAsync(
         LiveModelInputFragment modelInput,
+        string? transientUserPrompt,
         string selectedRole,
         LiveTurnOptions options,
         CancellationToken cancellationToken = default)

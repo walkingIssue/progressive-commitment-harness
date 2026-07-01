@@ -599,3 +599,25 @@ Sprint 021 added the first real multi-turn harness session contract and repaired
 - Stage 7 real availability/pricing adapters beyond Sprint 014's guarded preview boundary.
 - Stage 8 full dependency propagation beyond the first day/slot compiler and candidate selection slices.
 - Stage 9 live/search-backed end-to-end UI run beyond the deterministic Sprint 012 release-smoke run.
+
+## Sprint 022 Target
+
+Sprint 022 must add the missing planner primitive/tool library and route the end-user planner through a real server-side two-turn model loop.
+
+This is the correction sprint for the Sprint 021 failure mode: HTTP/DOM marker smoke and deterministic fallback are no longer allowed to stand in for product readiness.
+
+Target outcomes:
+
+- define versioned planner primitives and composite forms in shared contracts;
+- connect primitive definitions to harness stage gates, graph revisions, mood tokens, local media manifests, and answer schemas;
+- compile a harness-owned `PlannerToolManifest` for each live turn;
+- send that manifest to real server-side OpenAI/OpenRouter-compatible model calls during manual/browser testing;
+- validate model-produced primitive/form invocations in the harness before UI render;
+- render validated primitive instances through Blazor components and a form builder;
+- keep provider calls, prompt assembly, schema generation, and API keys server-side only;
+- remove seeded deterministic cards from live mode;
+- derive the task rail from validated harness/model task decomposition, not static UI arrays;
+- prove one live browser run reaches a second provider turn or records a specific fixed provider/harness/browser failure;
+- consolidate MVP documentation so live, deterministic, mocked, synthetic, and missing surfaces are clear.
+
+Detailed sprint plan: `docs/sprints/sprint-022.md`.

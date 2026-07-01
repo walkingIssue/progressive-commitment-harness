@@ -97,7 +97,7 @@ public sealed class LiveTurnRunner
             var completion = await _completionClient.CompleteAsync(
                 new ModelCompletionRequest(
                     [
-                        new ModelMessage(ModelMessageRole.System, "Return strict JSON for a provider-local live turn. Do not include raw provider payloads, secrets, approval tokens, hold references, booking refs, payment data, or candidate display text."),
+                        new ModelMessage(ModelMessageRole.System, "Return only strict JSON matching the supplied schema. Use only the allowed enum strings from the user message. For the first planning turn, prefer outputKind mission_proposal and place missing facts in missionProposal.pendingConfirmations. Do not include raw provider payloads, secrets, approval tokens, hold references, booking refs, payment data, or candidate display text."),
                         new ModelMessage(ModelMessageRole.User, CreateSanitizedProbe(packet, options))
                     ],
                     options.ModelFor(packet.Role),
@@ -158,15 +158,7 @@ public sealed class LiveTurnRunner
             throw new ProviderEmptyResponseException(completion.Provider, "Live turn provider returned empty content.");
         }
 
-        LiveTurnEnvelope? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<LiveTurnEnvelope>(completion.Content, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            throw new ProviderMalformedResponseException(completion.Provider, "Live turn provider returned malformed JSON.", ex);
-        }
+        var parsed = DeserializeEnvelope(completion.Content, completion.Provider);
 
         if (parsed is null ||
             string.IsNullOrWhiteSpace(parsed.RunId) ||
@@ -204,6 +196,86 @@ public sealed class LiveTurnRunner
             completion.RequestId);
     }
 
+    private static LiveTurnEnvelope? DeserializeEnvelope(string content, string provider)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<LiveTurnEnvelope>(content, JsonOptions);
+        }
+        catch (JsonException directException)
+        {
+            if (!TryExtractJsonObject(content, out var jsonObject))
+            {
+                throw new ProviderMalformedResponseException(provider, "Live turn provider returned malformed JSON.", directException);
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<LiveTurnEnvelope>(jsonObject, JsonOptions);
+            }
+            catch (JsonException extractedException)
+            {
+                throw new ProviderMalformedResponseException(provider, "Live turn provider returned malformed JSON.", extractedException);
+            }
+        }
+    }
+
+    private static bool TryExtractJsonObject(string content, out string jsonObject)
+    {
+        jsonObject = string.Empty;
+        var start = content.IndexOf('{');
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var index = start; index < content.Length; index++)
+        {
+            var current = content[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\' && inString)
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+            {
+                continue;
+            }
+
+            if (current == '{')
+            {
+                depth++;
+            }
+            else if (current == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    jsonObject = content[start..(index + 1)];
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static string CreateSanitizedProbe(LiveTurnPacket packet, LiveTurnOptions options)
     {
         var candidates = packet.TrustedCandidates.Select(candidate => new
@@ -215,6 +287,23 @@ public sealed class LiveTurnRunner
 
         return JsonSerializer.Serialize(new
         {
+            Task = "Convert the transient user request into a provider-local live turn proposal.",
+            RequiredFirstTurnOutputKind = packet.AllowedOutputKinds.Count == 1 && packet.AllowedOutputKinds[0] == LiveTurnOutputKind.MissionProposal
+                ? "mission_proposal"
+                : null,
+            Rules = new[]
+            {
+                "Echo runId, turnId, packetId, sessionId, and role exactly.",
+                "Use missionKind only from: vacation, business, funeral, helping_family.",
+                "Use fieldPath only under /mission/, such as /mission/purpose, /mission/destination_country, /mission/start_date, /mission/end_date.",
+                "Use authoritySource user_stated for facts directly stated by the user.",
+                "Use authoritySource model_inference_pending_confirmation for inferred facts that need confirmation.",
+                "When a date, budget, destination, or preference is uncertain, add a pending confirmation instead of inventing a committed fact.",
+                "Keep commitments empty unless the user clearly stated a fixed commitment.",
+                "Use safe kebab-case ids only, for example evidence-live-user-request and confirmation-trip-dates.",
+                "Set all non-selected top-level output objects to null."
+            },
+            TransientUserRequest = BoundedPrompt(packet.TransientUserPrompt),
             packet.RunId,
             packet.TurnId,
             packet.PacketId,
@@ -226,6 +315,17 @@ public sealed class LiveTurnRunner
             ProviderKind = options.ProviderKind,
             ModelId = options.ModelFor(packet.Role)
         }, JsonOptions);
+    }
+
+    private static string BoundedPrompt(string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return "No user request was supplied.";
+        }
+
+        var trimmed = prompt.Trim();
+        return trimmed.Length <= 1_500 ? trimmed : trimmed[..1_500];
     }
 
     private static LiveMissionProposalResult ToMissionProposal(

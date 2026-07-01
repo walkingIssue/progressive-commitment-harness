@@ -30,6 +30,7 @@ declare function root(): HTMLElement | null;
 declare function transcript(): HTMLElement | null;
 declare function chatMain(): HTMLElement | null;
 declare function scheduleFallback(shouldRun: () => boolean, action: () => void): void;
+declare function suppressReconnectModal(): void;
 declare function setRootState(attrs: Record<string, string>): void;
 declare function selectedModelRole(): string;
 declare function setModelRole(role: string): void;

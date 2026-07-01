@@ -167,14 +167,24 @@ function chatMain(): HTMLElement | null {
 
 function scheduleFallback(shouldRun: () => boolean, action: () => void): void {
   window.setTimeout(() => {
-    if (Boolean((window as unknown as { Blazor?: unknown }).Blazor)) {
-      return;
-    }
-
     if (shouldRun()) {
+      suppressReconnectModal();
       action();
     }
   }, FALLBACK_DELAY_MS);
+}
+
+function suppressReconnectModal(): void {
+  document.documentElement.dataset.endUserChatFallback = "active";
+  const modal = document.getElementById("components-reconnect-modal") as HTMLDialogElement | null;
+  if (!modal) return;
+
+  modal.dataset.endUserFallbackMuted = "true";
+  modal.style.display = "none";
+  modal.style.pointerEvents = "none";
+  if (typeof modal.close === "function" && modal.open) {
+    modal.close();
+  }
 }
 
 function setRootState(attrs: Record<string, string>): void {
@@ -186,26 +196,31 @@ function setRootState(attrs: Record<string, string>): void {
 }
 
 function selectedModelRole(): string {
-  return root()?.dataset.selectedModelRole ?? "deterministic-offline";
+  return root()?.dataset.selectedModelRole ?? "in-harness-action-generator";
 }
 
 function setModelRole(role: string): void {
   const normalized = role === "in-harness-action-generator" || role === "strong-planner"
     ? role
     : "deterministic-offline";
+  const liveSelected = normalized !== "deterministic-offline";
   setRootState({
     "data-selected-model-role": normalized,
-    "data-live-preflight-state": normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard",
-    "data-live-proposal-state": normalized === "deterministic-offline" ? "not_requested" : "not_run",
+    "data-live-preflight-state": liveSelected ? "blocked_by_guard" : "deterministic_default",
+    "data-live-proposal-state": liveSelected ? "not_run" : "not_requested",
     "data-harness-validation-state": "not_run",
-    "data-latest-turn-source": "deterministic_fallback",
+    "data-latest-turn-source": liveSelected ? "live_model_proposal_blocked" : "deterministic_fallback",
     "data-provider-request-state": "not_attempted",
+    "data-provider-outcome": liveSelected ? "live_preflight_disabled" : "deterministic_fallback_active",
+    "data-provider-health": liveSelected ? "live_guard_blocked" : "offline_deterministic",
+    "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",
+    "data-blocked-reason": liveSelected ? "live_preflight_disabled" : "",
   });
   document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-selected-model-role", normalized);
-  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-live-preflight-state", normalized === "deterministic-offline" ? "deterministic_default" : "blocked_by_guard");
-  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-live-proposal-state", normalized === "deterministic-offline" ? "not_requested" : "not_run");
+  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-live-preflight-state", liveSelected ? "blocked_by_guard" : "deterministic_default");
+  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-live-proposal-state", liveSelected ? "not_run" : "not_requested");
   document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-harness-validation-state", "not_run");
-  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-latest-turn-source", "deterministic_fallback");
+  document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-latest-turn-source", liveSelected ? "live_model_proposal_blocked" : "deterministic_fallback");
   document.querySelector<HTMLElement>("[data-model-status-strip='end-user']")?.setAttribute("data-provider-request-state", "not_attempted");
   document.querySelectorAll<HTMLElement>("[data-model-role-option]").forEach((button) => {
     const isSelected = button.dataset.modelRoleOption === normalized;
@@ -347,32 +362,44 @@ function sendPrompt(): void {
   const promptLength = prompt?.value.trim().length ?? 0;
   const role = selectedModelRole();
   const liveSelected = role !== "deterministic-offline";
+  const livePreflightState = root()?.dataset.livePreflightState;
+  const liveConfigured = liveSelected && (livePreflightState === "preflight_ready" || livePreflightState === "preflight_passed");
+  const liveFallbackOutcome = liveConfigured ? "browser_circuit_disconnected" : "live_preflight_disabled";
   document.querySelector<HTMLElement>("[data-composer-layout='expanded_start']")?.setAttribute("hidden", "");
   setRootState({
-    "data-final-state": "applied",
+    "data-final-state": liveSelected ? "live_model_blocked" : "applied",
     "data-composer-state": "collapsed_drawer",
     "data-ask-drawer": "closed",
-    "data-provider-outcome": liveSelected ? "live_preflight_disabled" : "deterministic_fallback_active",
-    "data-live-preflight-state": liveSelected ? "blocked_by_guard" : "deterministic_default",
+    "data-provider-outcome": liveSelected ? liveFallbackOutcome : "deterministic_fallback_active",
+    "data-live-preflight-state": liveSelected ? livePreflightState ?? "blocked_by_guard" : "deterministic_default",
     "data-live-proposal-state": liveSelected ? "not_run" : "not_requested",
     "data-harness-validation-state": "not_run",
-    "data-latest-turn-source": "deterministic_fallback",
+    "data-latest-turn-source": liveSelected ? "live_model_proposal_blocked" : "deterministic_fallback",
     "data-provider-request-state": "not_attempted",
     "data-live-turn-attempt-count": liveSelected ? "1" : "0",
     "data-live-second-turn-state": "not_started",
-    "data-error-code": liveSelected ? "PCH_UI_LIVE_MODEL_GUARDED" : "",
-    "data-blocked-reason": liveSelected ? "live_preflight_disabled" : "",
+    "data-error-code": liveSelected ? "PCH_UI_BROWSER_CIRCUIT_DISCONNECTED" : "",
+    "data-blocked-reason": liveSelected ? liveFallbackOutcome : "",
   });
   toggleDrawer(false);
   appendTurn("turn-user-1", "user", "prompt", "submitted", `Trip request accepted with ${promptLength} characters. Raw prompt text is kept out of transcript storage.`, "prompt_received");
-  appendTurn("turn-provider-role-status", "provider", "role-status", "applied", "Offline deterministic model role is active; live provider roles are disabled for this run.", "model_role_status_ready");
+  appendTurn(
+    "turn-provider-role-status",
+    "provider",
+    "role-status",
+    liveSelected ? "blocked" : "applied",
+    liveSelected
+      ? "Live in-harness mode is selected, but the browser circuit is disconnected; no fallback provider request was attempted in this tab."
+      : "Offline deterministic model role is active by explicit selection.",
+    "model_role_status_ready",
+  );
   if (liveSelected) {
-    appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "Live model mode is guarded until explicit provider configuration is present. The planner continued with deterministic fallback.", "live_preflight_disabled", "evidence-chat-live-model");
-    appendTurn("turn-live-work-item-1", "assistant", "live-blocked", "blocked", "Live model output was blocked before application; deterministic planning remains available.", "live_preflight_disabled", "evidence-chat-live-model");
+    appendTurn("turn-live-model-run", "provider", "live-model", "blocked", "The browser circuit is disconnected, so this tab could not send the live provider request. The server live path remains configured.", liveFallbackOutcome, "evidence-chat-live-model");
+    appendTurn("turn-live-work-item-1", "assistant", "live-blocked", "blocked", "Live model output was not used in this browser fallback. Reload in a healthy Blazor circuit or switch to deterministic mode explicitly.", liveFallbackOutcome, "evidence-chat-live-model");
   } else {
     appendTurn("turn-assistant-final", "assistant", "final", "applied", "Final deterministic trip plan is ready with canonical evidence markers.", "golden_trace_complete", "evidence-chat-purpose");
+    ensureWorkObjects();
   }
-  ensureWorkObjects();
   if (!document.querySelector("[data-ask-action='open']")) {
     document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<button type="button" class="ask-tab" data-ask-action="open" aria-label="Open Ask drawer">Ask</button>`);
   }
@@ -408,7 +435,7 @@ function selectCandidate(candidateId: string): void {
       "data-live-turn-attempt-count": "2",
       "data-live-second-turn-state": "blocked",
     });
-    appendTurn("turn-live-model-followup", "provider", "live-model-followup", "blocked", "A second live turn was blocked with the canonical live-turn provider diagnostic. Deterministic planning remains available.", "live_turn_provider_unknown_error", "evidence-chat-live-model", candidate.id);
+    appendTurn("turn-live-model-followup", "provider", "live-model-followup", "blocked", "A second live turn was blocked with the canonical live-turn provider diagnostic.", "live_turn_provider_unknown_error", "evidence-chat-live-model", candidate.id);
     document.querySelector("[data-planning-timeline-rail]")?.insertAdjacentHTML("beforeend", timelineItem("timeline-live-second-turn", "task", "live-model-followup", "blocked", "Second live turn pending", "The selected option is preserved while the canonical multi-turn runner integration is pending.", "turn-live-model-followup", candidate.media, `data-day-id="day-japan-02" data-slot-id="slot-live-followup" data-task-id="task-itinerary" data-candidate-id="${candidate.id}" data-decision-id="decision-live-followup-${candidate.id}" data-evidence-id="${candidate.evidence}"`));
   }
 }
@@ -443,7 +470,7 @@ function toggleDrawer(open: boolean): void {
   document.querySelector("[data-ask-drawer-panel]")?.remove();
   setAskTabVisible(!open);
   if (!open) return;
-  document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<aside class="ask-drawer" data-ask-drawer-panel="open" aria-label="Ask drawer"><div><h2>Ask the agent</h2><button type="button" data-ask-action="close" aria-label="Close Ask drawer">Close</button></div><label for="trip-prompt-drawer">Follow-up prompt</label><textarea id="trip-prompt-drawer" data-prompt-entry="trip-drawer" aria-label="Follow-up trip prompt" placeholder="Ask, refine, or describe edits" rows="5"></textarea><button type="button" class="send-button" data-send-action="deterministic-drawer" aria-label="Send deterministic follow-up prompt">Send</button></aside>`);
+  document.querySelector(".chat-main")?.insertAdjacentHTML("beforeend", `<aside class="ask-drawer" data-ask-drawer-panel="open" aria-label="Ask drawer"><div><h2>Ask the agent</h2><button type="button" data-ask-action="close" aria-label="Close Ask drawer">Close</button></div><label for="trip-prompt-drawer">Follow-up prompt</label><textarea id="trip-prompt-drawer" data-prompt-entry="trip-drawer" aria-label="Follow-up trip prompt" placeholder="Ask, refine, or describe edits" rows="5"></textarea><button type="button" class="send-button" data-send-action="planner-drawer" aria-label="Send follow-up prompt">Send</button></aside>`);
   window.requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("[data-prompt-entry='trip-drawer']")?.focus());
 }
 
@@ -541,7 +568,7 @@ function handleChatInteraction(target: EventTarget | null): void {
     );
   }
 
-  if (action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
+  if (action.sendAction === "planner" || action.sendAction === "planner-drawer" || action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
     const beforeFinalState = root()?.dataset.finalState;
     const beforeTurnCount = transcript()?.dataset.turnCount;
     scheduleFallback(
@@ -629,6 +656,12 @@ function handleChatInteraction(target: EventTarget | null): void {
 }
 
 document.documentElement.dataset.endUserChatHelper = "ready";
+window.setTimeout(() => {
+  const modal = document.getElementById("components-reconnect-modal") as HTMLDialogElement | null;
+  if (modal?.open || modal?.className.includes("components-reconnect")) {
+    suppressReconnectModal();
+  }
+}, FALLBACK_DELAY_MS);
 document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);
 document.addEventListener("pointerdown", (event) => closeDrawerOnOutsidePointer(event.target), true);
 document.addEventListener("pointerup", interceptChatAction, true);

@@ -15,7 +15,9 @@ public sealed record LiveTurnPacket(
     IReadOnlyList<LiveTurnOutputKind> AllowedOutputKinds,
     IReadOnlyList<LiveTurnTrustedCandidate> TrustedCandidates,
     bool RequiresFallback = false,
-    string? ProjectionDigest = null);
+    string? ProjectionDigest = null,
+    [property: JsonIgnore]
+    string? TransientUserPrompt = null);
 
 public sealed record LiveTurnTrustedCandidate(
     string CandidateId,
@@ -44,9 +46,13 @@ public sealed record LiveTurnOptions(
                 BoolValue(environment, "PCH_LIVE_TURN_ENABLED"),
             ApiKeyAvailable: BoolValue(environment, "PCH_LIVE_MODEL_KEY_AVAILABLE") ||
                 HasValue(environment, "OPENROUTER_API_KEY") ||
+                HasValue(environment, "OPENROUTER_API_KEY_FILE") ||
                 HasValue(environment, "OPENAI_API_KEY") ||
+                HasValue(environment, "OPENAI_API_KEY_FILE") ||
                 HasValue(environment, "XAI_API_KEY") ||
-                HasValue(environment, "GROK_API_KEY"),
+                HasValue(environment, "XAI_API_KEY_FILE") ||
+                HasValue(environment, "GROK_API_KEY") ||
+                HasValue(environment, "GROK_API_KEY_FILE"),
             CreditGuardEnabled: !BoolValue(environment, "PCH_LIVE_MODEL_SKIP_CREDIT_GUARD"),
             StructuredOutputSupported: !BoolValue(environment, "PCH_LIVE_MODEL_SCHEMA_UNSUPPORTED"),
             AllowPaidProviderFallback: BoolValue(environment, "PCH_LIVE_MODEL_ALLOW_PAID_FALLBACK"),

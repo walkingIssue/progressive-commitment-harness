@@ -7,11 +7,13 @@ namespace Pch.UI.Features.EndUserChat;
 public sealed class EndUserChatService
 {
     public const string DefaultPrompt = "Plan a calm family trip to Japan with one quiet day and no real bookings.";
-    public const string ModeLabel = "Deterministic offline";
-    public const string ModeState = "offline-deterministic";
+    public const string ModeLabel = "Live in-harness";
+    public const string ModeState = "live-in-harness";
     public const string RawAbsenceState = "verified";
     public const string ProviderOutcomeFallback = "deterministic_fallback_active";
     public const string ApprovalRequiredCode = "approval_required_preview";
+    private const string DeterministicModeLabel = "Deterministic offline";
+    private const string DeterministicModeState = "offline-deterministic";
 
     private const string PendingConfirmationCode = "end_user_chat_pending_confirmation";
     private const string FormId = "form-trip-basics";
@@ -44,39 +46,43 @@ public sealed class EndUserChatService
         _liveModelTurnService = liveModelTurnService ?? new EndUserLiveModelTurnService();
     }
 
-    public EndUserChatState CreateInitialState()
+    public EndUserChatState CreateInitialState(string selectedModelRole = EndUserModelRoleSelection.InHarnessActionGenerator)
     {
+        var normalizedRole = EndUserModelRoleSelection.Normalize(selectedModelRole);
+        var liveSnapshot = _liveModelTurnService.CreateSnapshot(normalizedRole);
         return new(
-            ModeLabel,
-            ModeState,
+            ModeLabelFor(liveSnapshot),
+            ModeStateFor(liveSnapshot),
             ModelRoleStatusEvaluator.OutcomeReady,
-            ActiveRoleMarker(ModelRoleKind.DeterministicOffline),
-            EndUserModelRoleSelection.DeterministicOffline,
-            "none",
-            EndUserLiveModelTurnService.PreflightDeterministic,
-            EndUserLiveProposalMarkers.NotRequested,
-            EndUserLiveProposalMarkers.NotRun,
-            EndUserLiveModelTurnService.LatestDeterministic,
-            EndUserLiveModelTurnService.ProviderRequestNotAttempted,
-            ProviderOutcomeFallback,
-            "offline_ready",
-            "credits_not_used",
-            "none",
+            normalizedRole == EndUserModelRoleSelection.DeterministicOffline
+                ? ActiveRoleMarker(ModelRoleKind.DeterministicOffline)
+                : normalizedRole,
+            liveSnapshot.SelectedModelRole,
+            liveSnapshot.SelectedProvider,
+            liveSnapshot.LivePreflightState,
+            liveSnapshot.LiveProposalState,
+            liveSnapshot.HarnessValidationState,
+            liveSnapshot.LatestTurnSource,
+            liveSnapshot.ProviderRequestState,
+            liveSnapshot.ProviderOutcome,
+            liveSnapshot.ProviderHealth,
+            liveSnapshot.CreditState,
+            liveSnapshot.LastProviderFailureCode,
             "not_requested",
             RawAbsenceState,
             DefaultPrompt,
             "idle",
             "idle",
-            null,
-            null,
+            liveSnapshot.ErrorCode,
+            liveSnapshot.BlockedReason,
             [
                 new(
                     "turn-system-ready",
                     "system",
                     "mode",
                     "ready",
-                    "Deterministic offline mode is active. Live providers, bookings, holds, and payments are disabled for this run.",
-                    ModeState,
+                    InitialSystemText(liveSnapshot),
+                    ModeStateFor(liveSnapshot),
                     null,
                     null),
                 new(
@@ -84,7 +90,7 @@ public sealed class EndUserChatService
                     "assistant",
                     "guidance",
                     "ready",
-                    "Tell me the trip you want to shape, then send it into the planner.",
+                    InitialGuidanceText(liveSnapshot),
                     null,
                     null,
                     null)
@@ -93,7 +99,7 @@ public sealed class EndUserChatService
             null,
             null,
             null,
-            FallbackNotice(),
+            liveSnapshot.FailureNotice ?? (normalizedRole == EndUserModelRoleSelection.DeterministicOffline ? FallbackNotice() : null),
             [],
             [],
             []);
@@ -101,7 +107,7 @@ public sealed class EndUserChatService
 
     public async Task<EndUserChatState> SendAsync(
         string prompt,
-        string selectedModelRole = EndUserModelRoleSelection.DeterministicOffline,
+        string selectedModelRole = EndUserModelRoleSelection.InHarnessActionGenerator,
         CancellationToken cancellationToken = default)
     {
         var normalizedPrompt = NormalizePrompt(prompt);
@@ -109,10 +115,16 @@ public sealed class EndUserChatService
         var liveSnapshot = await _liveModelTurnService
             .TryRunAsync(normalizedPrompt, normalizedRole, cancellationToken)
             .ConfigureAwait(false);
+        var roleStatus = await EvaluateRoleStatus(cancellationToken).ConfigureAwait(false);
+        if (IsLiveMode(normalizedRole))
+        {
+            return BuildLiveState(normalizedPrompt, liveSnapshot, roleStatus, BuildLiveTurns(normalizedPrompt, roleStatus, liveSnapshot));
+        }
+
         var scenario = SelectScenario(normalizedPrompt);
         var trace = _traceRunner.Run(ScriptFor(scenario));
-        var roleStatus = await EvaluateRoleStatus(cancellationToken).ConfigureAwait(false);
         var turns = BuildTraceTurns(normalizedPrompt, scenario, trace, roleStatus, liveSnapshot);
+
         var finalState = FinalStateFor(scenario, trace);
         var errorCode = ErrorCodeFor(scenario, trace) ?? liveSnapshot.ErrorCode;
         var blockedReason = trace.IsBlocked ? trace.Code : liveSnapshot.BlockedReason;
@@ -155,6 +167,36 @@ public sealed class EndUserChatService
 
     public EndUserChatState Send(string prompt) =>
         SendAsync(prompt).GetAwaiter().GetResult();
+
+    public EndUserChatState ApplyModelRole(EndUserChatState state, string selectedModelRole)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        var normalizedRole = EndUserModelRoleSelection.Normalize(selectedModelRole);
+        var liveSnapshot = _liveModelTurnService.CreateSnapshot(normalizedRole);
+        return state with
+        {
+            ModeLabel = ModeLabelFor(liveSnapshot),
+            ModeState = ModeStateFor(liveSnapshot),
+            RoleStatusActiveRole = normalizedRole == EndUserModelRoleSelection.DeterministicOffline
+                ? ActiveRoleMarker(ModelRoleKind.DeterministicOffline)
+                : normalizedRole,
+            SelectedModelRole = liveSnapshot.SelectedModelRole,
+            SelectedProvider = liveSnapshot.SelectedProvider,
+            LivePreflightState = liveSnapshot.LivePreflightState,
+            LiveProposalState = liveSnapshot.LiveProposalState,
+            HarnessValidationState = liveSnapshot.HarnessValidationState,
+            LatestTurnSource = liveSnapshot.LatestTurnSource,
+            ProviderRequestState = liveSnapshot.ProviderRequestState,
+            ProviderOutcome = liveSnapshot.ProviderOutcome,
+            ProviderHealth = liveSnapshot.ProviderHealth,
+            CreditState = liveSnapshot.CreditState,
+            LastProviderFailureCode = liveSnapshot.LastProviderFailureCode,
+            ErrorCode = liveSnapshot.ErrorCode,
+            BlockedReason = liveSnapshot.BlockedReason,
+            ProviderFailure = liveSnapshot.FailureNotice ?? (normalizedRole == EndUserModelRoleSelection.DeterministicOffline ? FallbackNotice() : null)
+        };
+    }
 
     public EndUserChatState SubmitForm(EndUserChatState state)
     {
@@ -200,25 +242,26 @@ public sealed class EndUserChatService
             candidate.CandidateId,
             candidate.Category));
 
-        if (IsLiveMode(state.SelectedModelRole))
+        var isLiveMode = IsLiveMode(state.SelectedModelRole);
+        var planningTimeline = TimelineFromState(state, candidate, "selected");
+        if (isLiveMode)
         {
-            turns = AppendTurn(turns, LiveSecondTurnBlocked(candidate.CandidateId));
+            turns = UpsertTurn(turns, LiveSecondTurnBlocked(candidate.CandidateId));
+            planningTimeline = UpsertTimeline(planningTimeline, LiveSecondTurnTimeline(candidate));
         }
 
         return state with
         {
             ComposerState = "awaiting_user_input",
-            FinalState = IsLiveMode(state.SelectedModelRole) ? "live_second_turn_blocked" : "candidate_selected",
+            FinalState = isLiveMode ? "live_second_turn_blocked" : "candidate_selected",
             ChoiceSet = ChoiceSet("selected", candidateId, null),
             Tasks = UpdateTask(state.Tasks, "task-itinerary", "accepted", 72, "Candidate selected"),
             PlanTrail = PlanTrailFromState(state, candidate, "selected"),
-            PlanningTimeline = IsLiveMode(state.SelectedModelRole)
-                ? AppendTimeline(TimelineFromState(state, candidate, "selected"), LiveSecondTurnTimeline(candidate))
-                : TimelineFromState(state, candidate, "selected"),
-            ProviderRequestState = IsLiveMode(state.SelectedModelRole) ? "second_turn_blocked" : state.ProviderRequestState,
-            ProviderOutcome = IsLiveMode(state.SelectedModelRole) ? "live_turn_provider_unknown_error" : state.ProviderOutcome,
-            ProviderHealth = IsLiveMode(state.SelectedModelRole) ? "harness_multiturn_provider_blocked" : state.ProviderHealth,
-            LastProviderFailureCode = IsLiveMode(state.SelectedModelRole) ? "provider_unknown_error" : state.LastProviderFailureCode,
+            PlanningTimeline = planningTimeline,
+            ProviderRequestState = isLiveMode ? "second_turn_blocked" : state.ProviderRequestState,
+            ProviderOutcome = isLiveMode ? "live_turn_provider_unknown_error" : state.ProviderOutcome,
+            ProviderHealth = isLiveMode ? "harness_multiturn_provider_blocked" : state.ProviderHealth,
+            LastProviderFailureCode = isLiveMode ? "provider_unknown_error" : state.LastProviderFailureCode,
             Turns = turns
         };
     }
@@ -351,6 +394,95 @@ public sealed class EndUserChatService
         return turns;
     }
 
+    private static IReadOnlyList<EndUserChatTurn> BuildLiveTurns(
+        string normalizedPrompt,
+        SanitizedModelRoleStatusEvalRow roleStatus,
+        EndUserLiveModelSnapshot liveSnapshot)
+    {
+        var isAccepted = liveSnapshot.IsLiveAccepted();
+        var turns = new List<EndUserChatTurn>
+        {
+            new(
+                "turn-user-1",
+                "user",
+                "prompt",
+                "submitted",
+                PromptSummary(normalizedPrompt),
+                "prompt_received",
+                null,
+                null),
+            new(
+                "turn-provider-role-status",
+                "provider",
+                "role-status",
+                roleStatus.Passed ? "applied" : "blocked",
+                roleStatus.Passed
+                    ? "Live model role posture was evaluated before the provider turn."
+                    : $"Model role posture blocked with {roleStatus.OutcomeCode}.",
+                roleStatus.OutcomeCode,
+                null,
+                null)
+        };
+
+        if (liveSnapshot.Turn is not null)
+        {
+            turns.Add(liveSnapshot.Turn);
+        }
+
+        turns.Add(new(
+            "turn-live-work-item-1",
+            "assistant",
+            isAccepted ? "live-work-item" : "live-blocked",
+            isAccepted ? "applied" : "blocked",
+            LiveWorkItemText(liveSnapshot),
+            liveSnapshot.ProviderOutcome,
+            "evidence-chat-live-model",
+            liveSnapshot.ErrorCode));
+
+        return turns;
+    }
+
+    private static EndUserChatState BuildLiveState(
+        string normalizedPrompt,
+        EndUserLiveModelSnapshot liveSnapshot,
+        SanitizedModelRoleStatusEvalRow roleStatus,
+        IReadOnlyList<EndUserChatTurn> turns)
+    {
+        var isAccepted = liveSnapshot.IsLiveAccepted();
+        return new(
+            ModeLabelFor(liveSnapshot),
+            ModeStateFor(liveSnapshot),
+            roleStatus.OutcomeCode,
+            liveSnapshot.SelectedModelRole,
+            liveSnapshot.SelectedModelRole,
+            liveSnapshot.SelectedProvider,
+            liveSnapshot.LivePreflightState,
+            liveSnapshot.LiveProposalState,
+            liveSnapshot.HarnessValidationState,
+            liveSnapshot.LatestTurnSource,
+            liveSnapshot.ProviderRequestState,
+            liveSnapshot.ProviderOutcome,
+            liveSnapshot.ProviderHealth,
+            liveSnapshot.CreditState,
+            liveSnapshot.LastProviderFailureCode,
+            "not_requested",
+            RawAbsenceState,
+            string.Empty,
+            "awaiting_user_input",
+            isAccepted ? "live_model_applied" : "live_model_blocked",
+            liveSnapshot.ErrorCode,
+            liveSnapshot.BlockedReason,
+            turns,
+            LiveTasks(liveSnapshot),
+            isAccepted ? FormCard("draft") : null,
+            null,
+            null,
+            liveSnapshot.FailureNotice,
+            LiveEvidence(liveSnapshot),
+            LivePlanTrail(liveSnapshot),
+            LiveTimeline(liveSnapshot));
+    }
+
     private static EndUserChatTurn LiveSecondTurnBlocked(string candidateId) =>
         new(
             "turn-live-model-followup",
@@ -395,8 +527,25 @@ public sealed class EndUserChatService
             return "Live model output reached the harness, but validation blocked it with a fixed sanitized result.";
         }
 
-        return "Live model output was blocked before application; deterministic planning remains available.";
+        return "Live model output was blocked before application. Deterministic mode is available only as an explicit fallback.";
     }
+
+    private static string InitialSystemText(EndUserLiveModelSnapshot liveSnapshot)
+    {
+        if (liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline)
+        {
+            return "Deterministic offline mode is active by explicit selection. Real bookings, holds, and payments remain disabled.";
+        }
+
+        return liveSnapshot.LivePreflightState == EndUserLiveModelTurnService.PreflightReady
+            ? "Live in-harness model planning is selected. Real bookings, holds, and payments remain approval-gated and mocked."
+            : "Live in-harness model planning is selected, but provider configuration is missing or blocked. No deterministic plan will run unless selected explicitly.";
+    }
+
+    private static string InitialGuidanceText(EndUserLiveModelSnapshot liveSnapshot) =>
+        liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
+            ? "Tell me the trip you want to shape, then send it through the deterministic harness fixture."
+            : "Tell me the trip you want to shape. The next response should come from the configured live model path, or show a live-provider block.";
 
     private async Task<SanitizedModelRoleStatusEvalRow> EvaluateRoleStatus(CancellationToken cancellationToken)
     {
@@ -513,9 +662,62 @@ public sealed class EndUserChatService
             "notice-deterministic-fallback",
             ProviderOutcomeFallback,
             "deterministic",
-            "Live provider calls are disabled for required smoke; the deterministic transcript remains available.",
+            "Deterministic fixture mode is active by explicit selection. Real booking, hold, and payment calls remain mocked.",
             CanRetry: false,
             CanContinueDeterministic: true);
+
+    private static IReadOnlyList<EndUserTask> LiveTasks(EndUserLiveModelSnapshot liveSnapshot)
+    {
+        var state = liveSnapshot.IsLiveAccepted() ? "active" : "blocked";
+        var label = liveSnapshot.IsLiveAccepted() ? "Live applied" : "Live blocked";
+        return
+        [
+            new("task-live-model", "Live model turn", state, liveSnapshot.IsLiveAccepted() ? 70 : 20, label, [new("live-provider-turn", "Run live model through harness", state)], true),
+            new("task-itinerary", "Itinerary options", liveSnapshot.IsLiveAccepted() ? "needs_user" : "not_started", liveSnapshot.IsLiveAccepted() ? 35 : 0, liveSnapshot.IsLiveAccepted() ? "Needs review" : "Waiting", ItinerarySteps(liveSnapshot.IsLiveAccepted() ? "active" : "not_started"), true),
+            new("task-approval", "Book and confirm", "not_started", 0, "Approval gated", [new("approval-mock-hold", "Review mock hold preview", "not_started")], false)
+        ];
+    }
+
+    private static IReadOnlyList<EndUserEvidenceItem> LiveEvidence(EndUserLiveModelSnapshot liveSnapshot) =>
+    [
+        new("evidence-chat-live-model", "Live model boundary", "provider", liveSnapshot.ProviderOutcome),
+        new("evidence-chat-no-booking", "Booking and payment side effects remain mocked", "approval", ApprovalRequiredCode)
+    ];
+
+    private static IReadOnlyList<EndUserPlanTrailItem> LivePlanTrail(EndUserLiveModelSnapshot liveSnapshot) =>
+    [
+        new(
+            "trail-live-model-turn",
+            "live-model",
+            liveSnapshot.IsLiveAccepted() ? "accepted" : "blocked",
+            liveSnapshot.IsLiveAccepted() ? "Live model turn applied" : "Live model turn blocked",
+            null,
+            "evidence-chat-live-model",
+            MediaAsset(liveSnapshot.IsLiveAccepted() ? "calm_morning" : "logistics_transit"),
+            liveSnapshot.ProviderOutcome)
+    ];
+
+    private static IReadOnlyList<EndUserPlanningTimelineItem> LiveTimeline(EndUserLiveModelSnapshot liveSnapshot) =>
+    [
+        new(
+            "timeline-live-model-turn",
+            "task",
+            "live-model",
+            liveSnapshot.IsLiveAccepted() ? "accepted" : "blocked",
+            liveSnapshot.IsLiveAccepted() ? "Live model applied" : "Live model blocked",
+            liveSnapshot.IsLiveAccepted()
+                ? "The provider result reached the harness boundary."
+                : "The provider result did not reach an accepted harness planning turn.",
+            null,
+            null,
+            "task-live-model",
+            null,
+            "decision-live-model-turn",
+            "evidence-chat-live-model",
+            "turn-live-model-run",
+            MediaAsset(liveSnapshot.IsLiveAccepted() ? "calm_morning" : "logistics_transit"),
+            liveSnapshot.ProviderOutcome)
+    ];
 
     private static IReadOnlyList<EndUserEvidenceItem> EvidenceFrom(GoldenTurnTraceResult trace)
     {
@@ -626,6 +828,11 @@ public sealed class EndUserChatService
         EndUserPlanningTimelineItem item) =>
         items.Concat([item]).ToArray();
 
+    private static IReadOnlyList<EndUserPlanningTimelineItem> UpsertTimeline(
+        IReadOnlyList<EndUserPlanningTimelineItem> items,
+        EndUserPlanningTimelineItem item) =>
+        items.Where(existing => existing.TimelineId != item.TimelineId).Concat([item]).ToArray();
+
     private static IReadOnlyList<EndUserTask> UpdateTask(
         IReadOnlyList<EndUserTask> tasks,
         string taskId,
@@ -647,6 +854,11 @@ public sealed class EndUserChatService
         IReadOnlyList<EndUserChatTurn> turns,
         EndUserChatTurn turn) =>
         turns.Concat([turn]).ToArray();
+
+    private static IReadOnlyList<EndUserChatTurn> UpsertTurn(
+        IReadOnlyList<EndUserChatTurn> turns,
+        EndUserChatTurn turn) =>
+        turns.Where(existing => existing.TurnId != turn.TurnId).Concat([turn]).ToArray();
 
     private static EndUserChatState BlockWithFixedError(
         EndUserChatState state,
@@ -822,15 +1034,21 @@ public sealed class EndUserChatService
 
     private static string ModeLabelFor(EndUserLiveModelSnapshot liveSnapshot) =>
         liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
-            ? ModeLabel
-            : "Live guarded with deterministic fallback";
+            ? DeterministicModeLabel
+            : liveSnapshot.IsLiveAccepted()
+                ? "Live in-harness attached"
+                : liveSnapshot.LivePreflightState == EndUserLiveModelTurnService.PreflightReady
+                    ? "Live in-harness ready"
+                    : "Live in-harness blocked";
 
     private static string ModeStateFor(EndUserLiveModelSnapshot liveSnapshot) =>
         liveSnapshot.SelectedModelRole == EndUserModelRoleSelection.DeterministicOffline
-            ? ModeState
+            ? DeterministicModeState
             : liveSnapshot.IsLiveAccepted()
                 ? "live-model-attached"
-                : "live-guarded-fallback";
+                : liveSnapshot.LivePreflightState == EndUserLiveModelTurnService.PreflightReady
+                    ? "live-model-ready"
+                    : "live-model-blocked";
 
     private static bool IsLiveMode(string selectedModelRole) =>
         selectedModelRole != EndUserModelRoleSelection.DeterministicOffline;

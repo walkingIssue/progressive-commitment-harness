@@ -35,9 +35,13 @@ public sealed record LiveMissionProposalOptions(
                 BoolValue(environment, "PCH_LIVE_MISSION_PROPOSAL_ENABLED"),
             ApiKeyAvailable: BoolValue(environment, "PCH_LIVE_MODEL_KEY_AVAILABLE") ||
                 HasValue(environment, "OPENROUTER_API_KEY") ||
+                HasValue(environment, "OPENROUTER_API_KEY_FILE") ||
                 HasValue(environment, "OPENAI_API_KEY") ||
+                HasValue(environment, "OPENAI_API_KEY_FILE") ||
                 HasValue(environment, "XAI_API_KEY") ||
-                HasValue(environment, "GROK_API_KEY"),
+                HasValue(environment, "XAI_API_KEY_FILE") ||
+                HasValue(environment, "GROK_API_KEY") ||
+                HasValue(environment, "GROK_API_KEY_FILE"),
             CreditGuardEnabled: !BoolValue(environment, "PCH_LIVE_MODEL_SKIP_CREDIT_GUARD"),
             StructuredOutputSupported: !BoolValue(environment, "PCH_LIVE_MODEL_SCHEMA_UNSUPPORTED"),
             AllowPaidProviderFallback: BoolValue(environment, "PCH_LIVE_MODEL_ALLOW_PAID_FALLBACK"),

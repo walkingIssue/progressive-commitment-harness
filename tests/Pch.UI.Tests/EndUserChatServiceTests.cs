@@ -14,31 +14,59 @@ namespace Pch.UI.Tests;
 public sealed class EndUserChatServiceTests
 {
     [Fact]
-    public void InitialStateShowsDeterministicOfflineModeAndAccessibleTranscriptSeed()
+    public void InitialStateShowsLiveModeBlockedWhenProviderConfigIsMissing()
     {
         var service = new EndUserChatService();
 
         var state = service.CreateInitialState();
 
-        Assert.Equal("offline-deterministic", state.ModeState);
+        Assert.Equal("live-model-blocked", state.ModeState);
         Assert.Equal(ModelRoleStatusEvaluator.OutcomeReady, state.RoleStatusOutcome);
-        Assert.Equal("deterministic-offline", state.RoleStatusActiveRole);
-        Assert.Equal("deterministic-offline", state.SelectedModelRole);
-        Assert.Equal("deterministic_default", state.LivePreflightState);
-        Assert.Equal("not_requested", state.LiveProposalState);
+        Assert.Equal("in-harness-action-generator", state.RoleStatusActiveRole);
+        Assert.Equal("in-harness-action-generator", state.SelectedModelRole);
+        Assert.Equal("blocked_by_guard", state.LivePreflightState);
+        Assert.Equal("not_run", state.LiveProposalState);
         Assert.Equal("not_run", state.HarnessValidationState);
-        Assert.Equal("deterministic_fallback", state.LatestTurnSource);
+        Assert.Equal("live_model_proposal_blocked", state.LatestTurnSource);
         Assert.Equal("not_attempted", state.ProviderRequestState);
         Assert.Equal("verified", state.RawAbsenceState);
         Assert.Equal("idle", state.FinalState);
         Assert.Equal("not_requested", state.ApprovalState);
-        Assert.Equal("deterministic_fallback_active", state.ProviderOutcome);
+        Assert.Equal("live_preflight_disabled", state.ProviderOutcome);
+        Assert.Equal("PCH_UI_LIVE_MODEL_GUARDED", state.ErrorCode);
+        Assert.Equal("notice-live-model-guard", state.ProviderFailure?.NoticeId);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-system-ready"
             && turn.Role == "system"
-            && turn.OutcomeCode == "offline-deterministic");
+            && turn.OutcomeCode == "live-model-blocked");
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-assistant-start"
             && turn.Role == "assistant"
             && turn.State == "ready");
+    }
+
+    [Fact]
+    public void InitialStateTreatsConfiguredKeyFileAsLiveReady()
+    {
+        var service = new EndUserChatService(
+            new GoldenTurnTraceRunner(),
+            new ModelRoleStatusEvaluator(new Pch.Providers.Mock.MockModelRoleStatusSource()),
+            new EndUserLiveModelTurnService(() => new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["PCH_LIVE_MODEL_ENABLED"] = "true",
+                ["PCH_LIVE_MODEL_PROVIDER"] = "openrouter",
+                ["PCH_LIVE_IN_HARNESS_MODEL"] = "qwen/qwen3-14b",
+                ["OPENROUTER_API_KEY_FILE"] = "C:\\safe\\openrouter.key"
+            }));
+
+        var state = service.CreateInitialState(EndUserModelRoleSelection.InHarnessActionGenerator);
+
+        Assert.Equal("live-model-ready", state.ModeState);
+        Assert.Equal("preflight_ready", state.LivePreflightState);
+        Assert.Equal("awaiting_user_input", state.LiveProposalState);
+        Assert.Equal("live_preflight", state.LatestTurnSource);
+        Assert.Equal("preflight_ready", state.ProviderOutcome);
+        Assert.Equal("live_config_present", state.ProviderHealth);
+        Assert.Null(state.ErrorCode);
+        Assert.Null(state.ProviderFailure);
     }
 
     [Fact]
@@ -46,7 +74,9 @@ public sealed class EndUserChatServiceTests
     {
         var service = new EndUserChatService();
 
-        var state = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+        var state = await service.SendAsync(
+            "Plan a calm family trip to Japan with one quiet day.",
+            EndUserModelRoleSelection.DeterministicOffline);
         var serialized = Serialize(state);
 
         Assert.Equal("applied", state.FinalState);
@@ -108,7 +138,7 @@ public sealed class EndUserChatServiceTests
     }
 
     [Fact]
-    public async Task LiveRoleWithoutExplicitConfigRendersSanitizedGuardAndDeterministicFallback()
+    public async Task LiveRoleWithoutExplicitConfigRendersSanitizedGuardWithoutDeterministicOutput()
     {
         var service = new EndUserChatService(
             new GoldenTurnTraceRunner(),
@@ -131,13 +161,17 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("blocked_by_guard", state.LivePreflightState);
         Assert.Equal("not_run", state.LiveProposalState);
         Assert.Equal("not_run", state.HarnessValidationState);
-        Assert.Equal("deterministic_fallback", state.LatestTurnSource);
+        Assert.Equal("live_model_proposal_blocked", state.LatestTurnSource);
         Assert.Equal("not_attempted", state.ProviderRequestState);
         Assert.Equal("live_preflight_disabled", state.ProviderOutcome);
         Assert.Equal("live_guard_blocked", state.ProviderHealth);
+        Assert.Equal("live_model_blocked", state.FinalState);
         Assert.Equal("PCH_UI_LIVE_MODEL_GUARDED", state.ErrorCode);
         Assert.Equal("live_preflight_disabled", state.BlockedReason);
         Assert.Equal("live_preflight_disabled", state.LastProviderFailureCode);
+        Assert.Null(state.FormCard);
+        Assert.Null(state.ChoiceSet);
+        Assert.Null(state.ApprovalPlate);
         Assert.Equal("notice-live-model-guard", state.ProviderFailure?.NoticeId);
         Assert.Contains(state.Turns, turn => turn.TurnId == "turn-live-model-run"
             && turn.Kind == "live-model"
@@ -322,9 +356,13 @@ public sealed class EndUserChatServiceTests
             new LiveTurnRunner(
                 new LiveTurnCompletionClient(),
                 new PreflightCreditClient())));
-        var sent = await service.SendAsync(
-            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with live multi turn.",
-            EndUserModelRoleSelection.InHarnessActionGenerator);
+        var deterministic = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan with explicit deterministic fixture.",
+            EndUserModelRoleSelection.DeterministicOffline);
+        var sent = deterministic with
+        {
+            SelectedModelRole = EndUserModelRoleSelection.InHarnessActionGenerator
+        };
 
         var selected = service.SelectCandidate(sent, "candidate-japan-classic-highlights");
         var serialized = Serialize(selected);
@@ -332,9 +370,6 @@ public sealed class EndUserChatServiceTests
         Assert.Equal("live_second_turn_blocked", selected.FinalState);
         Assert.Equal("second_turn_blocked", selected.ProviderRequestState);
         Assert.Equal("live_turn_provider_unknown_error", selected.ProviderOutcome);
-        Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-run"
-            && turn.State == "applied"
-            && turn.OutcomeCode == "live_turn_accepted");
         Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-choice-selected"
             && turn.CandidateId == "candidate-japan-classic-highlights");
         Assert.Contains(selected.Turns, turn => turn.TurnId == "turn-live-model-followup"
@@ -348,6 +383,10 @@ public sealed class EndUserChatServiceTests
             && item.OriginTurnId == "turn-live-model-followup"
             && item.OutcomeCode == "live_turn_provider_unknown_error"
             && item.Media?.Path.EndsWith(".png", StringComparison.Ordinal) == true);
+
+        var selectedAgain = service.SelectCandidate(selected, "candidate-japan-classic-highlights");
+        Assert.Single(selectedAgain.Turns, turn => turn.TurnId == "turn-live-model-followup");
+        Assert.Single(selectedAgain.PlanningTimeline, item => item.TimelineId == "timeline-live-second-turn");
         AssertChatRawTextAbsent(serialized);
     }
 
@@ -355,7 +394,9 @@ public sealed class EndUserChatServiceTests
     public async Task FormChoiceApprovalAndTrailInteractionsMutateTypedState()
     {
         var service = new EndUserChatService();
-        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+        var sent = await service.SendAsync(
+            "Plan a calm family trip to Japan with one quiet day.",
+            EndUserModelRoleSelection.DeterministicOffline);
 
         var formSubmitted = service.SubmitForm(sent);
         var selected = service.SelectCandidate(formSubmitted, "candidate-japan-classic-highlights");
@@ -392,7 +433,9 @@ public sealed class EndUserChatServiceTests
     public async Task DeferCandidatePreservesCandidateIdAndEvidenceTrail()
     {
         var service = new EndUserChatService();
-        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+        var sent = await service.SendAsync(
+            "Plan a calm family trip to Japan with one quiet day.",
+            EndUserModelRoleSelection.DeterministicOffline);
 
         var deferred = service.DeferCandidate(sent, "candidate-japan-scenic-explorer");
 
@@ -412,7 +455,9 @@ public sealed class EndUserChatServiceTests
     public async Task MissingCandidateMediaFallsBackToCommittedPlaceholder()
     {
         var service = new EndUserChatService();
-        var sent = await service.SendAsync("Plan a calm family trip to Japan with one quiet day.");
+        var sent = await service.SendAsync(
+            "Plan a calm family trip to Japan with one quiet day.",
+            EndUserModelRoleSelection.DeterministicOffline);
 
         var fallbackCandidate = Assert.Single(sent.ChoiceSet!.Candidates, candidate => candidate.CandidateId == "candidate-japan-transit-rhythm");
 
@@ -465,7 +510,9 @@ public sealed class EndUserChatServiceTests
     {
         var service = new EndUserChatService();
 
-        var state = await service.SendAsync("Please test the approval safety block before any booking.");
+        var state = await service.SendAsync(
+            "Please test the approval safety block before any booking.",
+            EndUserModelRoleSelection.DeterministicOffline);
         var serialized = Serialize(state);
 
         Assert.Equal("blocked", state.FinalState);
@@ -487,7 +534,9 @@ public sealed class EndUserChatServiceTests
     {
         var service = new EndUserChatService();
 
-        var state = await service.SendAsync("Maybe Japan if the dates and destination can be confirmed.");
+        var state = await service.SendAsync(
+            "Maybe Japan if the dates and destination can be confirmed.",
+            EndUserModelRoleSelection.DeterministicOffline);
 
         Assert.Equal("pending", state.FinalState);
         Assert.Equal("end_user_chat_pending_confirmation", state.ErrorCode);
@@ -504,7 +553,9 @@ public sealed class EndUserChatServiceTests
     {
         var service = new EndUserChatService();
 
-        var state = await service.SendAsync("RAW_USER_PROMPT_SHOULD_NOT_LEAK RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST SECRET_SENTINEL");
+        var state = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK RAW_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST SECRET_SENTINEL",
+            EndUserModelRoleSelection.DeterministicOffline);
         var serialized = Serialize(state);
 
         Assert.Equal("applied", state.FinalState);
@@ -622,6 +673,7 @@ public sealed class EndUserChatServiceTests
 
         public Task<EndUserLiveTurnCandidate> BuildAsync(
             LiveModelInputFragment modelInput,
+            string? transientUserPrompt,
             string selectedRole,
             LiveTurnOptions options,
             CancellationToken cancellationToken = default)

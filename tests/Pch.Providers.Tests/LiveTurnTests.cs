@@ -90,6 +90,22 @@ public sealed class LiveTurnTests
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(client.LastRequest.Messages, SensitiveSentinels);
     }
 
+    [Fact]
+    public async Task FencedJsonProviderContentIsAcceptedWithoutPersistingRawText()
+    {
+        var client = new StaticCompletionClient($"Here is the JSON:\n```json\n{CreateContent("mission_proposal")}\n```");
+        var evaluator = new LiveTurnEvaluator(new LiveTurnRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new LiveTurnEvalCase("turn-ready", CreatePacket())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.Equal(LiveTurnRunner.OutcomeAccepted, row.OutcomeCode);
+        Assert.Equal(LiveTurnOutputKind.MissionProposal, row.OutputKind);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
     [Theory]
     [InlineData("disabled", "live_turn_disabled", ProviderFailureClass.ProviderDisabled)]
     [InlineData("key_missing", "live_turn_key_missing", ProviderFailureClass.ProviderKeyMissing)]
