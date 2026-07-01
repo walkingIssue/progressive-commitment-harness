@@ -144,6 +144,7 @@ const fallbackCandidate = candidates[3]!;
 const calmMorningMedia = mediaAsset("calm_morning");
 const restorativeDowntimeMedia = mediaAsset("restorative_downtime");
 const FALLBACK_DELAY_MS = 350;
+const CIRCUIT_HEALTH_DELAY_MS = 1500;
 
 function sanitizeText(value: string): string {
   let sanitized = value.trim();
@@ -657,11 +658,16 @@ function handleChatInteraction(target: EventTarget | null): void {
 
 document.documentElement.dataset.endUserChatHelper = "ready";
 window.setTimeout(() => {
+  if (!Boolean((window as unknown as { Blazor?: unknown }).Blazor)) {
+    showDisconnectedState();
+    return;
+  }
+
   const modal = document.getElementById("components-reconnect-modal") as HTMLDialogElement | null;
   if (modal?.open || modal?.className.includes("components-reconnect")) {
     showDisconnectedState();
   }
-}, FALLBACK_DELAY_MS);
+}, CIRCUIT_HEALTH_DELAY_MS);
 document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);
 document.addEventListener("pointerdown", (event) => closeDrawerOnOutsidePointer(event.target), true);
 document.addEventListener("pointerup", interceptChatAction, true);

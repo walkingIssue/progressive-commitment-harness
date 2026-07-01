@@ -5,6 +5,7 @@ using Pch.Providers.LivePreflight;
 using Pch.Providers.LiveTurns;
 using Pch.Providers.ModelCompletion;
 using Pch.Providers.ModelRoles;
+using Pch.Providers.PlannerPrimitives;
 using Pch.UI.Features.EndUserChat;
 using Xunit;
 
@@ -36,9 +37,11 @@ public sealed class PlanningSessionServiceTests
             EndUserModelRoleSelection.InHarnessActionGenerator);
 
         Assert.NotNull(result.Turn);
-        Assert.Equal(PlanningSessionService.ManifestVersion, result.Turn.ManifestVersion);
-        Assert.Equal("live_provider", result.Turn.Source);
-        Assert.Equal(PlanningSessionService.PrimitiveTurnAccepted, result.Turn.OutcomeCode);
+        Assert.Equal("1", result.Turn.ManifestVersion);
+        Assert.Equal("live_provider_candidate", result.Turn.Source);
+        Assert.Equal(PlanningSessionService.AwaitingUserInput, result.Turn.OutcomeCode);
+        Assert.NotNull(result.Turn.CanonicalTurn);
+        Assert.Equal(PlanningSessionService.AwaitingUserInput, result.Turn.CanonicalTurn.Code);
         Assert.Equal("attempted", result.State.ProviderRequestState);
         Assert.Equal("awaiting_user_input", result.State.FinalState);
         Assert.Null(result.State.ChoiceSet);
@@ -58,7 +61,7 @@ public sealed class PlanningSessionServiceTests
         var result = await service.StartAsync(
             "Plan a live primitive form.",
             EndUserModelRoleSelection.InHarnessActionGenerator);
-        var turn = Assert.IsType<ValidatedTurnView>(result.Turn);
+        var turn = Assert.IsType<EndUserValidatedTurnView>(result.Turn);
 
         var answer = service.BuildDefaultAnswer(turn);
         var answered = service.SubmitAnswer(result.State, turn, answer);
@@ -81,7 +84,7 @@ public sealed class PlanningSessionServiceTests
         var result = await service.StartAsync(
             "Plan a live primitive form.",
             EndUserModelRoleSelection.InHarnessActionGenerator);
-        var turn = Assert.IsType<ValidatedTurnView>(result.Turn);
+        var turn = Assert.IsType<EndUserValidatedTurnView>(result.Turn);
         var form = Assert.Single(turn.Primitives, primitive => primitive.RendererKey == "form");
         var invalid = new PrimitiveAnswerDto(
             turn.SessionId,
@@ -137,7 +140,52 @@ public sealed class PlanningSessionServiceTests
     }
 
     private static PlanningSessionService PlanningService() =>
-        new(LiveChatService(), new FormBuilder());
+        new(LiveChatService(), new FormBuilder(), LiveEnvironment, AcceptedPlannerPrimitiveRun);
+
+    private static Task<PlannerModelResult> AcceptedPlannerPrimitiveRun(
+        PlannerModelRequest request,
+        PlannerModelOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = new PlannerModelResult(
+            request.Manifest.ManifestId,
+            request.Manifest.ManifestVersion,
+            request.Manifest.GraphRevision,
+            request.Manifest.SessionId,
+            PlannerModelOutputKind.CompositeForm,
+            [
+                new(
+                    "text_input",
+                    "text_input",
+                    "primitive-destination-country",
+                    "text-input",
+                    "/mission/destination_country",
+                    null,
+                    [],
+                    "Destination",
+                    "Confirm destination."),
+                new(
+                    "date_range",
+                    "date_range",
+                    "primitive-trip-dates",
+                    "date-range",
+                    "/mission/start_date",
+                    null,
+                    [],
+                    "Dates",
+                    "Confirm travel dates.")
+            ],
+            WasRepaired: false,
+            HasUnsafeValue: false,
+            Duration: TimeSpan.FromMilliseconds(25),
+            ResponseContentLength: 256,
+            Provider: "mock",
+            Model: "mock-planner-primitive",
+            RequestId: "request-planner-primitive-safe");
+
+        return Task.FromResult(result);
+    }
 
     private static EndUserChatService LiveChatService()
     {

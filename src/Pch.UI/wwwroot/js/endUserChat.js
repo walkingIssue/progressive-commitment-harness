@@ -121,6 +121,7 @@ const fallbackCandidate = candidates[3];
 const calmMorningMedia = mediaAsset("calm_morning");
 const restorativeDowntimeMedia = mediaAsset("restorative_downtime");
 const FALLBACK_DELAY_MS = 350;
+const CIRCUIT_HEALTH_DELAY_MS = 1500;
 function sanitizeText(value) {
     let sanitized = value.trim();
     for (const sentinel of RAW_SENTINELS) {
@@ -534,11 +535,15 @@ function handleChatInteraction(target) {
 }
 document.documentElement.dataset.endUserChatHelper = "ready";
 window.setTimeout(() => {
+    if (!Boolean(window.Blazor)) {
+        showDisconnectedState();
+        return;
+    }
     const modal = document.getElementById("components-reconnect-modal");
     if (modal?.open || modal?.className.includes("components-reconnect")) {
         showDisconnectedState();
     }
-}, FALLBACK_DELAY_MS);
+}, CIRCUIT_HEALTH_DELAY_MS);
 document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);
 document.addEventListener("pointerdown", (event) => closeDrawerOnOutsidePointer(event.target), true);
 document.addEventListener("pointerup", interceptChatAction, true);

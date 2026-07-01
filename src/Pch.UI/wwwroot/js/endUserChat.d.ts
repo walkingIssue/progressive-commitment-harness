@@ -25,6 +25,7 @@ declare const fallbackCandidate: CandidateOption;
 declare const calmMorningMedia: MediaAsset;
 declare const restorativeDowntimeMedia: MediaAsset;
 declare const FALLBACK_DELAY_MS = 350;
+declare const CIRCUIT_HEALTH_DELAY_MS = 1500;
 declare function sanitizeText(value: string): string;
 declare function root(): HTMLElement | null;
 declare function transcript(): HTMLElement | null;

@@ -3,61 +3,61 @@
 ## Scope
 
 - Added a UI-owned server-side planning session seam for `/trip`.
-- Live mode now receives a `ValidatedTurnView` from `PlanningSessionService` and renders primitives through `PrimitiveRenderer` / `FormBuilderView`.
+- Integrated Shellby's canonical planner tool manifest/validated primitive contracts from `origin/sprint-022/harness-planner-tool-manifest` at `ba5a528dac492e268f613a54bd6bcba01e7572ad`.
+- Integrated Kaneki's provider planner primitive runner from `origin/sprint-022/provider-planner-primitive-runner` at `a5c0eca3b0a79c0323444be563fab6f076d84109`.
+- Live mode now builds a canonical `PlannerToolManifest`, attempts the provider `PlannerPrimitiveRunner` when configured, validates provider primitives through `PlannerPrimitiveValidator`, and renders a UI projection through `PrimitiveRenderer` / `FormBuilderView`.
 - Deterministic golden trace cards remain available only through explicit deterministic mode.
-- Browser-local fallback no longer mutates transcript/final state. When Blazor is absent and an interaction does not reach the server, the UI marks `browser_circuit_disconnected`.
+- Browser-local fallback no longer mutates transcript/final state. When the helper is loaded but a Blazor circuit is unavailable, the UI marks `browser_circuit_disconnected`.
 
 ## Static Verification
 
 - `npm run build:ui`: passed.
-- `dotnet build src\Pch.UI\Pch.UI.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed during development.
+- `dotnet build src\Pch.UI\Pch.UI.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 0 warnings/errors.
 - `dotnet test tests\Pch.UI.Tests\Pch.UI.Tests.csproj -m:1 -p:UseSharedCompilation=false -p:BuildInParallel=false -nodeReuse:false`: passed, 72 tests.
 
 ## In-App Browser Baseline
 
-- URL: `http://127.0.0.1:5222/trip?live=1`.
-- Server started with live OpenRouter key-file config.
-- In-app browser rendered `/trip`, but reported `window.Blazor=false`.
+- URL: `http://127.0.0.1:5231/trip?live=1`.
+- Server started with live OpenRouter key-file config: live model enabled, planner primitive enabled, provider `openrouter`, model `qwen/qwen3-14b`, key loaded via key-file path. No key value was logged.
+- In-app browser rendered `/trip`. Browser automation's read-only context reported `window.Blazor=false`, but clicking Send did reach the server and mutated the Blazor component state.
 - Reconnect modal was not open.
-- First attempted live click did not mutate transcript or final state. The browser helper set:
-  - `data-browser-circuit-state="browser_circuit_disconnected"`
-  - `data-error-code="PCH_UI_BROWSER_CIRCUIT_DISCONNECTED"`
-  - `data-blocked-reason="browser_circuit_disconnected"`
-- This is a valid hard blocked browser state, not a passing interaction.
+- Static endpoint diagnostics from outside the in-app browser:
+  - `/trip?live=1`: HTTP 200 and includes the Blazor script.
+  - `/_framework/blazor.web.ne14ti1q68.js`: HTTP 200.
+  - `/_blazor/negotiate?negotiateVersion=1`: HTTP 200.
+- In-app click with OpenRouter produced:
+  - `data-provider-request-state="attempted"`
+  - `data-provider-outcome="planner_model_malformed_json"`
+  - `data-validated-turn-source="provider_blocked"`
+  - `data-validated-turn-outcome="planner_model_malformed_json"`
+  - `data-primitive-renderer="provider-failure"`
+  - `data-primitive-id="assistant_message"`
+- A previous OpenRouter attempt reached `planner_model_accepted` but the harness validator blocked it at `ownership_invalid`; after candidate ownership mapping was repaired, the next real provider response failed as malformed JSON. No accepted real primitive/form was produced.
 
 ## Secondary Browser Diagnostic
 
-- Standalone local Chrome was used only as a secondary diagnostic.
-- Baseline markers:
-  - `window.Blazor=true`
-  - reconnect modal absent
-  - `data-browser-circuit-state="connected"`
-  - live mode selected with `data-send-action="planner"`
-- Live prompt send reached the server and attempted the provider path:
-  - `data-provider-request-state="attempted"`
-  - `data-live-turn-attempt-count="1"`
-  - `data-selected-provider="openrouter"`
-- The real provider/preflight path blocked before a model-produced primitive form:
-  - `data-live-preflight-state="preflight_blocked"`
-  - `data-live-proposal-state="provider_blocked"`
-  - `data-provider-outcome="live_preflight_timeout"`
-  - `data-error-code="PCH_UI_LIVE_MODEL_SANITIZED_FAILURE"`
-  - `data-blocked-reason="live_preflight_timeout"`
+- OpenAI-configured in-app run used live model enabled, planner primitive enabled, provider `openai`, model `gpt-4.1-mini`, and `OPENAI_API_KEY_FILE`. No key value was logged.
+- The repo currently has no OpenAI `IModelCompletionClient` implementation wired for the UI planner primitive runner. The UI surfaced:
+  - `data-selected-provider="openai"`
+  - `data-provider-request-state="not_attempted"`
+  - `data-provider-outcome="planner_model_provider_unavailable"`
   - `data-validated-turn-source="provider_blocked"`
-  - `data-validated-turn-outcome="live_preflight_timeout"`
-- UI rendered a validated provider-failure primitive:
-  - `data-primitive-renderer="provider-failure"`
-  - `data-primitive-id="provider_failure_notice"`
-  - `data-primitive-instance-id="primitive-provider-blocked"`
-  - `data-media-asset-id="backdrop.urban.station_grid.budget_practical"`
+  - `data-validated-turn-outcome="planner_model_provider_unavailable"`
+- Deterministic browser smoke on `/trip` passed:
+  - `data-deterministic-mode="offline-deterministic"`
+  - `data-final-state="applied"`
+  - `data-provider-request-state="not_attempted"`
+  - `data-provider-outcome="deterministic_fallback_active"`
+  - `data-choice-set-id="choice-japan-style"` present.
 
 ## Live Smoke Status
 
 Sprint 022 Lane C is not READY under the stated exit gate:
 
-- In-app browser did not provide a healthy Blazor circuit.
-- The configured live provider path attempted a request, but blocked at `live_preflight_timeout`.
-- No model-produced form/deck was accepted from the real provider in browser smoke.
+- In-app browser did provide a server-side interaction path for Send despite `window.Blazor=false` in the automation context.
+- The configured OpenRouter path attempted a real provider request through the canonical provider planner primitive runner.
+- OpenRouter did not produce an accepted model primitive/form in final smoke; the fixed sanitized provider blocker was `planner_model_malformed_json`.
+- OpenAI could not be attempted because the repo has no OpenAI model-completion client wired into the UI planner primitive runner; the fixed blocker was `planner_model_provider_unavailable`.
 - No user answer reached a second real provider turn in browser smoke.
 
 ## Sanitization

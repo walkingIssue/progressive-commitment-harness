@@ -1,9 +1,9 @@
 namespace Pch.UI.Features.EndUserChat;
 
-public sealed record ValidatedTurnView(
+public sealed record EndUserValidatedTurnView(
     string TurnId,
     string SessionId,
-    int GraphRevision,
+    string GraphRevision,
     string Source,
     string OutcomeCode,
     string ManifestVersion,
@@ -13,7 +13,8 @@ public sealed record ValidatedTurnView(
     IReadOnlyList<EndUserEvidenceItem> Evidence,
     string ProviderRequestState,
     string ProviderOutcome,
-    string RawAbsenceState);
+    string RawAbsenceState,
+    Pch.Core.ValidatedTurnView? CanonicalTurn);
 
 public sealed record ValidatedPrimitive(
     string InstanceId,
@@ -52,13 +53,13 @@ public sealed record ValidatedTaskPrimitive(
 public sealed record PrimitiveAnswerDto(
     string SessionId,
     string TurnId,
-    int GraphRevision,
+    string GraphRevision,
     string PrimitiveInstanceId,
     IReadOnlyDictionary<string, string> FieldValues);
 
 public sealed record PlanningSessionUiResult(
     EndUserChatState State,
-    ValidatedTurnView? Turn,
+    EndUserValidatedTurnView? Turn,
     PrimitiveAnswerDto? LastAnswer,
     IReadOnlyList<PrimitiveValidationError> ValidationErrors);
 

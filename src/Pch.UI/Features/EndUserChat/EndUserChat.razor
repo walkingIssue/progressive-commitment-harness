@@ -134,7 +134,7 @@
     private string TimelineMode { get; set; } = "day";
     private string? FocusedTurnId { get; set; }
     private string SelectedModelRole { get; set; } = EndUserModelRoleSelection.InHarnessActionGenerator;
-    private ValidatedTurnView? CurrentTurn { get; set; }
+    private EndUserValidatedTurnView? CurrentTurn { get; set; }
     private PrimitiveAnswerDto? LastPrimitiveAnswer { get; set; }
     private IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
 

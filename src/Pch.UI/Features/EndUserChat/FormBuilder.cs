@@ -3,7 +3,7 @@ namespace Pch.UI.Features.EndUserChat;
 public sealed class FormBuilder
 {
     public PrimitiveAnswerDto BuildAnswer(
-        ValidatedTurnView turn,
+        EndUserValidatedTurnView turn,
         ValidatedPrimitive form,
         IReadOnlyDictionary<string, string> fieldValues)
     {

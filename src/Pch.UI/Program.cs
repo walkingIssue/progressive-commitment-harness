@@ -7,6 +7,7 @@ using Pch.Providers.LiveTurns;
 using Pch.Providers.Mock;
 using Pch.Providers.ModelRoles;
 using Pch.Providers.OpenRouter;
+using Pch.Providers.PlannerPrimitives;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,7 +20,11 @@ builder.Services.AddScoped(_ => new EndUserChatService(
     new ModelRoleStatusEvaluator(new MockModelRoleStatusSource()),
     _.GetRequiredService<EndUserLiveModelTurnService>()));
 builder.Services.AddScoped<FormBuilder>();
-builder.Services.AddScoped<PlanningSessionService>();
+builder.Services.AddScoped(sp => new PlanningSessionService(
+    sp.GetRequiredService<EndUserChatService>(),
+    sp.GetRequiredService<FormBuilder>(),
+    ReadProcessEnvironment,
+    CreatePlannerPrimitiveRunner()));
 builder.Services.AddScoped<HarnessStageCockpitService>();
 
 var app = builder.Build();
@@ -46,8 +51,9 @@ static EndUserLiveModelTurnService CreateEndUserLiveModelTurnService()
 {
     var environment = ReadProcessEnvironment();
     var options = LivePreflightOptions.FromEnvironment(environment);
+    var keyAvailable = options.ApiKeyAvailable || ProviderKeyFilePresent(environment, "OPENROUTER_API_KEY_FILE");
     if (!options.Enabled ||
-        !options.ApiKeyAvailable ||
+        !keyAvailable ||
         options.ProviderKind is not LivePreflightProviderKind.OpenRouter)
     {
         return new EndUserLiveModelTurnService(ReadProcessEnvironment);
@@ -72,6 +78,32 @@ static EndUserLiveModelTurnService CreateEndUserLiveModelTurnService()
             new LiveTurnRunner(openRouter, openRouter)));
 }
 
+static PlannerPrimitiveModelRunner? CreatePlannerPrimitiveRunner()
+{
+    var environment = ReadProcessEnvironment();
+    var options = PlannerModelOptions.FromEnvironment(environment);
+    var keyAvailable = options.ApiKeyAvailable || ProviderKeyFilePresent(environment, "OPENROUTER_API_KEY_FILE");
+    if (!options.Enabled ||
+        !keyAvailable ||
+        options.ProviderKind is not LivePreflightProviderKind.OpenRouter)
+    {
+        return null;
+    }
+
+    var openRouter = new OpenRouterModelCompletionClient(
+        new HttpClient(),
+        new OpenRouterOptions
+        {
+            Model = options.Model,
+            Timeout = options.Timeout ?? TimeSpan.FromSeconds(30),
+            CheckCreditsBeforeCompletion = options.CreditGuardEnabled,
+            ApiKeyFilePath = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_FILE")
+        });
+    var runner = new PlannerPrimitiveRunner(openRouter, openRouter);
+
+    return runner.RunAsync;
+}
+
 static IReadOnlyDictionary<string, string?> ReadProcessEnvironment()
 {
     var values = Environment.GetEnvironmentVariables();
@@ -83,3 +115,9 @@ static IReadOnlyDictionary<string, string?> ReadProcessEnvironment()
 
     return environment;
 }
+
+static bool ProviderKeyFilePresent(IReadOnlyDictionary<string, string?> environment, string key) =>
+    environment.TryGetValue(key, out var path) &&
+    !string.IsNullOrWhiteSpace(path) &&
+    File.Exists(path) &&
+    new FileInfo(path).Length > 0;
