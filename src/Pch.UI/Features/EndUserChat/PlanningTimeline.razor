@@ -15,14 +15,14 @@
                         data-timeline-mode-action="day"
                         data-timeline-mode-state="@(Mode == "day" ? "active" : "inactive")"
                         aria-pressed="@(Mode == "day")"
-                        @onclick="() => OnModeChanged.InvokeAsync("day")">
+                        @onclick="SelectDayMode">
                     Day
                 </button>
                 <button type="button"
                         data-timeline-mode-action="task"
                         data-timeline-mode-state="@(Mode == "task" ? "active" : "inactive")"
                         aria-pressed="@(Mode == "task")"
-                        @onclick="() => OnModeChanged.InvokeAsync("task")">
+                        @onclick="SelectTaskMode">
                     Task
                 </button>
             </div>
@@ -57,4 +57,10 @@
 
     private IReadOnlyList<EndUserPlanningTimelineItem> VisibleItems =>
         Items.Where(item => item.Mode == Mode).ToArray();
+
+    private Task SelectDayMode() =>
+        OnModeChanged.InvokeAsync("day");
+
+    private Task SelectTaskMode() =>
+        OnModeChanged.InvokeAsync("task");
 }

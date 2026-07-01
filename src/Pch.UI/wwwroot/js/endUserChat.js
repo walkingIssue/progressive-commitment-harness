@@ -139,6 +139,9 @@ function chatMain() {
 }
 function scheduleFallback(shouldRun, action) {
     window.setTimeout(() => {
+        if (Boolean(window.Blazor)) {
+            return;
+        }
         if (shouldRun()) {
             action();
         }
@@ -454,8 +457,6 @@ const chatActionSelector = [
 function interceptChatAction(event) {
     if (!closestAction(event.target, chatActionSelector))
         return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
     handleChatInteraction(event.target);
 }
 function handleChatInteraction(target) {

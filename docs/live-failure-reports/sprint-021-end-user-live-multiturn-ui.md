@@ -37,10 +37,13 @@
 
 ## Browser Smoke Observations
 
-- In-app browser on the local smoke server rendered the `/trip` page and exercised the delayed DOM fallback, but did not expose an active Blazor runtime for server-side handler verification.
-- Standalone local Chrome smoke against `/trip` confirmed Blazor was active, first prompt send mutated `data-final-state` to `applied`, the composer folded to `collapsed_drawer`, candidate cards rendered real prompt-studio PNGs, and selecting `candidate-japan-classic-highlights` produced a selected-card user bubble with trusted evidence ids.
+- Repair note: the first integrated browser smoke was misleading because the browser-local fallback intercepted chat actions and the EndUserChat feature folder did not import the Blazor web event directives. The repaired path leaves Blazor clicks unobstructed and adds feature-local imports so `@onclick` / `@oninput` render as server-side event handlers instead of literal attributes.
+- In-app browser on the local smoke server rendered the `/trip` page, but the observed tab kept stale `_blazor` negotiation errors from an earlier port. Standalone local Chrome was used for the final interaction smoke so the live page could be verified with an active Blazor runtime.
+- Standalone local Chrome smoke against `/trip` confirmed Blazor was active, no literal `@onclick` attributes remained, first prompt send mutated `data-final-state` to `applied`, the composer folded to `collapsed_drawer`, candidate cards rendered real prompt-studio PNGs, and selecting `candidate-japan-classic-highlights` produced a selected user option card turn with trusted evidence ids.
 - Standalone Chrome smoke against `/stage-cockpit` confirmed the engineering cockpit route is separate from the end-user chat surface.
-- Guarded live smoke was attempted with explicit OpenRouter configuration. The rendered UI still surfaced the fixed guard path (`blocked_by_guard`, provider request `not_attempted`, outcome `live_preflight_disabled`), so no provider request was observed from the UI smoke. The blocked state was sanitized and raw sentinel scans were clean.
+- Guarded live smoke was attempted with explicit OpenRouter configuration: live model enabled, live turn enabled, key-available flag true, provider `openrouter`, in-harness/strong-planner model `qwen/qwen3-14b`, timeout 25 seconds, and the API key supplied to the child app process through `OPENROUTER_API_KEY_FILE` plus process environment. No key value was logged or committed.
+- The repaired live browser path selected the in-harness role and reached `data-provider-request-state="attempted"` / `data-live-turn-attempt-count="1"`. OpenRouter preflight then returned a sanitized fixed blocker: `data-live-preflight-state="preflight_blocked"`, `data-provider-outcome="live_preflight_malformed_json"`, `data-error-code="PCH_UI_LIVE_MODEL_SANITIZED_FAILURE"`, and `data-blocked-reason="live_preflight_malformed_json"`. The UI did not fall back to the generic disabled guard when live config was present.
+- Because preflight blocked with a fixed provider diagnostic, the live turn runner did not apply a model proposal in this smoke. Deterministic fallback cards remained visible and clearly marked as fallback rather than live success. Raw prompt, provider body, credentials, and secret sentinel scans were clean.
 
 ## Sanitization
 

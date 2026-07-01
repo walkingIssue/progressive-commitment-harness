@@ -167,6 +167,10 @@ function chatMain(): HTMLElement | null {
 
 function scheduleFallback(shouldRun: () => boolean, action: () => void): void {
   window.setTimeout(() => {
+    if (Boolean((window as unknown as { Blazor?: unknown }).Blazor)) {
+      return;
+    }
+
     if (shouldRun()) {
       action();
     }
@@ -522,8 +526,6 @@ const chatActionSelector = [
 
 function interceptChatAction(event: Event): void {
   if (!closestAction(event.target, chatActionSelector)) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
   handleChatInteraction(event.target);
 }
 

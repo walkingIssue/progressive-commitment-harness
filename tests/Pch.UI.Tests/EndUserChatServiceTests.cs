@@ -199,6 +199,36 @@ public sealed class EndUserChatServiceTests
     }
 
     [Fact]
+    public async Task ConfiguredLiveRoleInvokesGatewayInsteadOfStoppingAtGuard()
+    {
+        var gateway = new CountingLiveTurnGateway(new EndUserLiveTurnCandidate(
+            null,
+            ProviderAccepted: false,
+            LiveTurnRunner.OutcomeProviderUnknownError,
+            "provider_unknown_error",
+            "openrouter",
+            "qwen/qwen3-14b",
+            "request-live-turn-counted"));
+        var service = LiveProposalService(gateway);
+
+        var state = await service.SendAsync(
+            "RAW_USER_PROMPT_SHOULD_NOT_LEAK Plan Japan through configured live mode.",
+            EndUserModelRoleSelection.InHarnessActionGenerator);
+        var serialized = Serialize(state);
+
+        Assert.Equal(1, gateway.Calls);
+        Assert.Equal("preflight_passed", state.LivePreflightState);
+        Assert.Equal("attempted", state.ProviderRequestState);
+        Assert.Equal("live_model_proposal_blocked", state.LiveProposalState);
+        Assert.Equal("not_run", state.HarnessValidationState);
+        Assert.Equal("live_turn_provider_unknown_error", state.ProviderOutcome);
+        Assert.Equal("provider_unknown_error", state.LastProviderFailureCode);
+        Assert.NotEqual("live_preflight_disabled", state.ProviderOutcome);
+        Assert.NotEqual("blocked_by_guard", state.LivePreflightState);
+        AssertChatRawTextAbsent(serialized);
+    }
+
+    [Fact]
     public async Task LiveProposalAcceptedRunsThroughHarnessConductorMarkers()
     {
         var service = LiveProposalService(new EndUserLiveTurnGateway(
@@ -584,6 +614,21 @@ public sealed class EndUserChatServiceTests
     {
         public Task<ProviderCreditStatus> GetCreditStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new ProviderCreditStatus(1m, 0m, 1m, IsExhausted: false));
+    }
+
+    private sealed class CountingLiveTurnGateway(EndUserLiveTurnCandidate candidate) : IEndUserLiveTurnGateway
+    {
+        public int Calls { get; private set; }
+
+        public Task<EndUserLiveTurnCandidate> BuildAsync(
+            LiveModelInputFragment modelInput,
+            string selectedRole,
+            LiveTurnOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(candidate);
+        }
     }
 
     private sealed class LiveTurnCompletionClient(string? packetId = null, string fieldPath = "/mission/purpose") : IModelCompletionClient
