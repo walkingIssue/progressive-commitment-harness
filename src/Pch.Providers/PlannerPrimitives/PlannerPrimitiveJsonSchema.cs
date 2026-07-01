@@ -20,10 +20,10 @@ internal static class PlannerPrimitiveJsonSchema
                 "additionalProperties": false,
                 "required": ["primitiveId", "primitiveKind", "instanceId", "rendererKey", "fieldPath", "moodToken", "mediaToken", "candidateIds", "taskRefs", "evidenceRefs", "toolContextRefs", "options", "label", "promptText", "helpText", "defaultValue", "rendererHints"],
                 "properties": {
-                  "primitiveId": { "type": "string" },
-                  "primitiveKind": { "type": "string" },
+                  "primitiveId": { "type": "string", "enum": ["assistant_message", "status_notice", "text_input", "textarea", "number_input", "slider", "date", "date_range", "radio_group", "select", "multi_select", "checkbox", "choice_card", "candidate_deck", "task_decomposition", "timeline_item", "tool_search_request", "tool_gap_request"] },
+                  "primitiveKind": { "type": "string", "enum": ["assistant_message", "status_notice", "text_input", "textarea", "number_input", "slider", "date", "date_range", "radio_group", "select", "multi_select", "checkbox", "choice_card", "candidate_deck", "task_decomposition", "timeline_item", "tool_search_request", "tool_gap_request"] },
                   "instanceId": { "type": "string" },
-                  "rendererKey": { "type": "string" },
+                  "rendererKey": { "type": "string", "enum": ["assistant_message", "status_notice", "text_input", "textarea", "number_input", "slider", "date", "date_range", "radio_group", "select", "multi_select", "checkbox", "choice_card", "candidate_deck", "task_decomposition", "timeline_item", "tool_search_request", "tool_gap_request"] },
                   "fieldPath": { "type": ["string", "null"] },
                   "moodToken": { "type": ["string", "null"] },
                   "mediaToken": { "type": ["string", "null"] },

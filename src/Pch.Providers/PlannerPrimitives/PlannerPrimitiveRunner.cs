@@ -30,6 +30,8 @@ public sealed class PlannerPrimitiveRunner
     public const string OutcomeUnsupportedPrimitive = "planner_model_unsupported_primitive";
     public const string OutcomeFieldPathNotAllowed = "planner_model_field_path_not_allowed";
     public const string OutcomeToolNotAllowed = "planner_model_tool_not_allowed";
+    public const string OutcomePrimitiveRendererMismatch = "planner_model_primitive_renderer_mismatch";
+    public const string OutcomeTaskDecompositionMissing = "planner_model_task_decomposition_missing";
     public const string OutcomeProviderUnavailable = "planner_model_provider_unavailable";
     public const string OutcomeFallbackDisabled = "planner_model_fallback_disabled";
 
@@ -87,7 +89,7 @@ public sealed class PlannerPrimitiveRunner
         }
 
         var stopwatch = Stopwatch.StartNew();
-        var first = await CompleteOnceAsync(request, options, isRepair: false, operationToken).ConfigureAwait(false);
+        var first = await CompleteOnceAsync(request, options, isRepair: false, operationToken, cancellationToken).ConfigureAwait(false);
         if (TryParse(request, first, stopwatch.Elapsed, wasRepaired: false, out var parsed, out var failure))
         {
             return parsed;
@@ -96,7 +98,7 @@ public sealed class PlannerPrimitiveRunner
         if (options.RepairEnabled &&
             failure is PlannerParseFailure.MalformedJson or PlannerParseFailure.SchemaInvalid)
         {
-            var repaired = await CompleteOnceAsync(request, options, isRepair: true, operationToken).ConfigureAwait(false);
+            var repaired = await CompleteOnceAsync(request, options, isRepair: true, operationToken, cancellationToken).ConfigureAwait(false);
             if (TryParse(request, repaired, stopwatch.Elapsed, wasRepaired: true, out var repairedParsed, out var repairedFailure))
             {
                 return repairedParsed;
@@ -116,14 +118,15 @@ public sealed class PlannerPrimitiveRunner
         PlannerModelRequest request,
         PlannerModelOptions options,
         bool isRepair,
-        CancellationToken cancellationToken)
+        CancellationToken operationToken,
+        CancellationToken callerCancellationToken)
     {
         try
         {
             return await _completionClient.CompleteAsync(
                 new ModelCompletionRequest(
                     [
-                        new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitives. Use only primitive ids from the manifest. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
+                        new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitive invocations. Use the primitive tool menu as callable form tools, not generic prose. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
                         new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason: isRepair ? "schema_or_json_invalid" : null))
                     ],
                     options.Model,
@@ -131,11 +134,15 @@ public sealed class PlannerPrimitiveRunner
                     PlannerPrimitiveJsonSchema.Schema,
                     Temperature: 0,
                     MaxTokens: options.MaxTokens),
-                cancellationToken).ConfigureAwait(false);
+                operationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
         {
-            throw new ProviderUnavailableException(options.Provider, "Planner primitive request timed out.");
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new ProviderUnavailableException(options.Provider, "Planner primitive request timed out.", null, ex);
         }
     }
 

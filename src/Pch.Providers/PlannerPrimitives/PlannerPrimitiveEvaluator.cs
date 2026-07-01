@@ -85,6 +85,7 @@ public sealed class PlannerPrimitiveEvaluator
             .Concat(evalCase.Request.Manifest.AllowedToolIds)
             .ToHashSet(StringComparer.Ordinal);
         var primitiveIds = new List<string>(result.Primitives.Count);
+        var primitiveKinds = new List<string>(result.Primitives.Count);
         var primitiveInstanceIds = new List<string>(result.Primitives.Count);
         var optionCount = 0;
         foreach (var primitive in result.Primitives)
@@ -122,8 +123,15 @@ public sealed class PlannerPrimitiveEvaluator
                 return Rejected(PlannerPrimitiveRunner.OutcomeToolNotAllowed, "tool_not_allowed");
             }
 
+            if (result.OutputKind == PlannerModelOutputKind.CompositeForm &&
+                HasSemanticTextInputMismatch(primitive))
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch, "primitive_renderer_mismatch");
+            }
+
             optionCount += primitive.Options.Count;
             primitiveIds.Add(definition.PrimitiveId);
+            primitiveKinds.Add(definition.PrimitiveKind);
             primitiveInstanceIds.Add(primitive.InstanceId);
         }
 
@@ -135,13 +143,32 @@ public sealed class PlannerPrimitiveEvaluator
             return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
         }
 
-        return Accepted(evalCase, result, primitiveIds.Order(StringComparer.Ordinal).ToArray(), optionCount);
+        if (result.OutputKind == PlannerModelOutputKind.CompositeForm)
+        {
+            if (!primitiveIds.Contains("task_decomposition", StringComparer.Ordinal) || result.Tasks.Count == 0)
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomeTaskDecompositionMissing, "task_decomposition_missing");
+            }
+
+            if (!primitiveIds.Any(id => PlannerPrimitiveToolCatalog.NonTextInteractivePrimitiveIds.Contains(id, StringComparer.Ordinal)))
+            {
+                return Rejected(PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch, "primitive_renderer_mismatch");
+            }
+        }
+
+        return Accepted(
+            evalCase,
+            result,
+            primitiveIds.Order(StringComparer.Ordinal).ToArray(),
+            primitiveKinds.Order(StringComparer.Ordinal).ToArray(),
+            optionCount);
     }
 
     private static SanitizedPlannerModelLogRow Accepted(
         PlannerModelEvalCase evalCase,
         PlannerModelResult result,
         IReadOnlyList<string> primitiveIds,
+        IReadOnlyList<string> primitiveKinds,
         int optionCount)
     {
         var outcome = result.OutputKind switch
@@ -163,6 +190,7 @@ public sealed class PlannerPrimitiveEvaluator
             null,
             result.OutputKind,
             primitiveIds,
+            primitiveKinds,
             primitiveIds.Count,
             result.Tasks.Count,
             optionCount,
@@ -238,6 +266,7 @@ public sealed class PlannerPrimitiveEvaluator
             failureClassCode,
             null,
             [],
+            [],
             0,
             0,
             0,
@@ -248,6 +277,29 @@ public sealed class PlannerPrimitiveEvaluator
             null,
             null,
             null);
+
+    private static bool HasSemanticTextInputMismatch(PlannerPrimitiveInvocation primitive)
+    {
+        if (!IsTextPrimitive(primitive.PrimitiveId))
+        {
+            return false;
+        }
+
+        var fieldPath = primitive.FieldPath ?? string.Empty;
+        if (fieldPath.Contains("destination", StringComparison.OrdinalIgnoreCase) ||
+            fieldPath.Contains("date", StringComparison.OrdinalIgnoreCase) ||
+            fieldPath.Contains("start", StringComparison.OrdinalIgnoreCase) ||
+            fieldPath.Contains("end", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return fieldPath.Contains("pace", StringComparison.OrdinalIgnoreCase) &&
+            primitive.Options.Count > 0;
+    }
+
+    private static bool IsTextPrimitive(string primitiveId) =>
+        primitiveId is "text_input" or "textarea";
 
     private static string DurationBucket(TimeSpan duration)
     {
