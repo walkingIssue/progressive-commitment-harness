@@ -2,8 +2,8 @@ using Pch.UI.Components;
 using Pch.UI.Features.EndUserChat;
 using Pch.UI.Features.StageCockpit;
 using Pch.Harness;
-using Pch.Providers.LiveMissionProposal;
 using Pch.Providers.LivePreflight;
+using Pch.Providers.LiveTurns;
 using Pch.Providers.Mock;
 using Pch.Providers.ModelRoles;
 using Pch.Providers.OpenRouter;
@@ -65,10 +65,9 @@ static EndUserLiveModelTurnService CreateEndUserLiveModelTurnService()
     return new EndUserLiveModelTurnService(
         ReadProcessEnvironment,
         preflight,
-        new LiveSessionConductor(),
-        new EndUserLiveMissionProposalGateway(
+        new EndUserLiveTurnGateway(
             ReadProcessEnvironment,
-            new LiveMissionProposalRunner(openRouter, openRouter)));
+            new LiveTurnRunner(openRouter, openRouter)));
 }
 
 static IReadOnlyDictionary<string, string?> ReadProcessEnvironment()

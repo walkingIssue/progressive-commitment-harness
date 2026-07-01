@@ -188,25 +188,38 @@ public sealed class EndUserChatService
             return BlockWithFixedError(state, "PCH_UI_CHAT_UNKNOWN_CANDIDATE", "Unknown candidate id was rejected.");
         }
 
+        var turns = AppendTurn(state.Turns, new(
+            "turn-choice-selected",
+            "user",
+            "choice",
+            "selected",
+            $"Selected {candidate.Title} for {candidate.Category}.",
+            "choice_candidate_selected",
+            "evidence-chat-candidate",
+            null,
+            candidate.CandidateId,
+            candidate.Category));
+
+        if (IsLiveMode(state.SelectedModelRole))
+        {
+            turns = AppendTurn(turns, LiveSecondTurnBlocked(candidate.CandidateId));
+        }
+
         return state with
         {
             ComposerState = "awaiting_user_input",
-            FinalState = "candidate_selected",
+            FinalState = IsLiveMode(state.SelectedModelRole) ? "live_second_turn_blocked" : "candidate_selected",
             ChoiceSet = ChoiceSet("selected", candidateId, null),
             Tasks = UpdateTask(state.Tasks, "task-itinerary", "accepted", 72, "Candidate selected"),
             PlanTrail = PlanTrailFromState(state, candidate, "selected"),
-            PlanningTimeline = TimelineFromState(state, candidate, "selected"),
-            Turns = AppendTurn(state.Turns, new(
-                "turn-choice-selected",
-                "user",
-                "choice",
-                "selected",
-                $"Selected {candidate.Title} for {candidate.Category}.",
-                "choice_candidate_selected",
-                "evidence-chat-candidate",
-                null,
-                candidate.CandidateId,
-                candidate.Category))
+            PlanningTimeline = IsLiveMode(state.SelectedModelRole)
+                ? AppendTimeline(TimelineFromState(state, candidate, "selected"), LiveSecondTurnTimeline(candidate))
+                : TimelineFromState(state, candidate, "selected"),
+            ProviderRequestState = IsLiveMode(state.SelectedModelRole) ? "second_turn_blocked" : state.ProviderRequestState,
+            ProviderOutcome = IsLiveMode(state.SelectedModelRole) ? "live_turn_provider_unknown_error" : state.ProviderOutcome,
+            ProviderHealth = IsLiveMode(state.SelectedModelRole) ? "harness_multiturn_provider_blocked" : state.ProviderHealth,
+            LastProviderFailureCode = IsLiveMode(state.SelectedModelRole) ? "provider_unknown_error" : state.LastProviderFailureCode,
+            Turns = turns
         };
     }
 
@@ -301,6 +314,20 @@ public sealed class EndUserChatService
             turns.Add(liveSnapshot.Turn);
         }
 
+        if (IsLiveMode(liveSnapshot.SelectedModelRole))
+        {
+            turns.Add(new(
+                "turn-live-work-item-1",
+                "assistant",
+                liveSnapshot.LiveProposalState == EndUserLiveProposalMarkers.Accepted ? "live-work-item" : "live-blocked",
+                liveSnapshot.LiveProposalState == EndUserLiveProposalMarkers.Accepted ? "applied" : "blocked",
+                LiveWorkItemText(liveSnapshot),
+                liveSnapshot.ProviderOutcome,
+                "evidence-chat-live-model",
+                liveSnapshot.ErrorCode));
+            return turns;
+        }
+
         turns.AddRange(trace.Turns.Select(turn => new EndUserChatTurn(
             turn.TurnId,
             turn.Actor,
@@ -322,6 +349,53 @@ public sealed class EndUserChatService
             ErrorCodeFor(scenario, trace)));
 
         return turns;
+    }
+
+    private static EndUserChatTurn LiveSecondTurnBlocked(string candidateId) =>
+        new(
+            "turn-live-model-followup",
+            "provider",
+            "live-model-followup",
+            "blocked",
+            "A second live turn was blocked with the canonical live-turn provider diagnostic. Deterministic planning remains available.",
+            "live_turn_provider_unknown_error",
+            "evidence-chat-live-model",
+            "PCH_UI_LIVE_TURN_PROVIDER_BLOCKED",
+            candidateId,
+            "trip-style");
+
+    private static EndUserPlanningTimelineItem LiveSecondTurnTimeline(EndUserCandidateOption candidate) =>
+        new(
+            "timeline-live-second-turn",
+            "task",
+            "live-model-followup",
+            "blocked",
+            "Second live turn blocked",
+            "The selected option is preserved while the live-turn provider diagnostic is surfaced safely.",
+            "day-japan-02",
+            "slot-live-followup",
+            "task-itinerary",
+            candidate.CandidateId,
+            $"decision-live-followup-{candidate.CandidateId}",
+            candidate.EvidenceIds.FirstOrDefault(),
+            "turn-live-model-followup",
+            candidate.Media,
+            "live_turn_provider_unknown_error");
+
+    private static string LiveWorkItemText(EndUserLiveModelSnapshot liveSnapshot)
+    {
+        if (liveSnapshot.LiveProposalState == EndUserLiveProposalMarkers.Accepted &&
+            liveSnapshot.HarnessValidationState != EndUserLiveProposalMarkers.HarnessValidationBlocked)
+        {
+            return "Live model output was applied by the harness and converted into this planning work item.";
+        }
+
+        if (liveSnapshot.HarnessValidationState == EndUserLiveProposalMarkers.HarnessValidationBlocked)
+        {
+            return "Live model output reached the harness, but validation blocked it with a fixed sanitized result.";
+        }
+
+        return "Live model output was blocked before application; deterministic planning remains available.";
     }
 
     private async Task<SanitizedModelRoleStatusEvalRow> EvaluateRoleStatus(CancellationToken cancellationToken)
@@ -614,17 +688,34 @@ public sealed class EndUserChatService
     private static IReadOnlyDictionary<string, EndUserMediaAsset> MediaManifest() =>
         new Dictionary<string, EndUserMediaAsset>(StringComparer.Ordinal)
         {
-            ["cultural_immersive"] = new("cultural_immersive", "cultural_immersive", "/media/japan-card-pack/cultural-immersive.svg", "Abstract lanterns and temple lines for an immersive cultural Japan card.", "#25163f", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["scenic_relaxed"] = new("scenic_relaxed", "scenic_relaxed", "/media/japan-card-pack/scenic-relaxed.svg", "Mist, moss, sky, and coastline shapes for a relaxed scenic Japan card.", "#78b9a5", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["lively_food"] = new("lively_food", "lively_food", "/media/japan-card-pack/lively-food.svg", "Warm food market colors with lanterns and ceramic blue accents.", "#d94c3d", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["calm_morning"] = new("calm_morning", "calm_morning", "/media/japan-card-pack/calm-morning.svg", "Pale sun and soft green morning fields for a calm morning card.", "#f7ecd5", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["reflective_culture"] = new("reflective_culture", "reflective_culture", "/media/japan-card-pack/reflective-culture.svg", "Cherry, indigo, paper, and lantern glow for a reflective culture card.", "#182340", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["soft_nature"] = new("soft_nature", "soft_nature", "/media/japan-card-pack/soft-nature.svg", "Soft mountain, moss, and water shapes for a quiet nature card.", "#8fd3ca", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["restorative_downtime"] = new("restorative_downtime", "restorative_downtime", "/media/japan-card-pack/restorative-downtime.svg", "Lavender grey, warm wood, and bathhouse steam for restorative downtime.", "#d8d3e8", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["logistics_transit"] = new("logistics_transit", "logistics_transit", "/media/japan-card-pack/logistics-transit.svg", "Crisp transit linework with blue, charcoal, and signal green.", "#102235", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "ready"),
-            ["mood_placeholder"] = new("mood_placeholder", "fallback", "/media/japan-card-pack/mood-placeholder.svg", "Deterministic fallback mood art used when media is missing.", "#f7efe1", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "fallback"),
-            ["missing_provider_media"] = new("mood_placeholder", "fallback", "/media/japan-card-pack/mood-placeholder.svg", "Deterministic fallback mood art used when media is missing.", "#f7efe1", "generated_local", "project-generated", "Generated locally for Progressive Commitment Harness Sprint 017.", "fallback")
+            ["cultural_immersive"] = PromptStudioAsset("backdrop.cultural.sakura_temple.cultural_immersive", "cultural_immersive", "Sakura temple prompt-studio mood art.", "#f4a8b8"),
+            ["scenic_relaxed"] = PromptStudioAsset("backdrop.scenic.fuji_lake.scenic_relaxed", "scenic_relaxed", "Fuji lake prompt-studio scenic mood art.", "#8ab7cb"),
+            ["lively_food"] = PromptStudioAsset("backdrop.food.ramen_steam.food_cozy", "food_cozy", "Ramen steam prompt-studio food mood art.", "#d06d4c"),
+            ["calm_morning"] = PromptStudioAsset("backdrop.logistics.map_planning.family_easy", "family_easy", "Gentle map-planning prompt-studio morning mood art.", "#f6d7a7"),
+            ["reflective_culture"] = PromptStudioAsset("backdrop.cultural.vermilion_torii.spiritual_serene", "spiritual_serene", "Vermilion torii prompt-studio reflective culture art.", "#b14d3f"),
+            ["soft_nature"] = PromptStudioAsset("backdrop.scenic.fuji_lake.scenic_relaxed", "scenic_relaxed", "Fuji lake prompt-studio soft nature art.", "#8ab7cb"),
+            ["restorative_downtime"] = PromptStudioAsset("backdrop.scenic.onsen_valley.wellness_restorative", "wellness_restorative", "Onsen valley prompt-studio restorative mood art.", "#a9c6b2"),
+            ["logistics_transit"] = PromptStudioAsset("backdrop.urban.station_grid.budget_practical", "budget_practical", "Station grid prompt-studio logistics art.", "#334a67"),
+            ["mood_placeholder"] = PromptStudioAsset("backdrop.cultural.craft_district.arts_design", "arts_design", "Craft district prompt-studio fallback art.", "#c7a36b", "fallback"),
+            ["missing_provider_media"] = PromptStudioAsset("backdrop.cultural.craft_district.arts_design", "arts_design", "Craft district prompt-studio fallback art.", "#c7a36b", "fallback")
         };
+
+    private static EndUserMediaAsset PromptStudioAsset(
+        string assetId,
+        string mood,
+        string alt,
+        string dominantColor,
+        string state = "ready") =>
+        new(
+            assetId,
+            mood,
+            $"/media/japan-prompt-studio-pack/{assetId}.png",
+            alt,
+            dominantColor,
+            "prompt_studio_generated_local",
+            "project-generated",
+            "Generated locally by pch-prompt-studio for Progressive Commitment Harness Sprint 021.",
+            state);
 
     private static EndUserChatScenario SelectScenario(string normalizedPrompt)
     {
@@ -740,6 +831,9 @@ public sealed class EndUserChatService
             : liveSnapshot.IsLiveAccepted()
                 ? "live-model-attached"
                 : "live-guarded-fallback";
+
+    private static bool IsLiveMode(string selectedModelRole) =>
+        selectedModelRole != EndUserModelRoleSelection.DeterministicOffline;
 
     private enum EndUserChatScenario
     {
