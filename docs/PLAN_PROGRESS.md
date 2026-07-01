@@ -575,6 +575,7 @@ Sprint 021 should prove a real model can drive a multi-turn harness session, not
 - run at least two sequential live/harness turns or record a specific fixed provider/harness reason why the second turn could not proceed;
 - ensure later model turns receive freshly compiled harness projections rather than raw chat history;
 - render model/harness-derived assistant work items in `/trip`, not deterministic cards disguised as live output;
+- integrate the generated Japan prompt-studio image pack from `C:\Users\Bartek\Documents\Playground\pch-prompt-studio\artifacts` into cards, backdrops, selected echoes, and timeline thumbnails through a local UI manifest/provenance path;
 - add sanitized live interaction logs for provider, harness, and UI debugging, including fixed failure classes such as timeout, rate-limited, http 4xx/5xx, upstream model unavailable, malformed JSON, schema invalid, and harness validation blocked;
 - consolidate MVP documentation into `docs/MVP_STATUS.md`, archive or fold the three addendum planning notes, and clearly mark which stages are live, deterministic, provider-plumbed, or still synthetic.
 

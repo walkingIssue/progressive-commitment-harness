@@ -67,6 +67,7 @@ In scope:
 - live model output for at least two sequential turns;
 - harness-generated projections between turns, not replayed raw chat history;
 - UI rendering of live model-derived work items, not deterministic cards disguised as live output;
+- use the generated Japan prompt-studio image pack for real card/backdrop imagery in the end-user UI;
 - sanitized live interaction logs;
 - specific provider failure classification;
 - docs consolidation against the MVP plan.
@@ -199,6 +200,21 @@ Deliverables:
 - Stop using deterministic golden trace output for the primary live-mode assistant cards.
 - Keep deterministic mode available, but label it clearly and make live mode the explicit manual-smoke target when configured.
 - Replace the fixed/synthetic live proposal session with the harness multi-turn session from Lane A and provider live turn runner from Lane B.
+- Import and use the generated Japan prompt-studio asset pack from `C:\Users\Bartek\Documents\Playground\pch-prompt-studio\artifacts`.
+  - Current known structure: `catalog.json`, `catalog.generated.json`, `prompts.txt`, and `images/*.png`.
+  - Current count at planning time: 120 PNG assets; the user expects roughly 240 more to be added before or during the sprint.
+  - Treat `catalog.json` as the source metadata if present; preserve `id`, `label`, `domain`, `category`, `variant`, `mood`, `image_type`, `season`, and Japan anchors where useful.
+  - Copy selected assets into the UI static asset tree under a stable path such as `src/Pch.UI/wwwroot/media/japan-prompt-studio-pack/`.
+  - Generate or maintain a UI-facing manifest that maps mood/domain/category to local asset URLs.
+  - Do not hotlink from the prompt-studio workspace at runtime.
+  - Keep provenance metadata and no-readable-text/no-logo assumptions documented.
+- Use the image pack for:
+  - mood backdrops behind option groups;
+  - candidate card imagery;
+  - compact planning timeline thumbnails;
+  - selected-card user echo thumbnails;
+  - fallback/default images by mood.
+- If the full image set is too large for a single sprint commit, select a representative bounded subset first and document the remaining import queue. Prefer broad mood/domain coverage over many near-duplicates.
 - The UI must support this live browser script:
   1. choose in-harness live role;
   2. send a user prompt;
@@ -219,6 +235,7 @@ Deliverables:
 - Browser smoke must use the in-app browser when possible. HTTP-only smoke is not enough for the live sprint unless the browser controller fails; if it fails, record that failure separately.
 - Keep current interaction design intact: wide assistant interaction space, bottom Ask, cards, timeline, media hooks, selected-card user echo, route split.
 - Write `docs/live-failure-reports/sprint-021-end-user-live-multiturn-ui.md`.
+- Write or update a media-pack doc such as `docs/design/sprint-021-prompt-studio-media-pack.md` with selected asset counts, source path, manifest shape, and any deferred import notes.
 
 Verification:
 
@@ -227,6 +244,7 @@ Verification:
 - `dotnet test tests/Pch.UI.Tests/Pch.UI.Tests.csproj`
 - in-app browser deterministic smoke
 - in-app browser live smoke with real provider when configured
+- browser/media smoke proving real PNG assets render on cards, timeline, selected bubbles, and fallback states
 - raw sentinel scan
 
 ## Lane D - MVP Documentation Consolidation
