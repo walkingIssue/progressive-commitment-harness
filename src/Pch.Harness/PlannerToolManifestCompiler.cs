@@ -77,13 +77,16 @@ public sealed class PlannerToolManifestCompiler
         var stages = new[] { stage.ToString() };
         var shared = new List<PlannerPrimitiveDefinition>
         {
-            Definition(PlannerPrimitiveIds.AssistantMessage, "assistant-message", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.AssistantMessage, PlannerRendererKeys.AssistantMessage, stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.StatusNotice, PlannerRendererKeys.StatusNotice, stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false),
             Definition(PlannerPrimitiveIds.EvidenceStrip, "evidence-strip", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false),
             Definition(PlannerPrimitiveIds.TimelineAnchor, "timeline-anchor", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.TimelineItem, PlannerRendererKeys.TimelineItem, stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
             Definition(PlannerPrimitiveIds.TaskList, "task-list", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
             Definition(PlannerPrimitiveIds.TaskGroup, "task-group", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: true, supportsMedia: false),
-            Definition(PlannerPrimitiveIds.ToolSearchRequest, "tool-search-request", stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
-            Definition(PlannerPrimitiveIds.ToolGapRequest, "tool-gap-request", stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.TaskDecomposition, PlannerRendererKeys.TaskDecomposition, stages, PlannerAnswerSchemaKinds.TaskDecomposition, [], supportsMood: true, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.ToolSearchRequest, PlannerRendererKeys.ToolSearchRequest, stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
+            Definition(PlannerPrimitiveIds.ToolGapRequest, PlannerRendererKeys.ToolGapRequest, stages, PlannerAnswerSchemaKinds.Text, [], supportsMood: false, supportsMedia: false),
             Definition(PlannerPrimitiveIds.ToolContextReference, "tool-context-reference", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false)
         };
 
@@ -91,16 +94,27 @@ public sealed class PlannerToolManifestCompiler
         {
             HarnessStage.Intake or HarnessStage.SlotCollection =>
             [
-                Definition(PlannerPrimitiveIds.TextInput, "text-input", stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
-                Definition(PlannerPrimitiveIds.Textarea, "textarea", stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
-                Definition(PlannerPrimitiveIds.DateRange, "date-range", stages, PlannerAnswerSchemaKinds.DateRange, ["/mission/start_date", "/mission/end_date"], supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.TextInput, PlannerRendererKeys.TextInput, stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Textarea, PlannerRendererKeys.Textarea, stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.NumberInput, PlannerRendererKeys.NumberInput, stages, PlannerAnswerSchemaKinds.Number, NumericFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Slider, PlannerRendererKeys.Slider, stages, PlannerAnswerSchemaKinds.Number, NumericFieldPaths(), supportsMood: true, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Date, PlannerRendererKeys.Date, stages, PlannerAnswerSchemaKinds.Date, ["/mission/start_date", "/mission/end_date"], supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.DateRange, PlannerRendererKeys.DateRange, stages, PlannerAnswerSchemaKinds.DateRange, ["/mission/start_date", "/mission/end_date"], supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.RadioGroup, PlannerRendererKeys.RadioGroup, stages, PlannerAnswerSchemaKinds.SingleSelect, ChoiceFieldPaths(), supportsMood: true, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Select, PlannerRendererKeys.Select, stages, PlannerAnswerSchemaKinds.SingleSelect, ChoiceFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.MultiSelect, PlannerRendererKeys.MultiSelect, stages, PlannerAnswerSchemaKinds.MultiSelect, ChoiceFieldPaths(), supportsMood: true, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Checkbox, PlannerRendererKeys.Checkbox, stages, PlannerAnswerSchemaKinds.Boolean, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.ChoiceCard, PlannerRendererKeys.ChoiceCard, stages, PlannerAnswerSchemaKinds.SingleSelect, ChoiceFieldPaths(), supportsMood: true, supportsMedia: true),
                 Definition(PlannerPrimitiveIds.ConfirmationQuestion, "confirmation-question", stages, PlannerAnswerSchemaKinds.Confirmation, AllowedFieldPaths(), supportsMood: true, supportsMedia: false)
             ],
             HarnessStage.DaySkeletonGeneration or HarnessStage.Logistics or HarnessStage.Meals or HarnessStage.ActivitiesDowntime =>
             [
-                Definition(PlannerPrimitiveIds.CandidateDeck, "candidate-deck", stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: true, supportsMedia: true),
+                Definition(PlannerPrimitiveIds.CandidateDeck, PlannerRendererKeys.CandidateDeck, stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: true, supportsMedia: true),
+                Definition(PlannerPrimitiveIds.ChoiceCard, PlannerRendererKeys.ChoiceCard, stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: true, supportsMedia: true),
+                Definition(PlannerPrimitiveIds.RadioGroup, PlannerRendererKeys.RadioGroup, stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: true, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.Select, PlannerRendererKeys.Select, stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: false, supportsMedia: false),
                 Definition(PlannerPrimitiveIds.SingleSelect, "single-select", stages, PlannerAnswerSchemaKinds.SingleSelect, [], supportsMood: true, supportsMedia: false),
-                Definition(PlannerPrimitiveIds.MultiSelect, "multi-select", stages, PlannerAnswerSchemaKinds.MultiSelect, [], supportsMood: true, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.MultiSelect, PlannerRendererKeys.MultiSelect, stages, PlannerAnswerSchemaKinds.MultiSelect, [], supportsMood: true, supportsMedia: false),
                 Definition(PlannerPrimitiveIds.RankedChoice, "ranked-choice", stages, PlannerAnswerSchemaKinds.RankedChoice, [], supportsMood: true, supportsMedia: true),
                 Definition(PlannerPrimitiveIds.AvailabilityPreview, "availability-preview", stages, PlannerAnswerSchemaKinds.None, [], supportsMood: false, supportsMedia: false)
             ],
@@ -110,7 +124,7 @@ public sealed class PlannerToolManifestCompiler
             ],
             _ =>
             [
-                Definition(PlannerPrimitiveIds.TextInput, "text-input", stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
+                Definition(PlannerPrimitiveIds.TextInput, PlannerRendererKeys.TextInput, stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false),
                 Definition(PlannerPrimitiveIds.EditPatchRequest, "edit-patch-request", stages, PlannerAnswerSchemaKinds.Text, AllowedFieldPaths(), supportsMood: false, supportsMedia: false)
             ]
         });
@@ -163,8 +177,9 @@ public sealed class PlannerToolManifestCompiler
         return answerKind switch
         {
             PlannerAnswerSchemaKinds.Confirmation => ["confirm", "correct", "defer"],
-            PlannerAnswerSchemaKinds.SingleSelect => ["selected"],
-            PlannerAnswerSchemaKinds.MultiSelect => ["selected"],
+            PlannerAnswerSchemaKinds.Boolean => ["checked"],
+            PlannerAnswerSchemaKinds.SingleSelect => [],
+            PlannerAnswerSchemaKinds.MultiSelect => [],
             PlannerAnswerSchemaKinds.RankedChoice => ["ranked"],
             _ => []
         };
@@ -179,7 +194,42 @@ public sealed class PlannerToolManifestCompiler
             "/mission/start_date",
             "/mission/end_date",
             "/constraints/pace",
-            "/constraints/budget"
+            "/constraints/budget",
+            "/constraints/freeform",
+            "/constraints/notes",
+            "/constraints/budget_amount",
+            "/constraints/max_walking_minutes",
+            "/mission/travel_style"
+        ];
+    }
+
+    private static IReadOnlyList<string> FreeTextFieldPaths()
+    {
+        return
+        [
+            "/mission/purpose",
+            "/constraints/freeform",
+            "/constraints/notes"
+        ];
+    }
+
+    private static IReadOnlyList<string> ChoiceFieldPaths()
+    {
+        return
+        [
+            "/mission/destination_country",
+            "/constraints/pace",
+            "/constraints/budget",
+            "/mission/travel_style"
+        ];
+    }
+
+    private static IReadOnlyList<string> NumericFieldPaths()
+    {
+        return
+        [
+            "/constraints/budget_amount",
+            "/constraints/max_walking_minutes"
         ];
     }
 
@@ -207,7 +257,7 @@ public sealed class PlannerPrimitiveValidator
     public const string PrimitiveNotSupportedCode = "primitive_not_supported";
     public const string PrimitiveNotAllowedForStageCode = "primitive_not_allowed_for_stage";
     public const string FieldPathNotAllowedCode = "field_path_not_allowed";
-    public const string AnswerSchemaInvalidCode = "answer_schema_invalid";
+    public const string AnswerSchemaInvalidCode = PrimitiveAnswerSchemaInvalidCode;
     public const string StaleGraphRevisionCode = "stale_graph_revision";
     public const string OwnershipInvalidCode = "ownership_invalid";
     public const string PrimitiveMetadataRedactedCode = "primitive_metadata_redacted";
@@ -215,7 +265,16 @@ public sealed class PlannerPrimitiveValidator
     public const string ApprovalRequiredCode = "approval_required";
     public const string ToolNotAllowedCode = "tool_not_allowed";
     public const string PrimitiveOptionLimitExceededCode = "primitive_option_limit_exceeded";
+    public const string PrimitiveOptionsMissingCode = "primitive_options_missing";
     public const string AnswerValueNotAllowedCode = "answer_value_not_allowed";
+    public const string PrimitiveRendererMismatchCode = "primitive_renderer_mismatch";
+    public const string PrimitiveAnswerSchemaInvalidCode = "primitive_answer_schema_invalid";
+    public const string TaskDecompositionInvalidCode = "task_decomposition_invalid";
+    public const string TaskDecompositionMissingCode = "task_decomposition_missing";
+    public const string ToolContextRefInvalidCode = "tool_context_ref_invalid";
+
+    [Obsolete("Use PrimitiveAnswerSchemaInvalidCode.")]
+    public const string LegacyAnswerSchemaInvalidCode = "answer_schema_invalid";
 
     private const int MaxTextLength = 160;
     private const int MaxRefs = 12;
@@ -277,6 +336,7 @@ public sealed class PlannerPrimitiveValidator
         var taskRailRefs = validated
             .SelectMany(primitive => new[] { primitive.TaskId }.Where(id => !string.IsNullOrWhiteSpace(id)))
             .Concat(validated.SelectMany(primitive => primitive.TaskReferences.Select(task => task.TaskId)))
+            .Concat(validated.SelectMany(primitive => primitive.TaskDecomposition.Select(task => task.TaskId)))
             .Select(SafeId)
             .Distinct(StringComparer.Ordinal)
             .Take(MaxRefs)
@@ -377,12 +437,14 @@ public sealed class PlannerPrimitiveValidator
             || primitive.Options is null
             || primitive.Defaults is null
             || primitive.TaskReferences is null
+            || primitive.TaskDecomposition is null
             || primitive.ToolContextReferences is null
             || primitive.ValidationRules is null
             || primitive.RendererHints is null
             || primitive.Options.Any(option => option is null)
             || primitive.Defaults.Any(item => item is null)
             || primitive.TaskReferences.Any(item => item is null)
+            || primitive.TaskDecomposition.Any(item => item is null)
             || primitive.ValidationRules.Any(item => item is null)
             || primitive.RendererHints.Any(item => item is null))
         {
@@ -401,9 +463,9 @@ public sealed class PlannerPrimitiveValidator
         }
 
         if (primitive.SchemaVersion != definition.SchemaVersion
-            || !string.Equals(primitive.RendererKey, definition.RendererKey, StringComparison.Ordinal))
+            || !CanonicalRendererMatches(definition, primitive))
         {
-            return Reject(InvalidManifestCode, "Planner primitive failed validation.");
+            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the primitive kind.");
         }
 
         if (primitive.Label?.Length > manifest.MaxTextLength
@@ -412,6 +474,7 @@ public sealed class PlannerPrimitiveValidator
             || primitive.Options.Any(option => option.Label?.Length > manifest.MaxTextLength || option.Summary?.Length > manifest.MaxTextLength)
             || primitive.Defaults.Any(item => item.Value?.Length > manifest.MaxTextLength)
             || primitive.TaskReferences.Any(item => item.Label?.Length > manifest.MaxTextLength)
+            || primitive.TaskDecomposition.Any(item => item.Title?.Length > manifest.MaxTextLength)
             || primitive.ToolContextReferences.Count > MaxRefs
             || primitive.ValidationRules.Count > MaxRefs
             || primitive.RendererHints.Count > MaxRefs)
@@ -445,6 +508,11 @@ public sealed class PlannerPrimitiveValidator
             return Reject(PrimitiveOptionLimitExceededCode, "Planner primitive option count exceeded the allowed maximum.");
         }
 
+        if (RequiresOptions(primitive.PrimitiveId) && primitive.Options.Count == 0)
+        {
+            return Reject(PrimitiveOptionsMissingCode, "Planner primitive requires explicit options.");
+        }
+
         var dynamicOptionValidation = ValidateDynamicOptions(manifest, definition, primitive);
         if (!dynamicOptionValidation.IsAccepted)
         {
@@ -457,11 +525,22 @@ public sealed class PlannerPrimitiveValidator
             return dynamicReferenceValidation;
         }
 
+        var taskDecompositionValidation = ValidateTaskDecomposition(primitive);
+        if (!taskDecompositionValidation.IsAccepted)
+        {
+            return taskDecompositionValidation;
+        }
+
         if (!string.IsNullOrWhiteSpace(primitive.FieldPath)
             && (!definition.AllowedFieldPaths.Contains(primitive.FieldPath, StringComparer.Ordinal)
                 || !manifest.AllowedFieldPaths.Contains(primitive.FieldPath, StringComparer.Ordinal)))
         {
             return Reject(FieldPathNotAllowedCode, "Planner primitive field path is not allowed.");
+        }
+
+        if (!RendererAllowedForFieldPath(primitive))
+        {
+            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the field path.");
         }
 
         if (!string.IsNullOrWhiteSpace(primitive.SlotId)
@@ -509,7 +588,12 @@ public sealed class PlannerPrimitiveValidator
         if (!AnswerSchemaMatches(definition.AnswerSchema, primitive.AnswerSchema)
             || !AnswersMatch(primitive.AnswerSchema, primitive.Answers))
         {
-            return Reject(AnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
+            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
+        }
+
+        if (!DefaultsMatchAnswerSchema(primitive))
+        {
+            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
         }
 
         if (!AnswerValuesAllowed(primitive))
@@ -551,10 +635,131 @@ public sealed class PlannerPrimitiveValidator
                 Options = cleanOptions,
                 Defaults = cleanDefaults,
                 TaskReferences = cleanTasks,
+                TaskDecomposition = CleanTaskDecomposition(primitive.TaskDecomposition, manifest).ToArray(),
                 ToolContextReferences = cleanToolRefs,
                 ValidationRules = cleanRules,
                 RendererHints = cleanHints
             });
+    }
+
+    private static bool CanonicalRendererMatches(PlannerPrimitiveDefinition definition, PlannerPrimitiveInstance primitive)
+    {
+        return string.Equals(primitive.RendererKey, definition.RendererKey, StringComparison.Ordinal);
+    }
+
+    private static bool RequiresOptions(string primitiveId)
+    {
+        return primitiveId is PlannerPrimitiveIds.RadioGroup
+            or PlannerPrimitiveIds.Select
+            or PlannerPrimitiveIds.MultiSelect
+            or PlannerPrimitiveIds.ChoiceCard
+            or PlannerPrimitiveIds.CandidateDeck;
+    }
+
+    private static bool RendererAllowedForFieldPath(PlannerPrimitiveInstance primitive)
+    {
+        if (string.IsNullOrWhiteSpace(primitive.FieldPath))
+        {
+            return true;
+        }
+
+        if (primitive.FieldPath is "/mission/start_date" or "/mission/end_date"
+            && primitive.PrimitiveId is not (PlannerPrimitiveIds.Date or PlannerPrimitiveIds.DateRange))
+        {
+            return false;
+        }
+
+        if (primitive.FieldPath is "/mission/destination_country" or "/constraints/pace" or "/constraints/budget" or "/mission/travel_style"
+            && primitive.PrimitiveId is PlannerPrimitiveIds.TextInput or PlannerPrimitiveIds.Textarea)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static PlannerPrimitiveValidation ValidateTaskDecomposition(PlannerPrimitiveInstance primitive)
+    {
+        if (primitive.PrimitiveId != PlannerPrimitiveIds.TaskDecomposition)
+        {
+            return primitive.TaskDecomposition.Count == 0
+                ? PlannerPrimitiveValidation.Accepted()
+                : Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+        }
+
+        if (primitive.TaskDecomposition.Count == 0)
+        {
+            return Reject(TaskDecompositionMissingCode, "Planner task decomposition is missing.");
+        }
+
+        var taskIds = new HashSet<string>(StringComparer.Ordinal);
+        var orders = new HashSet<int>();
+        foreach (var item in primitive.TaskDecomposition)
+        {
+            if (item is null
+                || string.IsNullOrWhiteSpace(item.TaskId)
+                || string.IsNullOrWhiteSpace(item.Title)
+                || string.IsNullOrWhiteSpace(item.State)
+                || item.Order < 0
+                || item.DependencyTaskIds is null
+                || item.EvidenceReferences is null
+                || Unsafe(item.TaskId)
+                || Unsafe(item.Title)
+                || Unsafe(item.State)
+                || item.DependencyTaskIds.Any(Unsafe)
+                || item.EvidenceReferences.Any(Unsafe)
+                || !PlannerTaskStates.Known.Contains(item.State)
+                || !taskIds.Add(item.TaskId)
+                || !orders.Add(item.Order))
+            {
+                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+            }
+        }
+
+        foreach (var item in primitive.TaskDecomposition)
+        {
+            if (item.DependencyTaskIds.Any(dependencyId => !taskIds.Contains(dependencyId)))
+            {
+                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+            }
+        }
+
+        return PlannerPrimitiveValidation.Accepted();
+    }
+
+    private static bool DefaultsMatchAnswerSchema(PlannerPrimitiveInstance primitive)
+    {
+        foreach (var item in primitive.Defaults)
+        {
+            if (!DefaultMatches(primitive.AnswerSchema.Kind, item))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool DefaultMatches(string answerKind, PlannerPrimitiveDefault item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Value))
+        {
+            return true;
+        }
+
+        return answerKind switch
+        {
+            PlannerAnswerSchemaKinds.Date => DateOnly.TryParseExact(item.Value, "yyyy-MM-dd", out _),
+            PlannerAnswerSchemaKinds.DateRange => item.FieldKey is "start" or "end"
+                && DateOnly.TryParseExact(item.Value, "yyyy-MM-dd", out _),
+            PlannerAnswerSchemaKinds.Number or PlannerAnswerSchemaKinds.NumberRange => decimal.TryParse(item.Value, out _),
+            PlannerAnswerSchemaKinds.Boolean => item.Value is "true" or "false",
+            PlannerAnswerSchemaKinds.SingleSelect or PlannerAnswerSchemaKinds.MultiSelect or PlannerAnswerSchemaKinds.RankedChoice or PlannerAnswerSchemaKinds.Confirmation => true,
+            PlannerAnswerSchemaKinds.Text => true,
+            PlannerAnswerSchemaKinds.None => false,
+            PlannerAnswerSchemaKinds.TaskDecomposition => false,
+            _ => false
+        };
     }
 
     private static PlannerPrimitiveValidation ValidateDynamicOptions(
@@ -595,7 +800,7 @@ public sealed class PlannerPrimitiveValidator
 
             if (option.ToolContextReferences.Any(reference => !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
             {
-                return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+                return Reject(ToolContextRefInvalidCode, "Planner primitive references unknown tool context.");
             }
         }
 
@@ -636,13 +841,13 @@ public sealed class PlannerPrimitiveValidator
 
             if (task.ToolContextReferences.Any(reference => !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
             {
-                return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+                return Reject(ToolContextRefInvalidCode, "Planner primitive references unknown tool context.");
             }
         }
 
         if (primitive.ToolContextReferences.Any(reference => Unsafe(reference) || !manifest.AllowedToolContextRefs.Contains(reference, StringComparer.Ordinal)))
         {
-            return Reject(OwnershipInvalidCode, "Planner primitive references unknown tool context.");
+            return Reject(ToolContextRefInvalidCode, "Planner primitive references unknown tool context.");
         }
 
         if (primitive.ValidationRules.Any(rule => rule is null
@@ -686,12 +891,16 @@ public sealed class PlannerPrimitiveValidator
         {
             PlannerAnswerSchemaKinds.None => answers.Count == 0,
             PlannerAnswerSchemaKinds.Text => !schema.Required || HasValue(answers, "value"),
+            PlannerAnswerSchemaKinds.Date => HasDate(answers, "value"),
+            PlannerAnswerSchemaKinds.Boolean => HasAllowedValue(answers, "checked", ["true", "false"]),
+            PlannerAnswerSchemaKinds.Number => HasNumber(answers, "value"),
             PlannerAnswerSchemaKinds.Confirmation => HasAllowedValue(answers, "value", schema.Options.Count > 0 ? schema.Options : ["confirm", "correct", "defer"]),
             PlannerAnswerSchemaKinds.SingleSelect => HasValue(answers, "selected"),
             PlannerAnswerSchemaKinds.MultiSelect => !schema.Required || HasValue(answers, "selected"),
             PlannerAnswerSchemaKinds.RankedChoice => !schema.Required || HasValue(answers, "ranked"),
             PlannerAnswerSchemaKinds.DateRange => HasValue(answers, "start") && HasValue(answers, "end"),
             PlannerAnswerSchemaKinds.NumberRange => HasValue(answers, "min") && HasValue(answers, "max"),
+            PlannerAnswerSchemaKinds.TaskDecomposition => answers.Count == 0,
             _ => false
         };
     }
@@ -734,6 +943,20 @@ public sealed class PlannerPrimitiveValidator
     private static bool HasValue(IReadOnlyDictionary<string, string?> answers, string key)
     {
         return answers.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static bool HasDate(IReadOnlyDictionary<string, string?> answers, string key)
+    {
+        return answers.TryGetValue(key, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+            && DateOnly.TryParseExact(value, "yyyy-MM-dd", out _);
+    }
+
+    private static bool HasNumber(IReadOnlyDictionary<string, string?> answers, string key)
+    {
+        return answers.TryGetValue(key, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+            && decimal.TryParse(value, out _);
     }
 
     private static bool HasAllowedValue(IReadOnlyDictionary<string, string?> answers, string key, IReadOnlyList<string> allowed)
@@ -810,6 +1033,20 @@ public sealed class PlannerPrimitiveValidator
                 SafeNullableText(task.GroupId, manifest.MaxTextLength),
                 CleanRefs(task.EvidenceReferences),
                 CleanRefs(task.ToolContextReferences)));
+    }
+
+    private static IEnumerable<PlannerTaskDecompositionItem> CleanTaskDecomposition(IEnumerable<PlannerTaskDecompositionItem> tasks, PlannerToolManifest manifest)
+    {
+        return tasks
+            .OrderBy(task => task.Order)
+            .Take(MaxRefs)
+            .Select(task => new PlannerTaskDecompositionItem(
+                SafeId(task.TaskId),
+                SafeText(task.Title, manifest.MaxTextLength),
+                SafeId(task.State),
+                task.Order,
+                CleanRefs(task.DependencyTaskIds),
+                CleanRefs(task.EvidenceReferences)));
     }
 
     private static IEnumerable<PlannerPrimitiveValidationRule> CleanRules(IEnumerable<PlannerPrimitiveValidationRule> rules, PlannerToolManifest manifest)
@@ -934,6 +1171,14 @@ public sealed class PlannerPrimitiveValidator
                 || task.EvidenceReferences.Any(Unsafe)
                 || task.ToolContextReferences is null
                 || task.ToolContextReferences.Any(Unsafe))
+            || primitive.TaskDecomposition.Any(task => task is null
+                || Unsafe(task.TaskId)
+                || Unsafe(task.Title)
+                || Unsafe(task.State)
+                || task.DependencyTaskIds is null
+                || task.DependencyTaskIds.Any(Unsafe)
+                || task.EvidenceReferences is null
+                || task.EvidenceReferences.Any(Unsafe))
             || primitive.ToolContextReferences.Any(Unsafe)
             || primitive.ValidationRules.Any(rule => rule is null || Unsafe(rule.RuleId) || Unsafe(rule.Kind) || Unsafe(rule.Value) || Unsafe(rule.Code))
             || primitive.RendererHints.Any(hint => hint is null || Unsafe(hint.Key) || Unsafe(hint.Value) || LooksLikeRawMediaOrCss(hint.Value));
@@ -950,6 +1195,7 @@ public sealed class PlannerPrimitiveValidator
             primitive.MediaToken,
             Options = primitive.Options.Select(option => option.OptionId).OrderBy(id => id, StringComparer.Ordinal),
             Tasks = primitive.TaskReferences.Select(task => task.TaskId).OrderBy(id => id, StringComparer.Ordinal),
+            TaskDecomposition = primitive.TaskDecomposition.Select(task => new { task.TaskId, task.State, task.Order }).OrderBy(task => task.Order),
             ToolContextReferences = primitive.ToolContextReferences.OrderBy(id => id, StringComparer.Ordinal),
             Answers = primitive.Answers.OrderBy(pair => pair.Key, StringComparer.Ordinal)
         }));
