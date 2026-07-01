@@ -840,10 +840,11 @@ function handleChatInteraction(target: EventTarget | null): void {
   if (action.sendAction === "planner" || action.sendAction === "planner-drawer" || action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
     const beforeFinalState = root()?.dataset.finalState;
     const beforeTurnCount = transcript()?.dataset.turnCount;
+    const capturedPrompt = document.querySelector<HTMLTextAreaElement>("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']")?.value ?? "";
     if (selectedModelRole() !== "deterministic-offline") {
       scheduleHttpTransport(
         () => root()?.dataset.finalState === beforeFinalState || transcript()?.dataset.turnCount === beforeTurnCount || root()?.dataset.providerOutcome === "planner_model_pending",
-        startLivePlanningViaHttp,
+        () => startLivePlanningViaHttp(capturedPrompt),
       );
     } else {
       scheduleFallback(

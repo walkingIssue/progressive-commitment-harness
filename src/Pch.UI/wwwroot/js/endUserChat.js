@@ -688,8 +688,9 @@ function handleChatInteraction(target) {
     if (action.sendAction === "planner" || action.sendAction === "planner-drawer" || action.sendAction === "deterministic" || action.sendAction === "deterministic-drawer") {
         const beforeFinalState = root()?.dataset.finalState;
         const beforeTurnCount = transcript()?.dataset.turnCount;
+        const capturedPrompt = document.querySelector("[data-prompt-entry='trip'], [data-prompt-entry='trip-drawer']")?.value ?? "";
         if (selectedModelRole() !== "deterministic-offline") {
-            scheduleHttpTransport(() => root()?.dataset.finalState === beforeFinalState || transcript()?.dataset.turnCount === beforeTurnCount || root()?.dataset.providerOutcome === "planner_model_pending", startLivePlanningViaHttp);
+            scheduleHttpTransport(() => root()?.dataset.finalState === beforeFinalState || transcript()?.dataset.turnCount === beforeTurnCount || root()?.dataset.providerOutcome === "planner_model_pending", () => startLivePlanningViaHttp(capturedPrompt));
         }
         else {
             scheduleFallback(() => root()?.dataset.finalState === beforeFinalState && transcript()?.dataset.turnCount === beforeTurnCount, sendPrompt);
