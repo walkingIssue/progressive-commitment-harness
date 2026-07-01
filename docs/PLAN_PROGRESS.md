@@ -730,3 +730,18 @@ Still not complete MVP:
 - The task rail is derived from validated task primitives, but not yet a complete strong-model task decomposition graph for all planning phases.
 - Blazor Server circuit instability remains unresolved. The app currently uses the server-side HTTP planning session boundary for browser live turns.
 - Real search, availability, booking, payment, and external side effects remain guarded or mocked. Booking/payment should remain mocked until explicit approval and provider safety gates exist.
+
+## Sprint 024 Target
+
+Sprint 024 must harden the live primitive/tool layer and prove sustained live interaction. Detailed sprint plan: `docs/sprints/sprint-024.md`.
+
+Target outcomes:
+
+- every normal HTML/form primitive is exposed as a model-visible tool option with harness validation and UI rendering;
+- destination confirmation, dates, pace, preference selection, cards/decks, task decomposition, status notices, and tool-search requests use explicit primitive types rather than generic text fields;
+- provider prompt/schema requires the model to invoke primitives and provide their data, not emit vague form prose;
+- the UI renders by validated primitive/renderer type and never silently falls back to text input for known primitive kinds;
+- the task rail renders latest validated `task_decomposition` data or a fixed missing-decomposition block, never stale provider-blocked state after accepted server state;
+- Development mode surfaces provider/harness/UI failures in a fixed bottom status/error dock with fixed codes and safe trace ids;
+- `/trip?live=1` has zero deterministic fallback success paths;
+- real UI testing proves primitive renderer correctness, state-rail truth, visible fixed-code failures, and at least 200 live model turns or a BLOCKED report with the first repeated fixed failure class.
