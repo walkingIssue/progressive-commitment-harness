@@ -68,12 +68,14 @@ internal static class PlannerPrimitiveJsonSchema
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["taskId", "primitiveRefs", "title", "summary"],
+                "required": ["taskId", "primitiveRefs", "title", "summary", "state", "order"],
                 "properties": {
                   "taskId": { "type": "string" },
                   "primitiveRefs": { "type": "array", "items": { "type": "string" } },
                   "title": { "type": "string" },
-                  "summary": { "type": "string" }
+                  "summary": { "type": "string" },
+                  "state": { "type": "string", "enum": ["pending", "active", "blocked", "complete"] },
+                  "order": { "type": "integer", "minimum": 0, "maximum": 32 }
                 }
               }
             }

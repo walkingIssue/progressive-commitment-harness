@@ -4,6 +4,8 @@ Status: `attempted`
 
 Required tests remained deterministic/offline. Guarded manual live smoke used the provider-local `PlannerPrimitiveRunner` plus `PlannerPrimitiveEvaluator`; no direct-provider shortcut was counted as proof.
 
+Repair update: after UI integration showed `planner_model_accepted` could still reach the harness without canonical task decomposition, the runner now performs the same semantic task-decomposition gate before returning an accepted runtime result. Missing `task_decomposition`, missing task refs, or missing safe task records now returns fixed `planner_model_task_decomposition_missing` instead of accepted.
+
 ## Providers And Models
 
 - OpenAI / `gpt-4.1-mini`: `accepted`
@@ -15,20 +17,21 @@ Required tests remained deterministic/offline. Guarded manual live smoke used th
 
 ### OpenAI
 
-- Attempt count: `2`
+- Attempt count: `4`
 - Completion request: `attempted`
 - Fixed outcome: `planner_model_accepted`
 - Failure class: none
 - Model: `gpt-4.1-mini-2025-04-14`
-- Request id: `chatcmpl-DwndVXa36VBJYO44krcxYLsRlU64x`
+- Request id: `chatcmpl-DwoEuXkzkFGTR7PNlxQIO7WqkuSGr`
 - Output kind: `composite_form`
-- Primitive ids: `date_range`, `radio_group`, `select`, `task_decomposition`
-- Primitive kinds: `date_range`, `radio_group`, `select`, `task_decomposition`
-- Primitive count: `4`
-- Task count: `3`
-- Option count: `5`
-- Response length: `4209`
+- Primitive ids: `date_range`, `multi_select`, `radio_group`, `select`, `task_decomposition`
+- Primitive kinds: `date_range`, `multi_select`, `radio_group`, `select`, `task_decomposition`
+- Primitive count: `5`
+- Task count: `5`
+- Option count: `9`
+- Response length: `6626`
 - Anti-gaming proof: accepted row contains non-text primitives plus `task_decomposition`; it is not a generic text-input-only form.
+- Task-decomposition proof: accepted row contains `task_decomposition` plus nonzero safe task ids/count; `planner_model_accepted` cannot be emitted by the provider runner for missing task decomposition.
 - Raw request body persisted: no
 - Raw response body persisted: no
 - Raw completion persisted: no
@@ -37,7 +40,7 @@ Required tests remained deterministic/offline. Guarded manual live smoke used th
 
 ### OpenRouter
 
-- Attempt count: `2`
+- Attempt count: `4`
 - Credit check: `attempted`
 - Completion request: `attempted_when_guard_passed`
 - Fixed outcome: `planner_model_timeout`
@@ -58,8 +61,8 @@ Raw-free local JSONL diagnostics were written under `artifacts/live-runs/`, whic
 ## Findings
 
 - The provider prompt now presents the full Sprint 024 HTML/form primitive tool menu to the model.
-- The evaluator blocks destination/date/pace controls when a model tries to satisfy them with generic `text_input`/`textarea`.
-- Accepted composite-form rows require at least one non-text interactive primitive and `task_decomposition` with task records.
-- Accepted rows persist only fixed codes, safe ids, primitive ids/kinds/counts, task count, option count, response length, duration bucket, and accepted provider metadata.
+- The runner and evaluator block destination/date/pace controls when a model tries to satisfy them with generic `text_input`/`textarea`.
+- Accepted composite-form rows require at least one non-text interactive primitive and `task_decomposition` with task refs plus safe task records. This gate runs before `PlannerPrimitiveRunner` returns success, so UI/server integration cannot receive `planner_model_accepted` with missing task decomposition.
+- Accepted rows persist only fixed codes, safe ids, primitive ids/kinds/counts, task ids/count, option count, response length, duration bucket, and accepted provider metadata.
 - A runner timeout classification edge found during live OpenRouter smoke was repaired so provider timeout rows remain fixed-code sanitized instead of surfacing cancellation.
 - No raw keys, request bodies, provider responses, completions, prompts, submitted answers, context text, or exception text were printed or committed.

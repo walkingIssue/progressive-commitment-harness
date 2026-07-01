@@ -64,6 +64,7 @@ internal static class PlannerPrimitivePromptBuilder
                 "pace must use select, radio_group, or slider when options are available",
                 "multiple preferences must use multi_select, choice_card, or candidate_deck",
                 "an accepted planning turn must include task_decomposition plus task records",
+                "each task record must include safe taskId, title, summary, state, and order",
                 "tasks[].primitiveRefs must reference primitive instanceId values exactly, not primitiveId values",
                 "primitive taskRefs must reference taskId values exactly",
                 "use only allowedFieldPaths exactly as provided",

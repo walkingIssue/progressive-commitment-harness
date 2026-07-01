@@ -12,6 +12,7 @@ Accepted rows may persist:
 - primitive ids from the manifest
 - primitive kinds from the manifest
 - primitive count
+- task ids from validated task records
 - task count
 - option count
 - repair flag
@@ -59,9 +60,9 @@ Sprint 023 dynamic-form eval rows also enforce prompt-specific output. Accepted 
 Sprint 024 HTML primitive eval rows also enforce structural anti-gaming gates before acceptance:
 
 - accepted `composite_form` rows must include at least one non-text interactive primitive such as `select`, `radio_group`, `date`, `date_range`, `slider`, `multi_select`, `choice_card`, or `candidate_deck`;
-- accepted `composite_form` rows must include a `task_decomposition` primitive and task records;
+- accepted `composite_form` rows must include a `task_decomposition` primitive, task refs, and task records with safe ids/titles/state/order;
 - destination confirmation, exact dates, and pace controls must not be accepted as generic `text_input`/`textarea` when the prompt/context calls for structured controls;
-- row `PrimitiveIds`, `PrimitiveKinds`, `PrimitiveCount`, `TaskCount`, `OptionCount`, and `OutputKind` are the persisted proof of accepted structure.
+- row `PrimitiveIds`, `PrimitiveKinds`, `TaskIds`, `PrimitiveCount`, `TaskCount`, `OptionCount`, and `OutputKind` are the persisted proof of accepted structure.
 
 OpenAI/OpenRouter client diagnostics should classify provider failures with fixed classes before they reach eval rows:
 
