@@ -2,7 +2,7 @@
 
 Coordinator: Collin
 
-Dispatch base: `739df37182e509bf9a56e5547103ff4f945ad74c`.
+Dispatch base: current `origin/main` at worker start. The coordinator dispatch message provides the exact commit hash for branch creation and verification.
 
 ## Objective
 
