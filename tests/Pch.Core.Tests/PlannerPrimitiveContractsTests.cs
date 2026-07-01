@@ -9,7 +9,21 @@ public sealed class PlannerPrimitiveContractsTests
     public void PrimitiveAndMoodTokenSetsExposeSprintMinimums()
     {
         Assert.Contains(PlannerPrimitiveIds.AssistantMessage, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.StatusNotice, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.TextInput, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.Textarea, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.NumberInput, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.Slider, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.Date, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.DateRange, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.RadioGroup, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.Select, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.MultiSelect, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.Checkbox, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.ChoiceCard, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.CandidateDeck, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.TaskDecomposition, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.TimelineItem, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.TaskList, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.TaskGroup, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.ToolSearchRequest, PlannerPrimitiveIds.Known);
@@ -62,5 +76,18 @@ public sealed class PlannerPrimitiveContractsTests
         Assert.Equal("food_first", Assert.Single(primitive.Defaults).Value);
         Assert.Equal("task-food", Assert.Single(primitive.TaskReferences).TaskId);
         Assert.Equal("card_group", Assert.Single(primitive.RendererHints).Value);
+    }
+
+    [Fact]
+    public void HtmlPrimitiveContractsExposeExplicitRendererAndAnswerKinds()
+    {
+        Assert.Equal("select", PlannerRendererKeys.Select);
+        Assert.Equal("radio-group", PlannerRendererKeys.RadioGroup);
+        Assert.Equal("date-range", PlannerRendererKeys.DateRange);
+        Assert.Equal("task-decomposition", PlannerRendererKeys.TaskDecomposition);
+        Assert.Equal("single_choice", PlannerAnswerValueKinds.SingleChoice);
+        Assert.Equal("date_range", PlannerAnswerValueKinds.DateRange);
+        Assert.Contains(PlannerTaskStates.Pending, PlannerTaskStates.Known);
+        Assert.Contains(PlannerTaskStates.Blocked, PlannerTaskStates.Known);
     }
 }

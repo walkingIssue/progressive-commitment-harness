@@ -426,6 +426,200 @@ public sealed class PlannerToolManifestCompilerTests
         Assert.Empty(context.AcceptedFacts);
     }
 
+    [Theory]
+    [InlineData(PlannerPrimitiveIds.Select)]
+    [InlineData(PlannerPrimitiveIds.RadioGroup)]
+    public void ChoicePrimitiveWithoutOptionsBlocks(string primitiveId)
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var definition = Definition(manifest, primitiveId);
+        var primitive = Instance(
+            definition,
+            $"{primitiveId}-missing-options",
+            label: "Choose pace",
+            prompt: "Choose one trusted option.",
+            fieldPath: "/constraints/pace",
+            answers: new Dictionary<string, string?> { ["selected"] = "balanced" });
+
+        var result = Validate(session, manifest, [primitive]);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveOptionsMissingCode);
+    }
+
+    [Fact]
+    public void DateRangeWithTextDefaultsBlocksAsAnswerSchemaInvalid()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var primitive = DateRange(manifest, "dates-input") with
+        {
+            Defaults =
+            [
+                new PlannerPrimitiveDefault("start", "soon"),
+                new PlannerPrimitiveDefault("end", "later")
+            ]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveAnswerSchemaInvalidCode);
+    }
+
+    [Fact]
+    public void TextInputForChoiceFieldBlocksAsRendererMismatch()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var primitive = TextInput(manifest, "pace-input", "/constraints/pace", "balanced");
+
+        var result = Validate(session, manifest, [primitive]);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveRendererMismatchCode);
+    }
+
+    [Fact]
+    public void TaskDecompositionInvalidIdsOrderAndDependenciesBlock()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var definition = Definition(manifest, PlannerPrimitiveIds.TaskDecomposition);
+        var primitive = Instance(
+            definition,
+            "task-decomposition-1",
+            label: "Plan work",
+            prompt: "Decompose planning work.",
+            answers: new Dictionary<string, string?>()) with
+        {
+            TaskDecomposition =
+            [
+                new("task-a", "Ask for dates.", PlannerTaskStates.Pending, 1, ["missing-task"], []),
+                new("task-b", "Build options.", PlannerTaskStates.Active, 1, [], [])
+            ]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.TaskDecompositionInvalidCode);
+    }
+
+    [Fact]
+    public void AcceptedTaskDecompositionPreservesTaskIdsTitlesAndStates()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var definition = Definition(manifest, PlannerPrimitiveIds.TaskDecomposition);
+        var primitive = Instance(
+            definition,
+            "task-decomposition-accepted",
+            label: "Plan work",
+            prompt: "Decompose planning work.",
+            answers: new Dictionary<string, string?>()) with
+        {
+            TaskDecomposition =
+            [
+                new("task-a", "Confirm destination.", PlannerTaskStates.Active, 0, [], ["evidence-user-purpose"]),
+                new("task-b", "Collect dates.", PlannerTaskStates.Pending, 1, ["task-a"], ["evidence-user-purpose"])
+            ]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+
+        Assert.True(result.IsAccepted);
+        var tasks = Assert.Single(result.View.Primitives).TaskDecomposition;
+        Assert.Equal(["task-a", "task-b"], tasks.Select(task => task.TaskId).ToArray());
+        Assert.Equal(["Confirm destination.", "Collect dates."], tasks.Select(task => task.Title).ToArray());
+        Assert.Equal([PlannerTaskStates.Active, PlannerTaskStates.Pending], tasks.Select(task => task.State).ToArray());
+        Assert.Contains("task-a", result.View.TaskRailItemRefs);
+        Assert.Contains("task-b", result.View.TaskRailItemRefs);
+    }
+
+    [Fact]
+    public void UnsafeChoiceLabelsAndToolRefsBlockWithoutPlanningContextMutation()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var context = new PlanningSessionContext(session);
+        var beforeAnswers = context.SubmittedAnswers.Count;
+        var beforeFacts = context.AcceptedFacts.Count;
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var definition = Definition(manifest, PlannerPrimitiveIds.Select);
+        var primitive = Instance(
+            definition,
+            "pace-select",
+            label: "Choose pace",
+            prompt: "Choose one pace.",
+            fieldPath: "/constraints/pace",
+            answers: new Dictionary<string, string?> { ["selected"] = "balanced" }) with
+        {
+            Options =
+            [
+                new(
+                    "balanced",
+                    "RAW_PROMPT_SENTINEL_DO_NOT_LEAK",
+                    "SECRET_SENTINEL_DO_NOT_LEAK",
+                    PlannerMoodTokens.Neutral,
+                    null,
+                    [],
+                    ["unknown-tool-context"])
+            ]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveTextRedactedCode);
+        Assert.Equal(beforeAnswers, context.SubmittedAnswers.Count);
+        Assert.Equal(beforeFacts, context.AcceptedFacts.Count);
+        Assert.DoesNotContain("RAW_PROMPT_SENTINEL_DO_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_SENTINEL_DO_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EverySprint024PrimitiveTypeIsExposedByManifestOrExplicitlyBlocks()
+    {
+        var session = PreparedCandidateSession();
+        var compiler = new PlannerToolManifestCompiler();
+        var intake = compiler.Compile(session, HarnessStage.Intake);
+        var planning = compiler.Compile(session, HarnessStage.DaySkeletonGeneration);
+        var exposed = intake.AllowedPrimitives
+            .Concat(planning.AllowedPrimitives)
+            .Select(definition => definition.PrimitiveId)
+            .ToHashSet(StringComparer.Ordinal);
+        var required =
+            new[]
+            {
+                PlannerPrimitiveIds.AssistantMessage,
+                PlannerPrimitiveIds.StatusNotice,
+                PlannerPrimitiveIds.TextInput,
+                PlannerPrimitiveIds.Textarea,
+                PlannerPrimitiveIds.NumberInput,
+                PlannerPrimitiveIds.Slider,
+                PlannerPrimitiveIds.Date,
+                PlannerPrimitiveIds.DateRange,
+                PlannerPrimitiveIds.RadioGroup,
+                PlannerPrimitiveIds.Select,
+                PlannerPrimitiveIds.MultiSelect,
+                PlannerPrimitiveIds.Checkbox,
+                PlannerPrimitiveIds.ChoiceCard,
+                PlannerPrimitiveIds.CandidateDeck,
+                PlannerPrimitiveIds.TaskDecomposition,
+                PlannerPrimitiveIds.TimelineItem,
+                PlannerPrimitiveIds.ToolSearchRequest,
+                PlannerPrimitiveIds.ToolGapRequest
+            };
+
+        Assert.All(required, primitiveId => Assert.Contains(primitiveId, exposed));
+
+        var unsupported = AssistantMessage(intake) with
+        {
+            PrimitiveId = "not_a_tool",
+            RendererKey = "not-a-tool"
+        };
+        var result = Validate(session, intake, [unsupported]);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveNotSupportedCode);
+    }
+
     private static PlannerPrimitiveValidationResult Validate(
         TripSession session,
         PlannerToolManifest manifest,
@@ -515,7 +709,20 @@ public sealed class PlannerToolManifestCompilerTests
             moodToken: PlannerMoodTokens.Neutral,
             mediaToken: null,
             answers: new Dictionary<string, string?> { ["selected"] = candidateId },
-            evidence: ["evidence-fixture-candidates"]);
+            evidence: ["evidence-fixture-candidates"]) with
+        {
+            Options =
+            [
+                new(
+                    candidateId,
+                    "Trusted candidate option",
+                    "Fixture option for a trusted slot candidate.",
+                    PlannerMoodTokens.Neutral,
+                    "media:neutral",
+                    ["evidence-fixture-candidates"],
+                    ["evidence-fixture-candidates"])
+            ]
+        };
     }
 
     private static PlannerPrimitiveInstance DynamicRankedChoice(
