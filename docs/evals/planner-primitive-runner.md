@@ -53,6 +53,8 @@ Fixed outcomes:
 
 Malformed JSON and schema-invalid responses get one bounded repair attempt. If the repair output is valid, the accepted row uses `planner_model_repaired_json`. If the repair also fails, the row uses the fixed malformed/schema outcome and omits provider result metadata.
 
+Before repair, the parser may extract a single balanced JSON object from fenced or prose-wrapped model content in memory. The original completion and wrapper text are never persisted. If no balanced object can be extracted or the extracted object is still invalid JSON, the row remains `planner_model_malformed_json`.
+
 Optional live smoke records only fixed/sanitized status and must not fall back to a different paid provider unless explicitly configured and reported.
 
 Sprint 023 dynamic-form eval rows also enforce prompt-specific output. Accepted rows may preserve only manifest-owned primitive ids and counts; runtime model-authored labels, prompts, help text, default values, option labels/summaries, task titles/summaries, submitted answer values, context summaries, and raw prompts remain runtime-only and are omitted from serialized eval rows.

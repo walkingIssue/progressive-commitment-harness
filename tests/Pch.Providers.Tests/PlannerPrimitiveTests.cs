@@ -324,6 +324,48 @@ public sealed class PlannerPrimitiveTests
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
+    [Theory]
+    [InlineData("Here is the JSON:\n```json\n{0}\n```")]
+    [InlineData("Provider note before JSON.\n{0}\nProvider note after JSON.")]
+    public async Task WrappedJsonProviderContentIsAcceptedWithoutPersistingRawText(string wrapper)
+    {
+        var content = string.Format(wrapper, CreateContent("composite_form"));
+        var client = new StaticCompletionClient(content);
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("wrapped-json", CreateRequest())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, row.OutcomeCode);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.NotEmpty(row.TaskIds);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task SemanticRepairAcceptedUsesFixedRepairOutcome()
+    {
+        var client = new SequentialCompletionClient(
+            CreateContent("composite_form", includeTaskDecomposition: false),
+            CreateContent("composite_form"));
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("semantic-repair-form", CreateRequest())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.True(row.WasRepaired);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeRepairedJson, row.OutcomeCode);
+        Assert.Equal(2, client.CallCount);
+        Assert.Contains("task_decomposition_missing", client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.NotEmpty(row.TaskIds);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
     [Fact]
     public async Task UnsupportedPrimitiveBlocksWithoutProviderMetadata()
     {
