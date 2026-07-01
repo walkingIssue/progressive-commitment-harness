@@ -31,6 +31,12 @@ Runner behavior:
 - unsupported primitive validation against manifest ids/kinds/renderers;
 - no paid-provider fallback unless explicitly configured by the caller and reported.
 
+Provider clients:
+
+- `OpenRouterModelCompletionClient` remains the Qwen/OpenRouter path with `/api/v1/credits` guard support.
+- `OpenAiModelCompletionClient` is the OpenAI-compatible path for UI/server composition. It implements `IModelCompletionClient` and `IProviderCreditClient`, uses `OPENAI_API_KEY` or `OPENAI_API_KEY_FILE`/configured key file loading, defaults to `gpt-4.1-mini`, and reports OpenAI credit status as unknown/not exhausted because no safe credit endpoint is used in this provider lane.
+- Both clients use strict JSON schema response format, bounded timeout handling, empty-content blocking, malformed JSON blocking, caller-cancellation preservation, and typed provider exceptions for fixed downstream classification.
+
 Fixed outcomes include:
 
 - `planner_model_accepted`

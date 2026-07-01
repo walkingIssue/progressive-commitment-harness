@@ -71,6 +71,30 @@ public sealed class PlannerPrimitiveTests
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(client.LastRequest.Messages, SensitiveSentinels);
     }
 
+    [Fact]
+    public async Task AcceptedCompositeFormCanRunThroughOpenAiClientShape()
+    {
+        var client = new StaticCompletionClient(
+            CreateContent("composite_form"),
+            provider: "openai",
+            model: "gpt-4.1-mini",
+            requestId: "request-openai-safe");
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient(
+            new ProviderCreditStatus(null, null, null, IsExhausted: false))));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("primitive-form-openai", CreateRequest())],
+            CreateOptions(provider: "openai", model: "gpt-4.1-mini")));
+
+        Assert.True(row.Passed);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, row.OutcomeCode);
+        Assert.Equal("openai", row.Provider);
+        Assert.Equal("gpt-4.1-mini", row.Model);
+        Assert.Equal("request-openai-safe", row.RequestId);
+        Assert.Equal("gpt-4.1-mini", client.LastRequest?.Model);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
     [Theory]
     [InlineData("tool_search_request", "planner_model_tool_search_requested", PlannerModelOutputKind.ToolSearchRequest)]
     [InlineData("tool_gap_request", "planner_model_tool_gap_requested", PlannerModelOutputKind.ToolGapRequest)]
@@ -223,6 +247,21 @@ public sealed class PlannerPrimitiveTests
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(options, [ApiKey]);
     }
 
+    [Fact]
+    public void OptionsUseOpenAiDefaultModelWhenProviderIsOpenAi()
+    {
+        var options = PlannerModelOptions.FromEnvironment(new Dictionary<string, string?>
+        {
+            ["PCH_PLANNER_PRIMITIVE_ENABLED"] = "true",
+            ["OPENAI_API_KEY"] = ApiKey,
+            ["PCH_LIVE_MODEL_PROVIDER"] = "openai"
+        });
+
+        Assert.Equal("openai", options.Provider);
+        Assert.Equal("gpt-4.1-mini", options.Model);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(options, [ApiKey]);
+    }
+
     private static PlannerModelRequest CreateRequest() =>
         new(
             "planner-run",
@@ -246,14 +285,17 @@ public sealed class PlannerPrimitiveTests
             $"{RawPrompt} {Credential}",
             "prompt-digest-safe");
 
-    private static PlannerModelOptions CreateOptions(bool apiKeyAvailable = true) =>
+    private static PlannerModelOptions CreateOptions(
+        bool apiKeyAvailable = true,
+        string provider = "openrouter",
+        string model = "qwen/qwen3-14b") =>
         new(
             Enabled: true,
             ApiKeyAvailable: apiKeyAvailable,
             CreditGuardEnabled: true,
             Timeout: TimeSpan.FromSeconds(30),
-            Provider: "openrouter",
-            Model: "qwen/qwen3-14b");
+            Provider: provider,
+            Model: model);
 
     private static string CreateContent(
         string outputKind,
@@ -354,7 +396,11 @@ public sealed class PlannerPrimitiveTests
         Assert.Null(row.RequestId);
     }
 
-    private sealed class StaticCompletionClient(string content) : IModelCompletionClient
+    private sealed class StaticCompletionClient(
+        string content,
+        string provider = "openrouter",
+        string model = "qwen/qwen3-14b",
+        string requestId = "request-safe") : IModelCompletionClient
     {
         public ModelCompletionRequest? LastRequest { get; private set; }
 
@@ -364,10 +410,10 @@ public sealed class PlannerPrimitiveTests
         {
             LastRequest = request;
             return Task.FromResult(new ModelCompletionResponse(
-                request.Model ?? "qwen/qwen3-14b",
+                request.Model ?? model,
                 content,
-                "openrouter",
-                RequestId: "request-safe"));
+                provider,
+                RequestId: requestId));
         }
     }
 

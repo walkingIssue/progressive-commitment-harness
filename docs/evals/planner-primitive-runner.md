@@ -45,3 +45,15 @@ Fixed outcomes:
 Malformed JSON and schema-invalid responses get one bounded repair attempt. If the repair output is valid, the accepted row uses `planner_model_repaired_json`. If the repair also fails, the row uses the fixed malformed/schema outcome and omits provider result metadata.
 
 Optional live smoke records only fixed/sanitized status and must not fall back to a different paid provider unless explicitly configured and reported.
+
+OpenAI/OpenRouter client diagnostics should classify provider failures with fixed classes before they reach eval rows:
+
+- HTTP 429/rate limit: `provider_rate_limited`
+- HTTP 4xx: `provider_http_4xx`
+- HTTP 5xx: `provider_http_5xx`
+- timeout: `provider_timeout`
+- empty content: `provider_empty_content`
+- malformed JSON: `provider_malformed_json`
+- network error: `provider_network_error`
+
+OpenAI credit status is recorded as unknown/not exhausted when the OpenAI client is used as an `IProviderCreditClient`; it must not be reported as exhausted without a real provider signal.
