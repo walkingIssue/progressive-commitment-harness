@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using Pch.Providers.LivePreflight;
+using Pch.Providers.OpenAi;
+using Pch.Providers.OpenRouter;
 
 namespace Pch.Providers.PlannerPrimitives;
 
@@ -44,6 +46,7 @@ public sealed record PlannerModelOptions(
     {
         ArgumentNullException.ThrowIfNull(environment);
 
+        var provider = StringValue(environment, "PCH_LIVE_MODEL_PROVIDER") ?? "openrouter";
         return new PlannerModelOptions(
             Enabled: BoolValue(environment, "PCH_LIVE_MODEL_ENABLED") ||
                 BoolValue(environment, "PCH_PLANNER_PRIMITIVE_ENABLED"),
@@ -57,10 +60,10 @@ public sealed record PlannerModelOptions(
             RepairEnabled: !BoolValue(environment, "PCH_PLANNER_PRIMITIVE_DISABLE_REPAIR"),
             Timeout: TimeoutValue(environment, "PCH_LIVE_MODEL_TIMEOUT_SECONDS"),
             ProviderKind: ProviderKindValue(environment),
-            Provider: StringValue(environment, "PCH_LIVE_MODEL_PROVIDER") ?? "openrouter",
+            Provider: provider,
             Model: StringValue(environment, "PCH_PLANNER_PRIMITIVE_MODEL") ??
                 StringValue(environment, "PCH_LIVE_STRONG_PLANNER_MODEL") ??
-                "qwen/qwen3-14b");
+                DefaultModelForProvider(provider));
     }
 
     private static bool BoolValue(IReadOnlyDictionary<string, string?> environment, string key) =>
@@ -86,6 +89,13 @@ public sealed record PlannerModelOptions(
             "openai" => LivePreflightProviderKind.OpenAi,
             "grok" or "xai" or "grok-xai" => LivePreflightProviderKind.GrokXAi,
             _ => LivePreflightProviderKind.OpenRouter
+        };
+
+    private static string DefaultModelForProvider(string provider) =>
+        provider switch
+        {
+            "openai" => OpenAiOptions.DefaultModel,
+            _ => OpenRouterOptions.DefaultModel
         };
 }
 
