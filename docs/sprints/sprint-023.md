@@ -78,6 +78,10 @@ Sprint 023 passes only when these failure modes are removed from live mode.
 - Visual cards/decks are UI renderers over validated primitives. They must submit normal primitive answer DTOs.
 - Booking, payment, and real hold execution remain mocked or approval-blocked.
 - Real OpenAI/OpenRouter inference is explicitly allowed for manual and in-context browser testing. Required automated tests remain deterministic/offline.
+- DOM markers alone are not proof. Every accepted live browser claim must be backed by a server-side sanitized trace and by `GET /api/planning/session/{sessionId}` returning the same validated turn data the DOM displays.
+- Provider acceptance alone is not proof. A run only counts as live/dynamic when safe provider-authored primitive content survives harness validation and is visible in the UI.
+- Prompt-specific visible content alone is not proof. A run must show lineage from provider request id/model output hash to harness validation id to rendered primitive ids.
+- A model may not invent contextual web/search/booking facts. Any contextual recommendation sourced from search/booking/web tools must carry a sanitized `tool_context_ref` and evidence ref. If no live tool context exists, the model must ask, emit a tool-search request, or clearly operate from user-provided context.
 
 Known key files:
 
@@ -137,6 +141,145 @@ Answer
   updates planning context
   second model turn receives current structured state and submitted values
 ```
+
+## Anti-Gaming Truth Gates
+
+These gates exist because Sprint 022 was able to report provider/model success while still rendering static adapter state.
+
+Workers must not mark a lane READY if any of these checks fail.
+
+### Gate 1 - Provider Prompt Lineage
+
+How workers could lie:
+
+- Include only prompt digest or generic stage metadata in the provider request.
+- Make the UI dynamic through local heuristics instead of model output.
+- Use fake provider tests but never prove the production provider request contains the task.
+
+Required proof:
+
+- Provider unit tests must capture the exact `ModelCompletionRequest` passed to `IModelCompletionClient`.
+- The captured request must include:
+  - transient raw prompt text in the provider message body;
+  - current stage;
+  - graph revision;
+  - allowed primitives;
+  - allowed field paths;
+  - allowed mood/media tokens;
+  - submitted answer values on turn 2.
+- Sanitized logs may store only prompt hash/length/category, not raw prompt.
+- Real live reports must include prompt hash, request id, model, response length, primitive count, task count, and validated turn id.
+
+### Gate 2 - Provider Output To UI Lineage
+
+How workers could lie:
+
+- Provider returns dynamic text, but the UI projection replaces it with fixed labels/prompts/defaults.
+- DOM contains dynamic text that came from browser JavaScript, not server validation.
+- `planner_model_accepted` is treated as sufficient even when harness validation was skipped.
+
+Required proof:
+
+- Add a server-side sanitized `PlannerLiveTrace` or equivalent per HTTP planning session.
+- Trace entries must include:
+  - provider request id or fixed absence code;
+  - provider model;
+  - provider output hash over sanitized primitive structure;
+  - harness validation code;
+  - validated turn id;
+  - rendered primitive instance ids;
+  - task ids;
+  - answer ids.
+- Browser smoke must compare:
+  - DOM primitive ids/text;
+  - `GET /api/planning/session/{sessionId}` primitive ids/text;
+  - sanitized server trace primitive ids/hash.
+- These three surfaces must agree.
+
+### Gate 3 - Prompt Sensitivity Cannot Be Faked By Echo
+
+How workers could lie:
+
+- Make the model or server simply echo the user prompt into a generic form label.
+- Pass the "two different prompts" test without changing field paths, options, task decomposition, or second-turn behavior.
+
+Required proof:
+
+- Prompt A and Prompt B must differ in at least two of:
+  - primitive ids;
+  - field paths;
+  - option ids;
+  - task ids/titles;
+  - mood/media tokens;
+  - second-turn context values.
+- At least one difference must be structural, not only display text.
+- The live report must show a sanitized diff table for Prompt A vs Prompt B.
+
+### Gate 4 - Answer Values Must Drive Turn 2
+
+How workers could lie:
+
+- Send a second provider request with only field ids.
+- Increment `data-live-turn-attempt-count` without sending submitted values.
+- Return a generic second form that ignores what the user answered.
+
+Required proof:
+
+- Fake provider tests must assert submitted answer values are present in the second provider request.
+- Browser smoke must submit two different answers for the same first primitive in two separate sessions.
+- The second provider request hashes and validated second turns must differ structurally or be blocked with a fixed reason explaining why the answer did not alter the next turn.
+- `GET /api/planning/session/{sessionId}` must show answer values stored in the server-side planning context.
+
+### Gate 5 - Context Claims Require Evidence
+
+How workers could lie:
+
+- Have the model invent hotels, prices, availability, web facts, or booking-like claims.
+- Use deterministic mock context but present it as real live context.
+
+Required proof:
+
+- Any primitive option with search/booking/web-derived claims must include `tool_context_refs`.
+- Tool context refs must identify one of:
+  - `user_provided_context`;
+  - `mock_context_provider`;
+  - a named live tool/provider.
+- UI must visibly/safely mark mock context as mock when used.
+- Live reports must list context source counts.
+- If no context is present, provider output must not claim live availability, pricing, booking, or promotional facts.
+
+### Gate 6 - Browser Transport Cannot Fake Success
+
+How workers could lie:
+
+- Let browser fallback mutate DOM into a successful-looking state.
+- Count HTTP status 200 plus markers as an accepted live path.
+
+Required proof:
+
+- Browser JavaScript may only render DTOs returned by the server API.
+- No browser code may synthesize `planner_model_accepted`, `live_provider_candidate`, or `second_turn_attempted`.
+- Browser smoke must collect the session id and call `GET /api/planning/session/{sessionId}` after each interaction.
+- DOM and API state must match.
+- If Blazor disconnects, the run can still pass only through the HTTP API, not through local DOM mutation.
+
+### Gate 7 - Source Guards Against Known Static Adapters
+
+How workers could lie:
+
+- Leave static helper methods in the live path and just add a few dynamic-looking labels elsewhere.
+
+Required proof:
+
+- UI tests must fail if the live planning path references:
+  - `FixedLabel`;
+  - `FixedPrompt`;
+  - `DefaultAnswers`;
+  - `LivePrimitiveTasks`;
+  - `TaskFromRef` as a generic title source;
+  - `primitive-trip-basics-form` as the only live form id;
+  - `SyntheticTripFactory.CreateSession` inside the live HTTP planning session path.
+- These names may remain only in deterministic/test fixture code when explicitly scoped and named as fixtures.
 
 ## Canonical Primitive Abstraction
 
