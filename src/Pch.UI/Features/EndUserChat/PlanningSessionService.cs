@@ -226,9 +226,10 @@ public sealed class PlanningSessionService
                 or PlannerPrimitiveIds.RankedChoice
             ? primitive.CandidateIds.FirstOrDefault(id => manifest.AllowedCandidateIds.Contains(id, StringComparer.Ordinal))
             : null;
+        var safeMoodToken = SafeMoodToken(definition, manifest, primitive.MoodToken);
 
         return new(
-            InstanceId: primitive.InstanceId,
+            InstanceId: FixedInstanceId(definition.PrimitiveId, fieldPath),
             PrimitiveId: primitive.PrimitiveId,
             SchemaVersion: manifest.SchemaVersion,
             RendererKey: definition.RendererKey,
@@ -238,12 +239,48 @@ public sealed class PlanningSessionService
             SlotId: null,
             CandidateId: candidateId,
             TaskId: null,
-            MoodToken: primitive.MoodToken,
-            MediaToken: definition.SupportsMedia && !string.IsNullOrWhiteSpace(primitive.MoodToken) ? $"media:{primitive.MoodToken}" : null,
+            MoodToken: safeMoodToken,
+            MediaToken: definition.SupportsMedia && !string.IsNullOrWhiteSpace(safeMoodToken) ? $"media:{safeMoodToken}" : null,
             AnswerSchema: definition.AnswerSchema,
             Answers: DefaultAnswers(definition.AnswerSchema, fieldPath, primitive.CandidateIds),
             EvidenceReferences: ["evidence-planner-primitive"],
             DependencyReferences: []);
+    }
+
+    private static string FixedInstanceId(string primitiveId, string? fieldPath) =>
+        fieldPath switch
+        {
+            "/mission/destination_country" => "primitive-destination-country",
+            "/mission/start_date" => "primitive-trip-dates",
+            "/mission/end_date" => "primitive-trip-dates",
+            "/mission/purpose" => "primitive-trip-purpose",
+            "/constraints/pace" => "primitive-pace-constraint",
+            "/constraints/budget" => "primitive-budget-constraint",
+            _ => primitiveId switch
+            {
+                PlannerPrimitiveIds.DateRange => "primitive-trip-dates",
+                PlannerPrimitiveIds.ConfirmationQuestion => "primitive-confirmation",
+                PlannerPrimitiveIds.ToolSearchRequest => "primitive-tool-search-request",
+                PlannerPrimitiveIds.ToolGapRequest => "primitive-tool-gap-request",
+                PlannerPrimitiveIds.AssistantMessage => "primitive-assistant-message",
+                _ => "primitive-trip-detail"
+            }
+        };
+
+    private static string? SafeMoodToken(
+        Pch.Core.PlannerPrimitiveDefinition definition,
+        PlannerToolManifest manifest,
+        string? moodToken)
+    {
+        if (!definition.SupportsMood)
+        {
+            return null;
+        }
+
+        return !string.IsNullOrWhiteSpace(moodToken) &&
+            manifest.AllowedMoodTokens.Contains(moodToken, StringComparer.Ordinal)
+                ? moodToken
+                : PlannerMoodTokens.CalmMorning;
     }
 
     private static string FixedLabel(string primitiveId) =>
@@ -660,10 +697,13 @@ public sealed class PlanningSessionService
             manifest.GraphRevision,
             manifest.SessionId,
             manifest.Stage,
-            manifest.AllowedPrimitives.Select(primitive => new Pch.Providers.PlannerPrimitives.PlannerPrimitiveDefinition(
-                primitive.PrimitiveId,
-                primitive.PrimitiveId,
-                primitive.RendererKey)).ToArray(),
+            manifest.AllowedPrimitives
+                .Where(primitive => primitive.AnswerSchema.Required)
+                .Select(primitive => new Pch.Providers.PlannerPrimitives.PlannerPrimitiveDefinition(
+                    primitive.PrimitiveId,
+                    primitive.PrimitiveId,
+                    primitive.RendererKey))
+                .ToArray(),
             manifest.AllowedFieldPaths,
             manifest.AllowedMoodTokens,
             manifest.MaxPrimitiveCount);

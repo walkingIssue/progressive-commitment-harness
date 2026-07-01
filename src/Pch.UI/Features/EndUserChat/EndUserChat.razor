@@ -93,12 +93,22 @@
 
             @if (CurrentTurn is not null)
             {
-                <PrimitiveRenderer Turn="CurrentTurn"
-                                   ValidationErrors="ValidationErrors"
-                                   OnSubmitAnswer="SubmitPrimitiveAnswer"
-                                   OnSelectCandidate="SelectCandidate"
-                                   OnDeferCandidate="DeferCandidate" />
+            <PrimitiveRenderer Turn="CurrentTurn"
+                               ValidationErrors="ValidationErrors"
+                               OnSubmitAnswer="SubmitPrimitiveAnswer"
+                               OnSelectCandidate="SelectCandidate"
+                               OnDeferCandidate="DeferCandidate" />
+            @if (CurrentTurn.Primitives.Any(primitive => primitive.RendererKey == "form"))
+            {
+                <button type="button"
+                        class="secondary-button primitive-server-submit"
+                        data-answer-submit="primitive-trip-basics-form"
+                        aria-label="Submit validated primitive form"
+                        @onclick="SubmitCurrentPrimitiveAnswer">
+                    Submit answers
+                </button>
             }
+        }
 
             @if (Chat.ChoiceSet is not null)
             {
@@ -137,6 +147,7 @@
     private EndUserValidatedTurnView? CurrentTurn { get; set; }
     private PrimitiveAnswerDto? LastPrimitiveAnswer { get; set; }
     private IReadOnlyList<PrimitiveValidationError> ValidationErrors { get; set; } = [];
+    private int _liveRequestSerial;
 
     private string ComposerState => HasSubmitted
         ? DrawerOpen ? "collapsed_drawer_open" : "collapsed_drawer"
@@ -179,6 +190,39 @@
 
     private async Task SendPromptAsync()
     {
+        var role = EndUserModelRoleSelection.Normalize(SelectedModelRole);
+        if (role != EndUserModelRoleSelection.DeterministicOffline)
+        {
+            var promptSnapshot = Prompt;
+            var requestSerial = ++_liveRequestSerial;
+            HasSubmitted = true;
+            DrawerOpen = false;
+            DeckIndex = 0;
+            FocusedTurnId = "turn-live-model-run";
+            Chat = Chat with
+            {
+                ModeLabel = "Live in-harness pending",
+                ModeState = "live-model-pending",
+                SelectedModelRole = role,
+                SelectedProvider = "openrouter",
+                LivePreflightState = "preflight_pending",
+                LiveProposalState = "provider_request_pending",
+                HarnessValidationState = "not_run",
+                LatestTurnSource = "live_provider_pending",
+                ProviderRequestState = "attempted",
+                ProviderOutcome = "planner_model_pending",
+                ProviderHealth = "provider_request_pending",
+                Prompt = promptSnapshot,
+                ComposerState = "collapsed_drawer",
+                FinalState = "pending",
+                ErrorCode = null,
+                BlockedReason = null
+            };
+            _ = CompleteLivePromptAsync(promptSnapshot, role, requestSerial);
+            await Task.CompletedTask;
+            return;
+        }
+
         var result = await PlanningSession.StartAsync(Prompt, SelectedModelRole);
         Chat = result.State;
         CurrentTurn = result.Turn;
@@ -190,6 +234,53 @@
         DrawerOpen = false;
         DeckIndex = 0;
         FocusedTurnId = "turn-assistant-final";
+    }
+
+    private async Task CompleteLivePromptAsync(string prompt, string role, int requestSerial)
+    {
+        try
+        {
+            var result = await PlanningSession.StartAsync(prompt, role);
+            await InvokeAsync(() =>
+            {
+                if (requestSerial != _liveRequestSerial)
+                {
+                    return;
+                }
+
+                Chat = result.State;
+                CurrentTurn = result.Turn;
+                LastPrimitiveAnswer = result.LastAnswer;
+                ValidationErrors = result.ValidationErrors;
+                SelectedModelRole = Chat.SelectedModelRole;
+                Prompt = Chat.Prompt;
+                HasSubmitted = true;
+                DrawerOpen = false;
+                DeckIndex = 0;
+                FocusedTurnId = "turn-assistant-final";
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            await InvokeAsync(() =>
+            {
+                Chat = Chat with
+                {
+                    ModeState = "live-model-blocked",
+                    LivePreflightState = "preflight_blocked",
+                    LiveProposalState = "provider_blocked",
+                    HarnessValidationState = "not_run",
+                    LatestTurnSource = "live_provider_blocked",
+                    ProviderRequestState = "attempted",
+                    ProviderOutcome = "planner_model_provider_unavailable",
+                    FinalState = "provider_blocked",
+                    ErrorCode = "PCH_UI_LIVE_MODEL_SANITIZED_FAILURE",
+                    BlockedReason = "planner_model_provider_unavailable"
+                };
+                StateHasChanged();
+            });
+        }
     }
 
     private void SubmitForm()
@@ -211,6 +302,16 @@
         LastPrimitiveAnswer = result.LastAnswer;
         ValidationErrors = result.ValidationErrors;
         FocusedTurnId = ValidationErrors.Count == 0 ? "turn-primitive-answer-submitted" : "turn-live-model-run";
+    }
+
+    private void SubmitCurrentPrimitiveAnswer()
+    {
+        if (CurrentTurn is null)
+        {
+            return;
+        }
+
+        SubmitPrimitiveAnswer(PlanningSession.BuildDefaultAnswer(CurrentTurn));
     }
 
     private void SelectCandidate(string candidateId)

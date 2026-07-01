@@ -664,10 +664,25 @@ window.setTimeout(() => {
   }
 
   const modal = document.getElementById("components-reconnect-modal") as HTMLDialogElement | null;
-  if (modal?.open || modal?.className.includes("components-reconnect")) {
+  if (isReconnectBlocked(modal)) {
     showDisconnectedState();
   }
 }, CIRCUIT_HEALTH_DELAY_MS);
+
+window.setInterval(() => {
+  const modal = document.getElementById("components-reconnect-modal") as HTMLDialogElement | null;
+  if (isReconnectBlocked(modal)) {
+    showDisconnectedState();
+  }
+}, CIRCUIT_HEALTH_DELAY_MS);
+
+function isReconnectBlocked(modal: HTMLDialogElement | null): boolean {
+  const text = modal?.textContent ?? "";
+  return Boolean(modal?.open) ||
+    Boolean(modal?.className.includes("components-reconnect")) ||
+    text.includes("Rejoin failed") ||
+    text.includes("Failed to rejoin");
+}
 document.addEventListener("focusout", (event) => closeDrawerAfterFocusLeaves(event.target), true);
 document.addEventListener("pointerdown", (event) => closeDrawerOnOutsidePointer(event.target), true);
 document.addEventListener("pointerup", interceptChatAction, true);

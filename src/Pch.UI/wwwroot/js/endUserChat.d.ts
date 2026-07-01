@@ -56,3 +56,4 @@ declare function closeDrawerOnOutsidePointer(target: EventTarget | null): void;
 declare const chatActionSelector: string;
 declare function interceptChatAction(event: Event): void;
 declare function handleChatInteraction(target: EventTarget | null): void;
+declare function isReconnectBlocked(modal: HTMLDialogElement | null): boolean;

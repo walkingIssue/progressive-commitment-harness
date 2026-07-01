@@ -6,6 +6,7 @@ using Pch.Providers.LivePreflight;
 using Pch.Providers.LiveTurns;
 using Pch.Providers.Mock;
 using Pch.Providers.ModelRoles;
+using Pch.Providers.OpenAi;
 using Pch.Providers.OpenRouter;
 using Pch.Providers.PlannerPrimitives;
 
@@ -82,24 +83,43 @@ static PlannerPrimitiveModelRunner? CreatePlannerPrimitiveRunner()
 {
     var environment = ReadProcessEnvironment();
     var options = PlannerModelOptions.FromEnvironment(environment);
-    var keyAvailable = options.ApiKeyAvailable || ProviderKeyFilePresent(environment, "OPENROUTER_API_KEY_FILE");
-    if (!options.Enabled ||
-        !keyAvailable ||
-        options.ProviderKind is not LivePreflightProviderKind.OpenRouter)
+    var openRouterKeyAvailable = options.ApiKeyAvailable || ProviderKeyFilePresent(environment, "OPENROUTER_API_KEY_FILE");
+    var openAiKeyAvailable = options.ApiKeyAvailable || ProviderKeyFilePresent(environment, "OPENAI_API_KEY_FILE");
+    if (!options.Enabled)
     {
         return null;
     }
 
-    var openRouter = new OpenRouterModelCompletionClient(
-        new HttpClient(),
-        new OpenRouterOptions
-        {
-            Model = options.Model,
-            Timeout = options.Timeout ?? TimeSpan.FromSeconds(30),
-            CheckCreditsBeforeCompletion = options.CreditGuardEnabled,
-            ApiKeyFilePath = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_FILE")
-        });
-    var runner = new PlannerPrimitiveRunner(openRouter, openRouter);
+    PlannerPrimitiveRunner runner;
+    if (options.ProviderKind is LivePreflightProviderKind.OpenAi && openAiKeyAvailable)
+    {
+        var openAi = new OpenAiModelCompletionClient(
+            new HttpClient(),
+            new OpenAiOptions
+            {
+                Model = options.Model,
+                Timeout = options.Timeout ?? TimeSpan.FromSeconds(30),
+                ApiKeyFilePath = Environment.GetEnvironmentVariable("OPENAI_API_KEY_FILE")
+            });
+        runner = new PlannerPrimitiveRunner(openAi, openAi);
+    }
+    else if (options.ProviderKind is LivePreflightProviderKind.OpenRouter && openRouterKeyAvailable)
+    {
+        var openRouter = new OpenRouterModelCompletionClient(
+            new HttpClient(),
+            new OpenRouterOptions
+            {
+                Model = options.Model,
+                Timeout = options.Timeout ?? TimeSpan.FromSeconds(30),
+                CheckCreditsBeforeCompletion = options.CreditGuardEnabled,
+                ApiKeyFilePath = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY_FILE")
+            });
+        runner = new PlannerPrimitiveRunner(openRouter, openRouter);
+    }
+    else
+    {
+        return null;
+    }
 
     return runner.RunAsync;
 }
