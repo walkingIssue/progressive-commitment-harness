@@ -579,6 +579,18 @@ Sprint 021 should prove a real model can drive a multi-turn harness session, not
 - add sanitized live interaction logs for provider, harness, and UI debugging, including fixed failure classes such as timeout, rate-limited, http 4xx/5xx, upstream model unavailable, malformed JSON, schema invalid, and harness validation blocked;
 - consolidate MVP documentation into `docs/MVP_STATUS.md`, archive or fold the three addendum planning notes, and clearly mark which stages are live, deterministic, provider-plumbed, or still synthetic.
 
+## Sprint 021 Result
+
+Sprint 021 added the first real multi-turn harness session contract and repaired the UI live click path enough to attempt configured provider work from `/trip`.
+
+- `LiveMultiTurnSessionConductor` owns one `TripSession` across turns and exposes typed prompt, fresh model input, proposal application, confirmation, option decision, availability preview, and provider/model-blocked methods.
+- Later model inputs are built from current harness projections/structured memory, not raw chat history.
+- Provider `LiveTurnRunner` adds strict-schema live turn DTOs for mission proposals, pending-confirmation questions, choice sets, and summary/fallback notices, plus sanitized failure classes such as `provider_timeout`, `provider_malformed_json`, `provider_schema_invalid`, `provider_upstream_model_unavailable`, and `provider_unknown_error`.
+- The end-user UI integrates the canonical multi-turn conductor and provider diagnostics, fixes Blazor event handling on `/trip`, and no longer lets the browser-local fallback swallow healthy Blazor clicks.
+- Configured live UI smoke reached `providerRequest=attempted` and one live attempt count, then blocked with fixed sanitized `live_preflight_malformed_json` rather than generic `blocked_by_guard`.
+- The prompt-studio media pack was imported through a local UI manifest with 16 runtime PNGs selected from a 240-image source set; cards/timeline/selected bubbles can render real PNG assets.
+- Required tests stayed deterministic/offline. No accepted live multi-turn provider result was obtained yet, but the live path now reaches provider attempt and records specific sanitized failure state.
+
 ## Not Yet Started
 
 - Stage 4 live strong-model search/expander/auditor beyond guarded mission planner client/runtime work.
