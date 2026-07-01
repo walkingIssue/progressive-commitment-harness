@@ -189,7 +189,7 @@ public sealed class PlannerToolManifestCompilerTests
         var result = Validate(session, manifest, [unsafePrimitive]);
         var serialized = JsonSerializer.Serialize(result, JsonOptions);
 
-        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveMetadataRedactedCode);
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveTextRedactedCode);
         Assert.DoesNotContain("RAW_PROMPT_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("RAW_PROVIDER_PAYLOAD_SHOULD_NOT_LEAK", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("style.css", serialized, StringComparison.Ordinal);
@@ -226,6 +226,204 @@ public sealed class PlannerToolManifestCompilerTests
         Assert.Equal(PlannerPrimitiveValidator.AwaitingUserInputCode, second.Code);
         Assert.Equal("validated-turn-fake-model-turn", second.View.TurnId);
         Assert.Equal(PlannerPrimitiveIds.CandidateDeck, Assert.Single(second.View.Primitives).PrimitiveId);
+    }
+
+    [Fact]
+    public void SafeModelAuthoredLabelsOptionsDefaultsSurviveValidation()
+    {
+        var session = PreparedCandidateSession();
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.DaySkeletonGeneration);
+
+        var result = Validate(session, manifest, [DynamicRankedChoice(manifest, "food-path", ["ramen", "markets"], "ramen,markets")]);
+
+        Assert.True(result.IsAccepted);
+        var primitive = Assert.Single(result.View.Primitives);
+        Assert.Equal("Choose your Osaka evening shape", primitive.Label);
+        Assert.Equal("Prioritize the safe model-authored options.", primitive.Prompt);
+        Assert.Equal("Pick the order the planner should optimize first.", primitive.HelpText);
+        Assert.Equal(["ramen", "markets"], primitive.Options.Select(option => option.OptionId).ToArray());
+        Assert.Equal("ramen", Assert.Single(primitive.Defaults).Value);
+        Assert.NotEqual("redacted", result.View.PrimitiveHash);
+        Assert.Contains("food-path", result.View.RenderedPrimitiveIds);
+    }
+
+    [Fact]
+    public void UnsafeModelAuthoredTextBlocksAndDoesNotSerialize()
+    {
+        var session = PreparedCandidateSession();
+        var before = Counts(session);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.DaySkeletonGeneration);
+        var unsafePrimitive = DynamicRankedChoice(manifest, "unsafe-food-path", ["ramen"], "ramen") with
+        {
+            Label = "RAW_PROMPT_SENTINEL_DO_NOT_LEAK",
+            Options =
+            [
+                new(
+                    "ramen",
+                    "PROVIDER_PAYLOAD_SENTINEL_DO_NOT_LEAK",
+                    "SECRET_SENTINEL_DO_NOT_LEAK",
+                    PlannerMoodTokens.LivelyFood,
+                    "media:lively_food",
+                    [],
+                    [])
+            ]
+        };
+
+        var result = Validate(session, manifest, [unsafePrimitive]);
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveTextRedactedCode);
+        Assert.Equal(before, Counts(session));
+        Assert.DoesNotContain("RAW_PROMPT_SENTINEL_DO_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("PROVIDER_PAYLOAD_SENTINEL_DO_NOT_LEAK", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("SECRET_SENTINEL_DO_NOT_LEAK", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DifferentModelPrimitiveStructuresProduceDifferentValidatedTurnViews()
+    {
+        var session = PreparedCandidateSession();
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.DaySkeletonGeneration);
+
+        var food = Validate(session, manifest, [DynamicRankedChoice(manifest, "choice-food", ["ramen", "markets"], "ramen,markets")]);
+        var nature = Validate(session, manifest, [DynamicRankedChoice(manifest, "choice-nature", ["glacier", "hot_spring"], "glacier,hot_spring")]);
+
+        Assert.True(food.IsAccepted);
+        Assert.True(nature.IsAccepted);
+        Assert.NotEqual(food.View.PrimitiveHash, nature.View.PrimitiveHash);
+        Assert.NotEqual(food.View.Primitives[0].Options.Select(option => option.OptionId), nature.View.Primitives[0].Options.Select(option => option.OptionId));
+    }
+
+    [Fact]
+    public void AnswerDtoUpdatesPersistentPlanningContext()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var context = new PlanningSessionContext(session);
+        var builder = new PlannerTurnContextBuilder();
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var validated = Validate(session, manifest, [TextInput(manifest, "purpose-input", "/mission/purpose", "quiet food trip")]);
+
+        builder.RecordValidatedTurn(context, validated.View);
+        var result = context.ApplyAnswers(new PlannerAnswerApplicationRequest(
+            session.SessionId,
+            new PlannerToolManifestCompiler().CurrentGraphRevision(session),
+            [
+                new(
+                    "answer-purpose-1",
+                    "purpose-input",
+                    PlannerPrimitiveIds.TextInput,
+                    new Dictionary<string, string?> { ["value"] = "late night ramen and markets" },
+                    [],
+                    ["evidence-user-purpose"])
+            ]));
+
+        Assert.True(result.IsAccepted);
+        Assert.Single(context.SubmittedAnswers);
+        Assert.Contains(context.AcceptedFacts, fact => fact.FieldPath == "/mission/purpose" && fact.Value == "late night ramen and markets");
+    }
+
+    [Fact]
+    public void SecondTurnContextContainsSubmittedAnswerValuesAndAcceptedFactsWithoutRawPromptSerialization()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var context = new PlanningSessionContext(session);
+        var builder = new PlannerTurnContextBuilder();
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var validated = Validate(session, manifest, [TextInput(manifest, "purpose-input", "/mission/purpose", "quiet food trip")]);
+        builder.RecordValidatedTurn(context, validated.View);
+        context.ApplyAnswers(new PlannerAnswerApplicationRequest(
+            session.SessionId,
+            new PlannerToolManifestCompiler().CurrentGraphRevision(session),
+            [
+                new(
+                    "answer-purpose-2",
+                    "purpose-input",
+                    PlannerPrimitiveIds.TextInput,
+                    new Dictionary<string, string?> { ["value"] = "quiet hiking and hot springs" },
+                    [],
+                    ["evidence-user-purpose"])
+            ]));
+
+        var turnContext = builder.Build(context, new PlannerTurnContextRequest(
+            session.SessionId,
+            "RAW_PROMPT_SENTINEL transient hiking prompt",
+            "en-US",
+            ["quiet"]));
+        var serialized = JsonSerializer.Serialize(turnContext, JsonOptions);
+
+        Assert.Contains(turnContext.SubmittedAnswers, answer => answer.Values.Values.Contains("quiet hiking and hot springs", StringComparer.Ordinal));
+        Assert.Contains(turnContext.AcceptedFacts, fact => fact.Value == "quiet hiking and hot springs");
+        Assert.Equal("family_support", builder.Build(context, new PlannerTurnContextRequest(session.SessionId, "family support planning", null, [])).PromptCategory);
+        Assert.DoesNotContain("RAW_PROMPT_SENTINEL", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("transient hiking prompt", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TaskListPrimitiveValidatesAndBecomesTaskRailRefs()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var taskId = manifest.AllowedTaskIds.First();
+        var definition = Definition(manifest, PlannerPrimitiveIds.TaskList);
+        var primitive = Instance(definition, "task-list-1", label: "Planning tasks", prompt: "Review next work.", answers: new Dictionary<string, string?>()) with
+        {
+            MoodToken = PlannerMoodTokens.Logistics,
+            TaskReferences =
+            [
+                new(taskId, "Confirm the mission direction.", null, ["evidence-user-purpose"], ["evidence-user-purpose"])
+            ],
+            ToolContextReferences = ["evidence-user-purpose"]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+
+        Assert.True(result.IsAccepted);
+        Assert.Contains(taskId, result.View.TaskRailItemRefs);
+        Assert.Contains("evidence-user-purpose", result.View.ToolContextReferences);
+    }
+
+    [Fact]
+    public void ToolSearchRequestValidatesOnlyWhenToolIsAllowed()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session);
+        var allowed = Validate(session, manifest, [ToolRequest(manifest, PlannerPrimitiveIds.ToolSearchRequest, "tool-search-request")]);
+        var narrowedManifest = manifest with { AllowedToolIds = [] };
+        var blocked = Validate(session, narrowedManifest, [ToolRequest(narrowedManifest, PlannerPrimitiveIds.ToolSearchRequest, "tool-search-request")]);
+
+        Assert.True(allowed.IsAccepted);
+        Assert.Equal(PlannerPrimitiveValidator.ToolSearchRequestedCode, allowed.Code);
+        AssertBlocked(blocked, PlannerPrimitiveValidator.ToolNotAllowedCode);
+    }
+
+    [Fact]
+    public void AnswerValueOutsideValidatedOptionsBlocksWithoutContextMutation()
+    {
+        var session = PreparedCandidateSession();
+        var context = new PlanningSessionContext(session);
+        var builder = new PlannerTurnContextBuilder();
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.DaySkeletonGeneration);
+        var validated = Validate(session, manifest, [DynamicRankedChoice(manifest, "food-path", ["ramen", "markets"], "ramen,markets")]);
+        builder.RecordValidatedTurn(context, validated.View);
+
+        var result = context.ApplyAnswers(new PlannerAnswerApplicationRequest(
+            session.SessionId,
+            new PlannerToolManifestCompiler().CurrentGraphRevision(session),
+            [
+                new(
+                    "answer-invalid-option",
+                    "food-path",
+                    PlannerPrimitiveIds.RankedChoice,
+                    new Dictionary<string, string?> { ["ranked"] = "temples" },
+                    ["temples"],
+                    [])
+            ]));
+
+        Assert.False(result.IsAccepted);
+        Assert.True(result.IsBlocked);
+        Assert.Equal(PlannerPrimitiveValidator.AnswerValueNotAllowedCode, result.Code);
+        Assert.Empty(context.SubmittedAnswers);
+        Assert.Empty(context.AcceptedFacts);
     }
 
     private static PlannerPrimitiveValidationResult Validate(
@@ -318,6 +516,39 @@ public sealed class PlannerToolManifestCompilerTests
             mediaToken: null,
             answers: new Dictionary<string, string?> { ["selected"] = candidateId },
             evidence: ["evidence-fixture-candidates"]);
+    }
+
+    private static PlannerPrimitiveInstance DynamicRankedChoice(
+        PlannerToolManifest manifest,
+        string instanceId,
+        IReadOnlyList<string> optionIds,
+        string rankedAnswer)
+    {
+        var definition = Definition(manifest, PlannerPrimitiveIds.RankedChoice);
+        return Instance(
+            definition,
+            instanceId,
+            label: "Choose your Osaka evening shape",
+            prompt: "Prioritize the safe model-authored options.",
+            moodToken: PlannerMoodTokens.LivelyFood,
+            mediaToken: "media:lively_food",
+            answers: new Dictionary<string, string?> { ["ranked"] = rankedAnswer },
+            evidence: ["evidence-user-purpose"]) with
+        {
+            HelpText = "Pick the order the planner should optimize first.",
+            Options = optionIds
+                .Select(id => new PlannerPrimitiveOption(
+                    id,
+                    id == "ramen" ? "Late ramen lanes" : $"Option {id}",
+                    id == "ramen" ? "Late snacks and market-adjacent meals." : "Safe model-authored option.",
+                    id == "ramen" ? PlannerMoodTokens.LivelyFood : PlannerMoodTokens.Neutral,
+                    id == "ramen" ? "media:lively_food" : "media:neutral",
+                    ["evidence-user-purpose"],
+                    ["evidence-user-purpose"]))
+                .ToArray(),
+            Defaults = [new PlannerPrimitiveDefault("ranked", optionIds[0])],
+            RendererHints = [new PlannerRendererHint("renderer", "card_group")]
+        };
     }
 
     private static PlannerPrimitiveInstance Instance(

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Pch.Core;
 
 public static class PlannerPrimitiveIds
@@ -18,8 +20,11 @@ public static class PlannerPrimitiveIds
     public const string EvidenceStrip = "evidence_strip";
     public const string TimelineAnchor = "timeline_anchor";
     public const string EditPatchRequest = "edit_patch_request";
+    public const string TaskList = "task_list";
+    public const string TaskGroup = "task_group";
     public const string ToolSearchRequest = "tool_search_request";
     public const string ToolGapRequest = "tool_gap_request";
+    public const string ToolContextReference = "tool_context_reference";
 
     public static readonly IReadOnlySet<string> Known = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -39,8 +44,11 @@ public static class PlannerPrimitiveIds
         EvidenceStrip,
         TimelineAnchor,
         EditPatchRequest,
+        TaskList,
+        TaskGroup,
         ToolSearchRequest,
-        ToolGapRequest
+        ToolGapRequest,
+        ToolContextReference
     };
 }
 
@@ -120,7 +128,58 @@ public sealed record PlannerToolManifest(
     int MaxPrimitiveCount,
     int MaxTextLength,
     bool AllowsApproval,
-    bool AllowsSpend);
+    bool AllowsSpend)
+{
+    public int MaxOptionCount { get; init; } = 8;
+
+    public IReadOnlyList<string> AllowedToolIds { get; init; } = [];
+
+    public IReadOnlyList<string> AllowedToolContextRefs { get; init; } = [];
+}
+
+public sealed record PlannerPrimitiveOption(
+    string OptionId,
+    string Label,
+    string? Summary,
+    string? MoodToken,
+    string? MediaToken,
+    IReadOnlyList<string> EvidenceReferences,
+    IReadOnlyList<string> ToolContextReferences);
+
+public sealed record PlannerPrimitiveDefault(
+    string FieldKey,
+    string? Value);
+
+public sealed record PlannerPrimitiveValidationRule(
+    string RuleId,
+    string Kind,
+    string? Value,
+    string Code);
+
+public sealed record PlannerRendererHint(
+    string Key,
+    string? Value);
+
+public sealed record PlannerTaskReference(
+    string TaskId,
+    string Label,
+    string? GroupId,
+    IReadOnlyList<string> EvidenceReferences,
+    IReadOnlyList<string> ToolContextReferences);
+
+public sealed record PlannerToolContextReference(
+    string ReferenceId,
+    string SourceClass,
+    string Summary,
+    IReadOnlyList<string> EvidenceReferences);
+
+public sealed record PlannerPrimitiveAnswer(
+    string AnswerId,
+    string PrimitiveInstanceId,
+    string PrimitiveId,
+    IReadOnlyDictionary<string, string?> Values,
+    IReadOnlyList<string> SelectedOptionIds,
+    IReadOnlyList<string> EvidenceReferences);
 
 public sealed record PlannerPrimitiveInstance(
     string InstanceId,
@@ -138,7 +197,22 @@ public sealed record PlannerPrimitiveInstance(
     PlannerAnswerSchema AnswerSchema,
     IReadOnlyDictionary<string, string?> Answers,
     IReadOnlyList<string> EvidenceReferences,
-    IReadOnlyList<string> DependencyReferences);
+    IReadOnlyList<string> DependencyReferences)
+{
+    public string? HelpText { get; init; }
+
+    public IReadOnlyList<PlannerPrimitiveOption> Options { get; init; } = [];
+
+    public IReadOnlyList<PlannerPrimitiveDefault> Defaults { get; init; } = [];
+
+    public IReadOnlyList<PlannerTaskReference> TaskReferences { get; init; } = [];
+
+    public IReadOnlyList<string> ToolContextReferences { get; init; } = [];
+
+    public IReadOnlyList<PlannerPrimitiveValidationRule> ValidationRules { get; init; } = [];
+
+    public IReadOnlyList<PlannerRendererHint> RendererHints { get; init; } = [];
+}
 
 public sealed record PlannerPrimitiveTurnProposal(
     string ProposalId,
@@ -159,7 +233,18 @@ public sealed record ValidatedTurnView(
     IReadOnlyList<string> TaskRailItemRefs,
     IReadOnlyList<string> TimelineAnchorRefs,
     IReadOnlyList<string> EvidenceReferences,
-    string SanitizationStatus);
+    string SanitizationStatus)
+{
+    public string PrimitiveHash { get; init; } = "redacted";
+
+    public string ProviderOutputHash { get; init; } = "provider-output-absent";
+
+    public IReadOnlyList<string> RenderedPrimitiveIds { get; init; } = [];
+
+    public IReadOnlyList<string> AnswerIds { get; init; } = [];
+
+    public IReadOnlyList<string> ToolContextReferences { get; init; } = [];
+}
 
 public sealed record ValidatedPrimitiveView(
     string InstanceId,
@@ -175,4 +260,65 @@ public sealed record ValidatedPrimitiveView(
     string? MediaToken,
     PlannerAnswerSchema AnswerSchema,
     IReadOnlyDictionary<string, string?> Answers,
+    IReadOnlyList<string> EvidenceReferences)
+{
+    public string? HelpText { get; init; }
+
+    public IReadOnlyList<PlannerPrimitiveOption> Options { get; init; } = [];
+
+    public IReadOnlyList<PlannerPrimitiveDefault> Defaults { get; init; } = [];
+
+    public IReadOnlyList<PlannerTaskReference> TaskReferences { get; init; } = [];
+
+    public IReadOnlyList<string> ToolContextReferences { get; init; } = [];
+
+    public IReadOnlyList<PlannerPrimitiveValidationRule> ValidationRules { get; init; } = [];
+
+    public IReadOnlyList<PlannerRendererHint> RendererHints { get; init; } = [];
+}
+
+public sealed record PlannerTurnContextRequest(
+    string SessionId,
+    [property: JsonIgnore] string TransientRawPrompt,
+    string? Locale,
+    IReadOnlyList<string> ScenarioHints);
+
+public sealed record PlannerAcceptedFact(
+    string FactId,
+    string FieldPath,
+    string Value,
     IReadOnlyList<string> EvidenceReferences);
+
+public sealed record PlannerValidatedTurnSummary(
+    string TurnId,
+    string Code,
+    string PrimitiveHash,
+    IReadOnlyList<string> RenderedPrimitiveIds,
+    IReadOnlyList<string> TaskIds,
+    IReadOnlyList<string> AnswerIds);
+
+public sealed record PlannerTurnContext(
+    string ContextId,
+    string SessionId,
+    string GraphRevision,
+    string Stage,
+    string PromptCategory,
+    int PromptLength,
+    string PromptSha256,
+    IReadOnlyList<PlannerAcceptedFact> AcceptedFacts,
+    IReadOnlyList<PlannerPrimitiveAnswer> SubmittedAnswers,
+    IReadOnlyList<PlannerValidatedTurnSummary> ValidatedTurnSummaries,
+    IReadOnlyList<PlannerToolContextReference> ToolContextReferences,
+    PlannerToolManifest Manifest);
+
+public sealed record PlannerAnswerApplicationRequest(
+    string SessionId,
+    string GraphRevision,
+    IReadOnlyList<PlannerPrimitiveAnswer> Answers);
+
+public sealed record PlannerAnswerApplicationResult(
+    bool IsAccepted,
+    bool IsBlocked,
+    string Code,
+    string Summary,
+    IReadOnlyList<PlannerPrimitiveAnswer> AppliedAnswers);

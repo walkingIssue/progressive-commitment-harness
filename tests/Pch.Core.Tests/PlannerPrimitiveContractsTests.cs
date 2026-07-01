@@ -10,10 +10,57 @@ public sealed class PlannerPrimitiveContractsTests
     {
         Assert.Contains(PlannerPrimitiveIds.AssistantMessage, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.CandidateDeck, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.TaskList, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.TaskGroup, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.ToolSearchRequest, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerPrimitiveIds.ToolGapRequest, PlannerPrimitiveIds.Known);
+        Assert.Contains(PlannerPrimitiveIds.ToolContextReference, PlannerPrimitiveIds.Known);
         Assert.Contains(PlannerMoodTokens.ReflectiveCulture, PlannerMoodTokens.Known);
         Assert.Contains(PlannerMoodTokens.LivelyFood, PlannerMoodTokens.Known);
         Assert.Contains(PlannerMoodTokens.Neutral, PlannerMoodTokens.Known);
+    }
+
+    [Fact]
+    public void DynamicPrimitiveContractsExposeRendererNeutralModelAuthoredFields()
+    {
+        var option = new PlannerPrimitiveOption(
+            "food_first",
+            "Food-first nights",
+            "Markets and late meals.",
+            PlannerMoodTokens.LivelyFood,
+            "media:lively_food",
+            ["evidence-user-purpose"],
+            ["evidence-user-purpose"]);
+        var primitive = new PlannerPrimitiveInstance(
+            "travel-style",
+            PlannerPrimitiveIds.SingleSelect,
+            1,
+            "single-select",
+            "Choose the feel",
+            "Which planning direction should the model pursue?",
+            "/mission/purpose",
+            null,
+            null,
+            null,
+            PlannerMoodTokens.LivelyFood,
+            null,
+            new PlannerAnswerSchema(PlannerAnswerSchemaKinds.SingleSelect, true, null, 1, ["food_first"]),
+            new Dictionary<string, string?> { ["selected"] = "food_first" },
+            ["evidence-user-purpose"],
+            [])
+        {
+            HelpText = "A card click and radio choice submit the same answer.",
+            Options = [option],
+            Defaults = [new PlannerPrimitiveDefault("selected", "food_first")],
+            TaskReferences = [new PlannerTaskReference("task-food", "Shape food-first evenings.", null, [], ["evidence-user-purpose"])],
+            ToolContextReferences = ["evidence-user-purpose"],
+            ValidationRules = [new PlannerPrimitiveValidationRule("rule-required", "required", "true", "answer_schema_invalid")],
+            RendererHints = [new PlannerRendererHint("renderer", "card_group")]
+        };
+
+        Assert.Equal("food_first", Assert.Single(primitive.Options).OptionId);
+        Assert.Equal("food_first", Assert.Single(primitive.Defaults).Value);
+        Assert.Equal("task-food", Assert.Single(primitive.TaskReferences).TaskId);
+        Assert.Equal("card_group", Assert.Single(primitive.RendererHints).Value);
     }
 }
