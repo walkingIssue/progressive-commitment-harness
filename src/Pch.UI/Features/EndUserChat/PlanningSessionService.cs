@@ -26,8 +26,8 @@ public sealed class PlanningSessionService
     private readonly FormBuilder _formBuilder;
     private readonly Func<IReadOnlyDictionary<string, string?>> _environment;
     private readonly PlannerPrimitiveModelRunner? _plannerRunner;
-    private readonly PlannerToolManifestCompiler _manifestCompiler = new();
     private readonly PlannerPrimitiveValidator _validator = new();
+    private readonly PlannerTurnContextBuilder _turnContextBuilder = new();
 
     public PlanningSessionService(
         EndUserChatService chatService,
@@ -100,10 +100,13 @@ public sealed class PlanningSessionService
                     "evidence-live-prompt",
                     null))
         };
-        var manifest = _manifestCompiler.Compile(context.Session, HarnessStage.Intake);
+        var turnContext = _turnContextBuilder.Build(
+            context.HarnessContext,
+            new PlannerTurnContextRequest(context.Session.SessionId, prompt ?? string.Empty, "en-US", []));
+        var manifest = turnContext.Manifest;
         var model = await RunPlannerModelAsync(
             manifest,
-            prompt ?? string.Empty,
+            FirstTurnPrompt(turnContext, prompt ?? string.Empty),
             "run-end-user-planner-primitive",
             "turn-end-user-planner-primitive",
             "attempted",
@@ -111,6 +114,7 @@ public sealed class PlanningSessionService
         var canonical = model.Result is null
             ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
             : ValidateModelResult(context.Session, manifest, model.Result);
+        _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, canonical);
         var turn = ProjectTurn(canonical, manifest, model.ProviderRequestState, model.ProviderOutcome);
         context.LastTurn = turn;
         context.AddTrace(PlanningSessionTraceEntry.FromModelRun(model, turn, null));
@@ -125,6 +129,11 @@ public sealed class PlanningSessionService
         CancellationToken cancellationToken = default)
     {
         var context = CreateContext(turn.SessionId);
+        if (turn.CanonicalTurn is not null)
+        {
+            _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, turn.CanonicalTurn);
+        }
+
         context.LastTurn = turn;
         return await SubmitAnswer(context, state, turn, answer, cancellationToken).ConfigureAwait(false);
     }
@@ -175,15 +184,44 @@ public sealed class PlanningSessionService
                 errors);
         }
 
+        var answerApplication = context.HarnessContext.ApplyAnswers(new PlannerAnswerApplicationRequest(
+            context.Session.SessionId,
+            turn.GraphRevision,
+            ToPlannerPrimitiveAnswers(turn, form, answer)));
+        if (answerApplication.IsBlocked)
+        {
+            var blockedTurn = turn with
+            {
+                OutcomeCode = answerApplication.Code,
+                Primitives = MarkPrimitiveValidationBlocked(
+                    turn.Primitives,
+                    form.InstanceId,
+                    [new(answer.PrimitiveInstanceId, answerApplication.Code, answerApplication.Summary)])
+            };
+            return new(
+                state with
+                {
+                    FinalState = "answer_validation_failed",
+                    ErrorCode = "PCH_UI_PRIMITIVE_ANSWER_INVALID",
+                    BlockedReason = answerApplication.Code
+                },
+                blockedTurn,
+                answer,
+                [new(answer.PrimitiveInstanceId, answerApplication.Code, answerApplication.Summary)]);
+        }
+
         context.RecordAnswer(answer);
         context.Session.ApplyFormResponse(new FormResponse(
             answer.PrimitiveInstanceId,
             answer.FieldValues.ToDictionary(pair => pair.Key, pair => (string?)pair.Value, StringComparer.Ordinal),
             DateTimeOffset.UtcNow));
-        var manifest = _manifestCompiler.Compile(context.Session, HarnessStage.Intake);
+        var turnContext = _turnContextBuilder.Build(
+            context.HarnessContext,
+            new PlannerTurnContextRequest(context.Session.SessionId, string.Empty, "en-US", []));
+        var manifest = turnContext.Manifest;
         var model = await RunPlannerModelAsync(
             manifest,
-            SecondTurnPrompt(context, answer),
+            SecondTurnPrompt(turnContext),
             "run-end-user-planner-primitive-followup",
             "turn-end-user-planner-primitive-followup",
             "second_turn_attempted",
@@ -191,6 +229,7 @@ public sealed class PlanningSessionService
         var canonical = model.Result is null
             ? ProviderBlockedTurn(manifest, model.ProviderOutcome)
             : ValidateModelResult(context.Session, manifest, model.Result);
+        _turnContextBuilder.RecordValidatedTurn(context.HarnessContext, canonical);
         var nextTurn = ProjectTurn(canonical, manifest, model.ProviderRequestState, model.ProviderOutcome);
         context.LastTurn = nextTurn;
         context.AddTrace(PlanningSessionTraceEntry.FromModelRun(model, nextTurn, answer));
@@ -247,22 +286,85 @@ public sealed class PlanningSessionService
     public EndUserChatState RequestDeterministicApproval(EndUserChatState state) =>
         _chatService.RequestApproval(state);
 
-    private static string SecondTurnPrompt(PlanningSessionContext context, PrimitiveAnswerDto answer)
+    private static IReadOnlyList<PlannerPrimitiveAnswer> ToPlannerPrimitiveAnswers(
+        EndUserValidatedTurnView turn,
+        ValidatedPrimitive primitive,
+        PrimitiveAnswerDto answer)
+    {
+        if (turn.CanonicalTurn is null || primitive.RendererKey != "form")
+        {
+            var evidenceIds = primitive.EvidenceIds
+                .Concat(primitive.Fields.Select(field => field.EvidenceId).OfType<string>())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            var selectedOptions = answer.FieldValues.Values
+                .Where(value => primitive.Candidates.Any(candidate => string.Equals(candidate.CandidateId, value, StringComparison.Ordinal)))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            return
+            [
+                new(
+                    $"answer-{answer.PrimitiveInstanceId}",
+                    answer.PrimitiveInstanceId,
+                    primitive.PrimitiveId,
+                    answer.FieldValues.ToDictionary(pair => pair.Key, pair => (string?)pair.Value, StringComparer.Ordinal),
+                    selectedOptions,
+                    evidenceIds)
+            ];
+        }
+
+        return primitive.Fields
+            .Select(field =>
+            {
+                var canonical = turn.CanonicalTurn.Primitives.FirstOrDefault(item => string.Equals(FieldId(item), field.FieldId, StringComparison.Ordinal))
+                    ?? turn.CanonicalTurn.Primitives.First(item => string.Equals(item.PrimitiveId, field.PrimitiveId, StringComparison.Ordinal));
+                var value = answer.FieldValues.TryGetValue(field.FieldId, out var submitted) ? submitted : field.Value;
+                return new PlannerPrimitiveAnswer(
+                    $"answer-{canonical.InstanceId}",
+                    canonical.InstanceId,
+                    canonical.PrimitiveId,
+                    new Dictionary<string, string?>(StringComparer.Ordinal)
+                    {
+                        [field.FieldId] = value
+                    },
+                    [],
+                    canonical.EvidenceReferences.Count > 0 ? canonical.EvidenceReferences : primitive.EvidenceIds);
+            })
+            .ToArray();
+    }
+
+    private static string FirstTurnPrompt(PlannerTurnContext context, string prompt)
+    {
+        var factSummary = string.Join(
+            "; ",
+            context.AcceptedFacts
+                .OrderBy(fact => fact.FieldPath, StringComparer.Ordinal)
+                .Take(8)
+                .Select(fact => $"{fact.FieldPath}={fact.Value}"));
+        return $"Create validated planning primitives for this user request: {prompt}. Prompt category: {context.PromptCategory}. Current accepted facts: {factSummary}.";
+    }
+
+    private static string SecondTurnPrompt(PlannerTurnContext context)
     {
         var values = string.Join(
             "; ",
-            answer.FieldValues
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.Key))
-                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Take(12)
-                .Select(pair => $"{pair.Key}={pair.Value}"));
-        var storedValues = string.Join(
+            context.SubmittedAnswers
+                .SelectMany(answer => answer.Values.Select(pair => $"{answer.PrimitiveInstanceId}.{pair.Key}={pair.Value}"))
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .Take(12));
+        var acceptedFacts = string.Join(
             "; ",
-            context.Session.FormValues
-                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            context.AcceptedFacts
+                .OrderBy(fact => fact.FieldPath, StringComparer.Ordinal)
                 .Take(12)
-                .Select(pair => $"{pair.Key}={pair.Value}"));
-        return $"Continue from the validated primitive answer. Submitted values: {values}. Current stored planning values: {storedValues}.";
+                .Select(fact => $"{fact.FieldPath}={fact.Value}"));
+        var turnSummaries = string.Join(
+            "; ",
+            context.ValidatedTurnSummaries
+                .Select(turn => $"{turn.TurnId}:{turn.Code}:{string.Join(',', turn.RenderedPrimitiveIds)}")
+                .Take(8));
+        return $"Continue from the validated primitive answer. Submitted values: {values}. Accepted facts: {acceptedFacts}. Prior validated turns: {turnSummaries}.";
     }
 
     private async Task<PlannerModelRun> RunPlannerModelAsync(

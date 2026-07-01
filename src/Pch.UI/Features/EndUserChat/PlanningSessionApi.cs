@@ -112,10 +112,12 @@ public sealed class PlanningSessionContext
 
     public PlanningSessionContext(TripSession session)
     {
-        Session = session ?? throw new ArgumentNullException(nameof(session));
+        HarnessContext = new Pch.Harness.PlanningSessionContext(session ?? throw new ArgumentNullException(nameof(session)));
     }
 
-    public TripSession Session { get; }
+    public Pch.Harness.PlanningSessionContext HarnessContext { get; }
+
+    public TripSession Session => HarnessContext.TripSession;
 
     public EndUserValidatedTurnView? LastTurn { get; set; }
 
