@@ -437,7 +437,7 @@ public sealed class PlanningSessionService
         CancellationToken cancellationToken)
     {
         var environment = WithKeyFileAvailability(_environment());
-        var options = PlannerModelOptions.FromEnvironment(environment);
+        var options = WithPlannerPrimitiveTokenBudget(PlannerModelOptions.FromEnvironment(environment), environment);
         if (_plannerRunner is null)
         {
             return new("not_attempted", PlannerPrimitiveRunner.OutcomeProviderUnavailable, null);
@@ -496,6 +496,21 @@ public sealed class PlanningSessionService
     private static bool NeedsTaskDecompositionRepair(PlannerModelResult result) =>
         result.OutputKind == PlannerModelOutputKind.CompositeForm &&
         (!result.Primitives.Any(primitive => primitive.PrimitiveId == PlannerPrimitiveIds.TaskDecomposition) || result.Tasks.Count == 0);
+
+    private static PlannerModelOptions WithPlannerPrimitiveTokenBudget(
+        PlannerModelOptions options,
+        IReadOnlyDictionary<string, string?> environment)
+    {
+        const int defaultMaxTokens = 4_000;
+        if (environment.TryGetValue("PCH_PLANNER_PRIMITIVE_MAX_TOKENS", out var configured) &&
+            int.TryParse(configured, out var maxTokens) &&
+            maxTokens is >= 1_200 and <= 8_000)
+        {
+            return options with { MaxTokens = maxTokens };
+        }
+
+        return options with { MaxTokens = Math.Max(options.MaxTokens, defaultMaxTokens) };
+    }
 
     private Pch.Core.ValidatedTurnView ValidateModelResult(
         TripSession session,
