@@ -318,7 +318,7 @@ public sealed class PlannerPrimitiveValidator
             var validation = ValidatePrimitive(session, manifest, primitive);
             if (!validation.IsAccepted || validation.Primitive is null)
             {
-                return Blocked(validation.Code, validation.Summary, manifest);
+                return Blocked(validation.Code, validation.Summary, manifest, validation.FailureDetail);
             }
 
             validated.Add(validation.Primitive);
@@ -465,7 +465,7 @@ public sealed class PlannerPrimitiveValidator
         if (primitive.SchemaVersion != definition.SchemaVersion
             || !CanonicalRendererMatches(definition, primitive))
         {
-            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the primitive kind.");
+            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the primitive kind.", primitive, "renderer_key_mismatch");
         }
 
         if (primitive.Label?.Length > manifest.MaxTextLength
@@ -510,7 +510,7 @@ public sealed class PlannerPrimitiveValidator
 
         if (RequiresOptions(primitive.PrimitiveId) && primitive.Options.Count == 0)
         {
-            return Reject(PrimitiveOptionsMissingCode, "Planner primitive requires explicit options.");
+            return Reject(PrimitiveOptionsMissingCode, "Planner primitive requires explicit options.", primitive, "required_options_missing");
         }
 
         var dynamicOptionValidation = ValidateDynamicOptions(manifest, definition, primitive);
@@ -535,12 +535,12 @@ public sealed class PlannerPrimitiveValidator
             && (!definition.AllowedFieldPaths.Contains(primitive.FieldPath, StringComparer.Ordinal)
                 || !manifest.AllowedFieldPaths.Contains(primitive.FieldPath, StringComparer.Ordinal)))
         {
-            return Reject(FieldPathNotAllowedCode, "Planner primitive field path is not allowed.");
+            return Reject(FieldPathNotAllowedCode, "Planner primitive field path is not allowed.", primitive, "field_path_allowed");
         }
 
         if (!RendererAllowedForFieldPath(primitive))
         {
-            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the field path.");
+            return Reject(PrimitiveRendererMismatchCode, "Planner primitive renderer does not match the field path.", primitive, "field_path_renderer_mismatch");
         }
 
         if (!string.IsNullOrWhiteSpace(primitive.SlotId)
@@ -585,15 +585,19 @@ public sealed class PlannerPrimitiveValidator
             return Reject(ApprovalRequiredCode, "Planner primitive requires approval before spend-adjacent rendering.");
         }
 
-        if (!AnswerSchemaMatches(definition.AnswerSchema, primitive.AnswerSchema)
-            || !AnswersMatch(primitive.AnswerSchema, primitive.Answers))
+        if (!AnswerSchemaMatches(definition.AnswerSchema, primitive.AnswerSchema))
         {
-            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
+            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.", primitive, "answer_schema_kind_mismatch");
+        }
+
+        if (!AnswersMatch(primitive.AnswerSchema, primitive.Answers))
+        {
+            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.", primitive, "answer_values_schema_mismatch");
         }
 
         if (!DefaultsMatchAnswerSchema(primitive))
         {
-            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.");
+            return Reject(PrimitiveAnswerSchemaInvalidCode, "Planner primitive answer schema failed validation.", primitive, "default_value_kind_mismatch");
         }
 
         if (!AnswerValuesAllowed(primitive))
@@ -684,12 +688,12 @@ public sealed class PlannerPrimitiveValidator
         {
             return primitive.TaskDecomposition.Count == 0
                 ? PlannerPrimitiveValidation.Accepted()
-                : Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+                : Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.", primitive, "task_decomposition_wrong_primitive");
         }
 
         if (primitive.TaskDecomposition.Count == 0)
         {
-            return Reject(TaskDecompositionMissingCode, "Planner task decomposition is missing.");
+            return Reject(TaskDecompositionMissingCode, "Planner task decomposition is missing.", primitive, "task_decomposition_missing");
         }
 
         var taskIds = new HashSet<string>(StringComparer.Ordinal);
@@ -712,7 +716,7 @@ public sealed class PlannerPrimitiveValidator
                 || !taskIds.Add(item.TaskId)
                 || !orders.Add(item.Order))
             {
-                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.", primitive, "task_decomposition_shape");
             }
         }
 
@@ -720,7 +724,7 @@ public sealed class PlannerPrimitiveValidator
         {
             if (item.DependencyTaskIds.Any(dependencyId => !taskIds.Contains(dependencyId)))
             {
-                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.");
+                return Reject(TaskDecompositionInvalidCode, "Planner task decomposition failed validation.", primitive, "task_decomposition_dependency_refs");
             }
         }
 
@@ -971,7 +975,23 @@ public sealed class PlannerPrimitiveValidator
         return new(false, code, summary, null);
     }
 
-    private static PlannerPrimitiveValidationResult Blocked(string code, string summary, PlannerToolManifest? manifest)
+    private static PlannerPrimitiveValidation Reject(
+        string code,
+        string summary,
+        PlannerPrimitiveInstance primitive,
+        string checkName)
+    {
+        return new(false, code, summary, null)
+        {
+            FailureDetail = FailureDetail(primitive, checkName)
+        };
+    }
+
+    private static PlannerPrimitiveValidationResult Blocked(
+        string code,
+        string summary,
+        PlannerToolManifest? manifest,
+        PlannerPrimitiveFailureDetail? failureDetail = null)
     {
         return new(
             IsAccepted: false,
@@ -988,7 +1008,42 @@ public sealed class PlannerPrimitiveValidator
                 TaskRailItemRefs: [],
                 TimelineAnchorRefs: [],
                 EvidenceReferences: [],
-                SanitizationStatus: "sanitized"));
+                SanitizationStatus: "sanitized"))
+        {
+            FailureDetail = failureDetail
+        };
+    }
+
+    private static PlannerPrimitiveFailureDetail FailureDetail(PlannerPrimitiveInstance primitive, string checkName)
+    {
+        var optionIds = primitive.Options?
+            .Where(option => option is not null && !string.IsNullOrWhiteSpace(option.OptionId) && !Unsafe(option.OptionId))
+            .Select(option => SafeId(option.OptionId))
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxRefs)
+            .ToArray() ?? [];
+        var taskRefs = (primitive.TaskReferences?
+                .Where(task => task is not null && !string.IsNullOrWhiteSpace(task.TaskId) && !Unsafe(task.TaskId))
+                .Select(task => task.TaskId)
+                ?? [])
+            .Concat(primitive.TaskDecomposition?
+                .Where(task => task is not null && !string.IsNullOrWhiteSpace(task.TaskId) && !Unsafe(task.TaskId))
+                .Select(task => task.TaskId)
+                ?? [])
+            .Select(SafeId)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxRefs)
+            .ToArray();
+
+        return new PlannerPrimitiveFailureDetail(
+            InstanceId: SafeNullableText(primitive.InstanceId, MaxTextLength) is null ? null : SafeId(primitive.InstanceId),
+            PrimitiveId: SafeNullableText(primitive.PrimitiveId, MaxTextLength) is null ? null : SafeId(primitive.PrimitiveId),
+            RendererKey: SafeNullableText(primitive.RendererKey, MaxTextLength) is null ? null : SafeId(primitive.RendererKey),
+            FieldPath: SafeNullableText(primitive.FieldPath, MaxTextLength) is null ? null : SafeId(primitive.FieldPath),
+            CheckName: SafeId(checkName),
+            OptionCount: primitive.Options?.Count ?? 0,
+            OptionIds: optionIds,
+            TaskRefs: taskRefs);
     }
 
     private static string SummaryFor(string code)
@@ -1208,7 +1263,10 @@ public sealed record PlannerPrimitiveValidationResult(
     bool IsBlocked,
     string Code,
     string Summary,
-    ValidatedTurnView View);
+    ValidatedTurnView View)
+{
+    public PlannerPrimitiveFailureDetail? FailureDetail { get; init; }
+}
 
 public sealed record PlannerPrimitiveValidation(
     bool IsAccepted,
@@ -1216,5 +1274,7 @@ public sealed record PlannerPrimitiveValidation(
     string Summary,
     ValidatedPrimitiveView? Primitive)
 {
+    public PlannerPrimitiveFailureDetail? FailureDetail { get; init; }
+
     public static PlannerPrimitiveValidation Accepted() => new(true, PlannerPrimitiveValidator.AcceptedCode, "Accepted.", null);
 }

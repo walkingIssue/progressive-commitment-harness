@@ -308,6 +308,16 @@ public sealed record PlannerPrimitiveTurnProposal(
     string Stage,
     IReadOnlyList<PlannerPrimitiveInstance> Primitives);
 
+public sealed record PlannerPrimitiveFailureDetail(
+    string? InstanceId,
+    string? PrimitiveId,
+    string? RendererKey,
+    string? FieldPath,
+    string CheckName,
+    int OptionCount,
+    IReadOnlyList<string> OptionIds,
+    IReadOnlyList<string> TaskRefs);
+
 public sealed record ValidatedTurnView(
     string TurnId,
     string SessionId,

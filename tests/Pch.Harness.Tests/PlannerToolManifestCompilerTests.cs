@@ -445,6 +445,10 @@ public sealed class PlannerToolManifestCompilerTests
         var result = Validate(session, manifest, [primitive]);
 
         AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveOptionsMissingCode);
+        Assert.NotNull(result.FailureDetail);
+        Assert.Equal($"{primitiveId}-missing-options", result.FailureDetail!.InstanceId);
+        Assert.Equal("required_options_missing", result.FailureDetail.CheckName);
+        Assert.Equal(0, result.FailureDetail.OptionCount);
     }
 
     [Fact]
@@ -467,6 +471,48 @@ public sealed class PlannerToolManifestCompilerTests
     }
 
     [Fact]
+    public void PrimitiveAnswerSchemaInvalidIncludesSanitizedFailingSliderDetail()
+    {
+        var session = SyntheticTripFactory.CreateSession(3);
+        var manifest = new PlannerToolManifestCompiler().Compile(session, HarnessStage.Intake);
+        var definition = Definition(manifest, PlannerPrimitiveIds.Slider);
+        var primitive = Instance(
+            definition,
+            "slider_budget",
+            label: "Budget slider label should not serialize",
+            prompt: "Budget slider prompt should not serialize",
+            fieldPath: "/constraints/budget_amount",
+            answers: new Dictionary<string, string?> { ["value"] = "medium" }) with
+        {
+            AnswerSchema = new PlannerAnswerSchema(PlannerAnswerSchemaKinds.Text, true, null, 1, []),
+            Defaults = [new PlannerPrimitiveDefault("value", "default text should not serialize")],
+            Options =
+            [
+                new("min_budget", "Minimum budget", null, PlannerMoodTokens.Neutral, null, [], []),
+                new("max_budget", "Maximum budget", null, PlannerMoodTokens.Neutral, null, [], [])
+            ]
+        };
+
+        var result = Validate(session, manifest, [primitive]);
+        var serialized = JsonSerializer.Serialize(result, JsonOptions);
+
+        AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveAnswerSchemaInvalidCode);
+        Assert.NotNull(result.FailureDetail);
+        var detail = result.FailureDetail!;
+        Assert.Equal("slider_budget", detail.InstanceId);
+        Assert.Equal(PlannerPrimitiveIds.Slider, detail.PrimitiveId);
+        Assert.Equal(PlannerRendererKeys.Slider, detail.RendererKey);
+        Assert.Equal("/constraints/budget_amount", detail.FieldPath);
+        Assert.Equal("answer_schema_kind_mismatch", detail.CheckName);
+        Assert.Equal(2, detail.OptionCount);
+        Assert.Equal(["min_budget", "max_budget"], detail.OptionIds);
+        Assert.Empty(detail.TaskRefs);
+        Assert.DoesNotContain("Budget slider label should not serialize", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Budget slider prompt should not serialize", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("default text should not serialize", serialized, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TextInputForChoiceFieldBlocksAsRendererMismatch()
     {
         var session = SyntheticTripFactory.CreateSession(3);
@@ -476,6 +522,13 @@ public sealed class PlannerToolManifestCompilerTests
         var result = Validate(session, manifest, [primitive]);
 
         AssertBlocked(result, PlannerPrimitiveValidator.PrimitiveRendererMismatchCode);
+        Assert.NotNull(result.FailureDetail);
+        var detail = result.FailureDetail!;
+        Assert.Equal("pace-input", detail.InstanceId);
+        Assert.Equal(PlannerPrimitiveIds.TextInput, detail.PrimitiveId);
+        Assert.Equal(PlannerRendererKeys.TextInput, detail.RendererKey);
+        Assert.Equal("/constraints/pace", detail.FieldPath);
+        Assert.Equal("field_path_renderer_mismatch", detail.CheckName);
     }
 
     [Fact]
@@ -501,6 +554,12 @@ public sealed class PlannerToolManifestCompilerTests
         var result = Validate(session, manifest, [primitive]);
 
         AssertBlocked(result, PlannerPrimitiveValidator.TaskDecompositionInvalidCode);
+        Assert.NotNull(result.FailureDetail);
+        var detail = result.FailureDetail!;
+        Assert.Equal("task-decomposition-1", detail.InstanceId);
+        Assert.Equal(PlannerPrimitiveIds.TaskDecomposition, detail.PrimitiveId);
+        Assert.Equal("task_decomposition_shape", detail.CheckName);
+        Assert.Equal(["task-a", "task-b"], detail.TaskRefs);
     }
 
     [Fact]
