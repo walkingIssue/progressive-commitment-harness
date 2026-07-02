@@ -46,6 +46,7 @@ Fixed outcomes:
 - `planner_model_unsafe_text`
 - `planner_model_unsupported_primitive`
 - `planner_model_field_path_not_allowed`
+- `planner_model_answer_schema_invalid`
 - `planner_model_tool_not_allowed`
 - `planner_model_primitive_renderer_mismatch`
 - `planner_model_task_decomposition_missing`
@@ -64,6 +65,7 @@ Sprint 024 HTML primitive eval rows also enforce structural anti-gaming gates be
 - accepted `composite_form` rows must include at least one non-text interactive primitive such as `select`, `radio_group`, `date`, `date_range`, `slider`, `multi_select`, `choice_card`, or `candidate_deck`;
 - accepted `composite_form` rows must include a `task_decomposition` primitive, task refs, and task records with safe ids/titles/state/order;
 - destination confirmation, exact dates, and pace controls must not be accepted as generic `text_input`/`textarea` when the prompt/context calls for structured controls;
+- `slider` and `number_input` controls must not persist select-style options; if a default is present it must be numeric, otherwise rows block with `planner_model_answer_schema_invalid`;
 - row `PrimitiveIds`, `PrimitiveKinds`, `TaskIds`, `PrimitiveCount`, `TaskCount`, `OptionCount`, and `OutputKind` are the persisted proof of accepted structure.
 
 OpenAI/OpenRouter client diagnostics should classify provider failures with fixed classes before they reach eval rows:

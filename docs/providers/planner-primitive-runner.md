@@ -50,6 +50,7 @@ Runner behavior:
 - optional credit guard;
 - provider prompt/context builder over `IModelCompletionClient` that includes the transient raw prompt, stage, graph revision, allowed primitive manifest, allowed field paths, mood/media tokens, submitted answer values, and sanitized context refs;
 - explicit HTML/form primitive tool menu in the provider request, including selection rules for destination confirmation, exact dates, pace, multiple preferences, and planning task decomposition;
+- provider-side answer-shape validation for numeric primitives: `slider` and `number_input` must not carry select-style options and any default value must be numeric;
 - runtime-only parse tolerance for fenced or prose-wrapped JSON objects before bounded repair; extracted raw completion text is never persisted;
 - one bounded repair attempt after malformed JSON or schema-invalid output;
 - unsupported primitive validation against manifest ids/kinds/renderers;
@@ -80,6 +81,7 @@ Fixed outcomes include:
 - `planner_model_unsafe_text`
 - `planner_model_unsupported_primitive`
 - `planner_model_field_path_not_allowed`
+- `planner_model_answer_schema_invalid`
 - `planner_model_tool_not_allowed`
 - `planner_model_primitive_renderer_mismatch`
 - `planner_model_task_decomposition_missing`

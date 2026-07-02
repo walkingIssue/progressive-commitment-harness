@@ -8,6 +8,8 @@ Repair update: after UI integration showed `planner_model_accepted` could still 
 
 Parser repair update: after UI integration later saw repeated `planner_model_malformed_json`, the planner parser now performs runtime-only extraction of a single balanced JSON object from fenced or prose-wrapped model content before using the bounded repair prompt. Raw completion text remains unlogged and uncommitted.
 
+Answer-shape repair update: after current browser trace showed `planner_model_accepted` followed by harness `primitive_answer_schema_invalid` for `slider_budget`, provider semantic validation now blocks untrusted field paths and numeric primitives that carry select-style option payloads. Invalid budget field paths return fixed `planner_model_field_path_not_allowed`; malformed slider/number answer shapes return fixed `planner_model_answer_schema_invalid`.
+
 ## Providers And Models
 
 - OpenAI / `gpt-4.1-mini`: `accepted`
@@ -40,9 +42,27 @@ Parser repair update: after UI integration later saw repeated `planner_model_mal
 - API key or credential persisted: no
 - Paid-provider fallback used: no
 
+### OpenAI Budget/Slider Repair Smoke
+
+- Attempt count: `1`
+- Completion request: `attempted`
+- Fixed outcome: `planner_model_task_decomposition_missing`
+- Failure class: `task_decomposition_missing`
+- Model: `gpt-4.1-mini`
+- Request id persisted: none
+- Primitive count: `0`
+- Task count: `0`
+- Option count: `0`
+- False accepted slider shape observed: no
+- Raw request body persisted: no
+- Raw response body persisted: no
+- Raw completion persisted: no
+- API key or credential persisted: no
+- Paid-provider fallback used: no
+
 ### OpenRouter
 
-- Attempt count: `5`
+- Attempt count: `6`
 - Credit check: `attempted`
 - Completion request: `attempted_when_guard_passed`
 - Fixed outcome: `planner_model_timeout`
@@ -65,6 +85,7 @@ Raw-free local JSONL diagnostics were written under `artifacts/live-runs/`, whic
 - The provider prompt now presents the full Sprint 024 HTML/form primitive tool menu to the model.
 - Fenced/prose-wrapped JSON is parsed only in memory; unextractable or invalid JSON still maps to fixed `planner_model_malformed_json`.
 - The runner and evaluator block destination/date/pace controls when a model tries to satisfy them with generic `text_input`/`textarea`.
+- The runner and evaluator block slider/number controls with select-style options before provider accepted status can be reported.
 - Accepted composite-form rows require at least one non-text interactive primitive and `task_decomposition` with task refs plus safe task records. This gate runs before `PlannerPrimitiveRunner` returns success, so UI/server integration cannot receive `planner_model_accepted` with missing task decomposition.
 - Accepted rows persist only fixed codes, safe ids, primitive ids/kinds/counts, task ids/count, option count, response length, duration bucket, and accepted provider metadata.
 - A runner timeout classification edge found during live OpenRouter smoke was repaired so provider timeout rows remain fixed-code sanitized instead of surfacing cancellation.

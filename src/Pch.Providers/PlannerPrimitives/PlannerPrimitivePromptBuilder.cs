@@ -61,7 +61,8 @@ internal static class PlannerPrimitivePromptBuilder
             {
                 "destination confirmation must use radio_group or select, never text_input",
                 "exact dates must use date or date_range, never text_input",
-                "pace must use select, radio_group, or slider when options are available",
+                "pace should use select or radio_group when named options are available; use slider only for a numeric scale with numeric defaultValue and no options",
+                "slider and number_input must not emit options; use numeric defaultValue only when a value is known",
                 "multiple preferences must use multi_select, choice_card, or candidate_deck",
                 "an accepted planning turn must include task_decomposition plus task records",
                 "each task record must include safe taskId, title, summary, state, and order",

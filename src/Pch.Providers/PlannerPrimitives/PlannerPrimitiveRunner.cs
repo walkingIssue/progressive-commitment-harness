@@ -29,6 +29,7 @@ public sealed class PlannerPrimitiveRunner
     public const string OutcomeUnsafeText = "planner_model_unsafe_text";
     public const string OutcomeUnsupportedPrimitive = "planner_model_unsupported_primitive";
     public const string OutcomeFieldPathNotAllowed = "planner_model_field_path_not_allowed";
+    public const string OutcomeAnswerSchemaInvalid = "planner_model_answer_schema_invalid";
     public const string OutcomeToolNotAllowed = "planner_model_tool_not_allowed";
     public const string OutcomePrimitiveRendererMismatch = "planner_model_primitive_renderer_mismatch";
     public const string OutcomeTaskDecompositionMissing = "planner_model_task_decomposition_missing";

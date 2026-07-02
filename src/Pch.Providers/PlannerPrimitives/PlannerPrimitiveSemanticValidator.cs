@@ -11,12 +11,29 @@ internal static class PlannerPrimitiveSemanticValidator
 
         var primitiveIds = result.Primitives.Select(primitive => primitive.PrimitiveId).ToArray();
         var taskIds = result.Tasks.Select(task => task.TaskId).ToHashSet(StringComparer.Ordinal);
+        var allowedFieldPaths = request.Manifest.AllowedFieldPaths.ToHashSet(StringComparer.Ordinal);
+
+        if (result.Primitives.Any(primitive =>
+            !string.IsNullOrWhiteSpace(primitive.FieldPath) &&
+            !allowedFieldPaths.Contains(primitive.FieldPath)))
+        {
+            return new(
+                PlannerPrimitiveRunner.OutcomeFieldPathNotAllowed,
+                "field_path_not_allowed");
+        }
 
         if (result.Primitives.Any(HasSemanticTextInputMismatch))
         {
             return new(
                 PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch,
                 "primitive_renderer_mismatch");
+        }
+
+        if (result.Primitives.Any(HasAnswerSchemaMismatch))
+        {
+            return new(
+                PlannerPrimitiveRunner.OutcomeAnswerSchemaInvalid,
+                "answer_schema_invalid");
         }
 
         if (!primitiveIds.Any(id => PlannerPrimitiveToolCatalog.NonTextInteractivePrimitiveIds.Contains(id, StringComparer.Ordinal)))
@@ -76,6 +93,27 @@ internal static class PlannerPrimitiveSemanticValidator
 
     private static bool IsAllowedTaskState(string? state) =>
         state is "pending" or "active" or "blocked" or "complete";
+
+    private static bool HasAnswerSchemaMismatch(PlannerPrimitiveInvocation primitive) =>
+        primitive.PrimitiveId switch
+        {
+            "slider" or "number_input" =>
+                primitive.Options.Count > 0 ||
+                primitive.CandidateIds.Count > 0 ||
+                (!string.IsNullOrWhiteSpace(primitive.DefaultValue) &&
+                    !decimal.TryParse(
+                        primitive.DefaultValue,
+                        System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out _)),
+            "select" or "radio_group" or "multi_select" or "choice_card" =>
+                primitive.Options.Count == 0,
+            "candidate_deck" =>
+                primitive.CandidateIds.Count == 0 && primitive.Options.Count == 0,
+            "date" or "date_range" =>
+                primitive.Options.Count > 0 || primitive.CandidateIds.Count > 0,
+            _ => false
+        };
 }
 
 internal sealed record PlannerPrimitiveSemanticFailure(string OutcomeCode, string FailureClassCode);

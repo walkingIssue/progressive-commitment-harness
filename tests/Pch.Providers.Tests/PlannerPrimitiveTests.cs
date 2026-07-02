@@ -164,7 +164,8 @@ public sealed class PlannerPrimitiveTests
 
         Assert.Contains("destination confirmation must use radio_group or select", providerBody, StringComparison.Ordinal);
         Assert.Contains("exact dates must use date or date_range", providerBody, StringComparison.Ordinal);
-        Assert.Contains("pace must use select, radio_group, or slider", providerBody, StringComparison.Ordinal);
+        Assert.Contains("pace should use select or radio_group", providerBody, StringComparison.Ordinal);
+        Assert.Contains("slider and number_input must not emit options", providerBody, StringComparison.Ordinal);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -263,6 +264,68 @@ public sealed class PlannerPrimitiveTests
             CreateOptions()));
 
         AssertRejected(row, PlannerPrimitiveRunner.OutcomeTaskDecompositionMissing, "task_decomposition_missing");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task SliderWithUntrustedBudgetFieldPathIsRejectedBeforeAcceptedResult()
+    {
+        var content = CreateBudgetSliderContent(
+            fieldPath: "/constraints/budget_amount",
+            includeRangeOptions: true,
+            defaultValue: null);
+        var runner = new PlannerPrimitiveRunner(new StaticCompletionClient(content), new StaticCreditClient());
+
+        var ex = await Assert.ThrowsAsync<PlannerModelGuardException>(() =>
+            runner.RunAsync(CreateRequest(), CreateOptions()));
+        var row = Assert.Single(await new PlannerPrimitiveEvaluator(runner).EvaluateAsync(
+            [new PlannerModelEvalCase("slider-budget-invalid-field", CreateRequest())],
+            CreateOptions()));
+
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeFieldPathNotAllowed, ex.OutcomeCode);
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeFieldPathNotAllowed, "field_path_not_allowed");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task SliderWithRangeOptionsIsRejectedAsAnswerSchemaInvalid()
+    {
+        var content = CreateBudgetSliderContent(
+            fieldPath: "/constraints/budget",
+            includeRangeOptions: true,
+            defaultValue: null);
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(content),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("slider-budget-invalid-schema", CreateRequest())],
+            CreateOptions()));
+
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeAnswerSchemaInvalid, "answer_schema_invalid");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task SliderWithNumericDefaultAndAllowedFieldPathIsAccepted()
+    {
+        var content = CreateBudgetSliderContent(
+            fieldPath: "/constraints/budget",
+            includeRangeOptions: false,
+            defaultValue: "2500");
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(content),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("slider-budget-valid", CreateRequest())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, row.OutcomeCode);
+        Assert.Contains("slider", row.PrimitiveKinds);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.NotEmpty(row.TaskIds);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -528,7 +591,9 @@ public sealed class PlannerPrimitiveTests
                     "/mission/start_date",
                     "/mission/end_date",
                     "/mission/pace",
-                    "/mission/preferences"
+                    "/mission/preferences",
+                    "/constraints/pace",
+                    "/constraints/budget"
                 ],
                 ["neutral", "calm_morning", "logistics", "lively_food"],
                 8)
@@ -743,6 +808,125 @@ public sealed class PlannerPrimitiveTests
 
         return primitives.ToArray();
     }
+
+    private static string CreateBudgetSliderContent(
+        string fieldPath,
+        bool includeRangeOptions,
+        string? defaultValue) =>
+        JsonSerializer.Serialize(new
+        {
+            manifestId = "manifest-intake",
+            manifestVersion = "v1",
+            graphRevision = "graph-01",
+            sessionId = "session-01",
+            outputKind = "composite_form",
+            primitives = new object[]
+            {
+                new
+                {
+                    primitiveId = "select",
+                    primitiveKind = "select",
+                    instanceId = "select-destination-country",
+                    rendererKey = "select",
+                    fieldPath = "/mission/destination_country",
+                    moodToken = "logistics",
+                    mediaToken = "logistics",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-destination-selection" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = new object[]
+                    {
+                        Option("country_italy", "Italy"),
+                        Option("country_portugal", "Portugal"),
+                        Option("country_japan", "Japan")
+                    },
+                    label = "Osaka destination country",
+                    promptText = "Confirm the Osaka destination country.",
+                    helpText = "Choose the Osaka country before dates and budget.",
+                    defaultValue = (string?)"country_japan",
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "select", ["variant"] = "compact" }
+                },
+                new
+                {
+                    primitiveId = "slider",
+                    primitiveKind = "slider",
+                    instanceId = "slider-budget",
+                    rendererKey = "slider",
+                    fieldPath,
+                    moodToken = "logistics",
+                    mediaToken = "logistics",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-budget-setting" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = includeRangeOptions
+                        ? new object[]
+                        {
+                            Option("min_budget", "Minimum budget"),
+                            Option("max_budget", "Maximum budget")
+                        }
+                        : Array.Empty<object>(),
+                    label = "Osaka budget",
+                    promptText = "Set a numeric Osaka planning budget.",
+                    helpText = "Use a numeric Osaka budget value.",
+                    defaultValue,
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "slider", ["variant"] = "budget" }
+                },
+                new
+                {
+                    primitiveId = "task_decomposition",
+                    primitiveKind = "task_decomposition",
+                    instanceId = "task-decomposition-main",
+                    rendererKey = "task_decomposition",
+                    fieldPath = string.Empty,
+                    moodToken = "logistics",
+                    mediaToken = "logistics",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-destination-selection", "task-budget-setting" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = Array.Empty<object>(),
+                    label = "Osaka planning tasks",
+                    promptText = "Break the Osaka destination and budget decisions into tasks.",
+                    helpText = "Use these Osaka tasks for the planning rail.",
+                    defaultValue = (string?)null,
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "tasks", ["variant"] = "compact" }
+                }
+            },
+            tasks = new[]
+            {
+                new
+                {
+                    taskId = "task-destination-selection",
+                    primitiveRefs = new[] { "select-destination-country", "task-decomposition-main" },
+                    title = "Confirm Osaka destination",
+                    summary = "Choose the Osaka destination country.",
+                    state = "pending",
+                    order = 0
+                },
+                new
+                {
+                    taskId = "task-budget-setting",
+                    primitiveRefs = new[] { "slider-budget", "task-decomposition-main" },
+                    title = "Set Osaka budget",
+                    summary = "Collect numeric Osaka budget posture.",
+                    state = "pending",
+                    order = 1
+                }
+            }
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static object Option(string optionId, string label) =>
+        new
+        {
+            optionId,
+            moodToken = "logistics",
+            mediaToken = "logistics",
+            toolContextRefs = Array.Empty<string>(),
+            label,
+            summary = label
+        };
 
     private static string CreateIcelandContent() =>
         JsonSerializer.Serialize(new
