@@ -18,6 +18,32 @@ type CandidateOption = {
     summary: string;
     evidence: string;
 };
+type PlanningApiTaskStep = {
+    stepId: string;
+    label: string;
+    state: string;
+};
+type PlanningApiTask = {
+    taskId: string;
+    title: string;
+    state: string;
+    progress: number;
+    statusLabel: string;
+    steps: PlanningApiTaskStep[];
+    isExpanded: boolean;
+};
+type PlanningApiTrace = {
+    providerRequestState: string;
+    providerOutcome: string;
+    provider?: string | null;
+    model?: string | null;
+    requestId?: string | null;
+    validatedTurnId: string;
+    validationCode: string;
+    primitiveInstanceIds: string[];
+    taskIds: string[];
+    answerIds: string[];
+};
 type PlanningApiField = {
     fieldId: string;
     label: string;
@@ -70,12 +96,14 @@ type PlanningApiState = {
     finalState: string;
     errorCode?: string | null;
     blockedReason?: string | null;
+    tasks: PlanningApiTask[];
 };
 type PlanningApiResponse = {
     sessionId: string;
     status: string;
     state: PlanningApiState;
     turn?: PlanningApiTurn | null;
+    trace: PlanningApiTrace[];
     rawAbsenceState: string;
 };
 declare const mediaAssets: Record<string, MediaAsset>;
@@ -100,6 +128,7 @@ declare function scheduleHttpTransport(shouldRun: () => boolean, action: () => P
 declare function showDisconnectedState(): void;
 declare function setRootState(attrs: Record<string, string>): void;
 declare function selectedModelRole(): string;
+declare function cssEscape(value: string): string;
 declare function setModelRole(role: string): void;
 declare function appendTurn(id: string, role: string, kind: string, state: string, text: string, outcome: string, evidence?: string, candidateId?: string): HTMLElement | null;
 declare function startLivePlanningViaHttp(promptText?: string): Promise<void>;
@@ -107,8 +136,16 @@ declare function submitPrimitiveAnswerViaHttp(primitiveInstanceId: string, selec
 declare function applyPlanningApiResponse(response: PlanningApiResponse, transport: string): void;
 declare function renderApiTurn(turn: PlanningApiTurn | null | undefined): void;
 declare function formPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
+declare function normalizeRenderer(rendererKey: string | null | undefined): string;
+declare function fieldControlHtml(field: PlanningApiField): string;
+declare function missingRendererHtml(field: PlanningApiField, rendererKey: string): string;
+declare function firstIsoDate(value: string): string;
+declare function dateRangeValues(value: string): [string, string];
+declare function sliderValue(value: string): string;
 declare function candidateDeckPrimitiveHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
 declare function primitiveMessageHtml(turn: PlanningApiTurn, primitive: PlanningApiPrimitive): string;
+declare function renderApiTaskRail(state: PlanningApiState, turn: PlanningApiTurn | null | undefined): void;
+declare function renderDevelopmentStatusDock(response: PlanningApiResponse, transport: string): void;
 declare function candidateCard(candidate: (typeof candidates)[number], state?: string): string;
 declare function timelineItem(id: string, mode: string, kind: string, state: string, title: string, summary: string, originTurnId: string, media: MediaAsset, attrs?: string): string;
 declare function ensurePlanningTimeline(): void;

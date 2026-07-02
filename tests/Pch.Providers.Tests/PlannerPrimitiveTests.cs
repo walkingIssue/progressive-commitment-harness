@@ -56,11 +56,15 @@ public sealed class PlannerPrimitiveTests
         Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, row.OutcomeCode);
         Assert.Null(row.FailureClassCode);
         Assert.Equal(PlannerModelOutputKind.CompositeForm, row.OutputKind);
-        Assert.Equal(2, row.PrimitiveCount);
+        Assert.Equal(3, row.PrimitiveCount);
         Assert.Equal(1, row.TaskCount);
         Assert.Equal(2, row.OptionCount);
         Assert.Contains("assistant_message", row.PrimitiveIds);
-        Assert.Contains("text_input", row.PrimitiveIds);
+        Assert.Contains("choice_card", row.PrimitiveIds);
+        Assert.Contains("task_decomposition", row.PrimitiveIds);
+        Assert.Contains("choice_card", row.PrimitiveKinds);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.Contains("task-osaka-shape", row.TaskIds);
         Assert.Equal("openrouter", row.Provider);
         Assert.Equal("qwen/qwen3-14b", row.Model);
         Assert.Equal("request-safe", row.RequestId);
@@ -80,13 +84,16 @@ public sealed class PlannerPrimitiveTests
             new StaticCreditClient());
 
         var result = await runner.RunAsync(CreateRequest(), CreateOptions());
-        var purpose = Assert.Single(result.Primitives, primitive => primitive.PrimitiveId == "text_input");
+        var purpose = Assert.Single(result.Primitives, primitive => primitive.PrimitiveId == "choice_card");
 
         Assert.Contains("Osaka", purpose.Label, StringComparison.Ordinal);
         Assert.Contains("ramen", purpose.PromptText, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(2, purpose.Options.Count);
         Assert.Contains(purpose.Options, option => option.OptionId == "late_ramen");
+        Assert.Contains(result.Primitives, primitive => primitive.PrimitiveId == "task_decomposition");
         Assert.Single(result.Tasks);
+        Assert.Equal("pending", result.Tasks[0].State);
+        Assert.Equal(0, result.Tasks[0].Order);
         Assert.Contains("Osaka", result.Tasks[0].Title, StringComparison.Ordinal);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(result, SensitiveSentinels);
     }
@@ -150,6 +157,14 @@ public sealed class PlannerPrimitiveTests
         Assert.Contains("late ramen and no temples", providerBody, StringComparison.Ordinal);
         Assert.Contains("context-osaka-food", providerBody, StringComparison.Ordinal);
         Assert.Contains("context_redacted", providerBody, StringComparison.Ordinal);
+        foreach (var primitiveId in PlannerPrimitiveToolCatalog.RequiredPrimitiveIds)
+        {
+            Assert.Contains(primitiveId, providerBody, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("destination confirmation must use radio_group or select", providerBody, StringComparison.Ordinal);
+        Assert.Contains("exact dates must use date or date_range", providerBody, StringComparison.Ordinal);
+        Assert.Contains("pace must use select, radio_group, or slider", providerBody, StringComparison.Ordinal);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -208,8 +223,64 @@ public sealed class PlannerPrimitiveTests
             osaka.Primitives.SelectMany(primitive => primitive.Options.Select(option => option.OptionId)).Order().ToArray(),
             iceland.Primitives.SelectMany(primitive => primitive.Options.Select(option => option.OptionId)).Order().ToArray());
         Assert.NotEqual(
+            osaka.Primitives.Select(primitive => primitive.PrimitiveId).Order().ToArray(),
+            iceland.Primitives.Select(primitive => primitive.PrimitiveId).Order().ToArray());
+        Assert.NotEqual(
             osaka.Tasks.Select(task => task.TaskId).Order().ToArray(),
             iceland.Tasks.Select(task => task.TaskId).Order().ToArray());
+    }
+
+    [Theory]
+    [InlineData("/mission/destination_country", "text_input")]
+    [InlineData("/mission/pace", "text_input")]
+    [InlineData("/mission/date_window", "text_input")]
+    public async Task SemanticTextInputMisuseIsRejected(string fieldPath, string primitiveId)
+    {
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateContent(
+                "composite_form",
+                dynamicPrimitiveId: primitiveId,
+                fieldPath: fieldPath)),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("semantic-misuse", CreateRequest())],
+            CreateOptions()));
+
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomePrimitiveRendererMismatch, "primitive_renderer_mismatch");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task CompositeFormWithoutTaskDecompositionIsRejected()
+    {
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateContent("composite_form", includeTaskDecomposition: false)),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("missing-task-decomposition", CreateRequest())],
+            CreateOptions()));
+
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeTaskDecompositionMissing, "task_decomposition_missing");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task RunnerBlocksCompositeFormWithoutTaskDecompositionBeforeAcceptedResult()
+    {
+        var runner = new PlannerPrimitiveRunner(
+            new StaticCompletionClient(CreateContent("composite_form", includeTaskDecomposition: false)),
+            new StaticCreditClient());
+
+        var ex = await Assert.ThrowsAsync<PlannerModelGuardException>(() =>
+            runner.RunAsync(CreateRequest(), CreateOptions()));
+
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeTaskDecompositionMissing, ex.OutcomeCode);
+        Assert.Equal("task_decomposition_missing", ex.FailureClassCode);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(
+            new { ex.OutcomeCode, ex.FailureClassCode },
+            SensitiveSentinels);
     }
 
     [Theory]
@@ -250,6 +321,48 @@ public sealed class PlannerPrimitiveTests
         Assert.Equal(PlannerPrimitiveRunner.OutcomeRepairedJson, row.OutcomeCode);
         Assert.Equal(2, client.CallCount);
         Assert.Contains("repairAttempt", client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Theory]
+    [InlineData("Here is the JSON:\n```json\n{0}\n```")]
+    [InlineData("Provider note before JSON.\n{0}\nProvider note after JSON.")]
+    public async Task WrappedJsonProviderContentIsAcceptedWithoutPersistingRawText(string wrapper)
+    {
+        var content = string.Format(wrapper, CreateContent("composite_form"));
+        var client = new StaticCompletionClient(content);
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("wrapped-json", CreateRequest())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeAccepted, row.OutcomeCode);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.NotEmpty(row.TaskIds);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
+    public async Task SemanticRepairAcceptedUsesFixedRepairOutcome()
+    {
+        var client = new SequentialCompletionClient(
+            CreateContent("composite_form", includeTaskDecomposition: false),
+            CreateContent("composite_form"));
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(client, new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase("semantic-repair-form", CreateRequest())],
+            CreateOptions()));
+
+        Assert.True(row.Passed);
+        Assert.True(row.WasRepaired);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeRepairedJson, row.OutcomeCode);
+        Assert.Equal(2, client.CallCount);
+        Assert.Contains("task_decomposition_missing", client.LastRequest!.Messages.Last().Content, StringComparison.Ordinal);
+        Assert.Contains("task_decomposition", row.PrimitiveKinds);
+        Assert.NotEmpty(row.TaskIds);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -308,6 +421,21 @@ public sealed class PlannerPrimitiveTests
     }
 
     [Fact]
+    public async Task RunnerTimeoutDuringCompletionMapsToFixedTimeoutOutcome()
+    {
+        var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
+            new CancellableCompletionClient(),
+            new StaticCreditClient()));
+
+        var row = Assert.Single(await evaluator.EvaluateAsync(
+            [new PlannerModelEvalCase($"{RawPrompt}-{Credential}", CreateRequest())],
+            CreateOptions() with { Timeout = TimeSpan.FromMilliseconds(1) }));
+
+        AssertRejected(row, PlannerPrimitiveRunner.OutcomeTimeout, "provider_timeout");
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
+    }
+
+    [Fact]
     public async Task MalformedJsonAfterRepairMapsToFixedMalformedOutcome()
     {
         var evaluator = new PlannerPrimitiveEvaluator(new PlannerPrimitiveRunner(
@@ -332,14 +460,17 @@ public sealed class PlannerPrimitiveTests
                 promptText: RawProviderPayload)),
             new StaticCreditClient());
 
-        var result = await runner.RunAsync(CreateRequest(), CreateOptions());
+        var ex = await Assert.ThrowsAsync<PlannerModelGuardException>(() =>
+            runner.RunAsync(CreateRequest(), CreateOptions()));
         var row = Assert.Single(await new PlannerPrimitiveEvaluator(runner).EvaluateAsync(
             [new PlannerModelEvalCase($"{RawPrompt}-{Credential}", CreateRequest())],
             CreateOptions()));
 
-        Assert.True(result.HasUnsafeValue);
+        Assert.Equal(PlannerPrimitiveRunner.OutcomeUnsafeText, ex.OutcomeCode);
         AssertRejected(row, PlannerPrimitiveRunner.OutcomeUnsafeText, "unsafe_text");
-        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(result, SensitiveSentinels);
+        SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(
+            new { ex.OutcomeCode, ex.FailureClassCode },
+            SensitiveSentinels);
         SanitizedEvalArtifactAssert.DoesNotContainSensitiveValues(row, SensitiveSentinels);
     }
 
@@ -389,16 +520,18 @@ public sealed class PlannerPrimitiveTests
                 "graph-01",
                 "session-01",
                 "mission_intake",
+                PlannerPrimitiveToolCatalog.CreateRequiredDefinitions(),
                 [
-                    new PlannerPrimitiveDefinition("assistant_message", "assistant_message", "assistant_message"),
-                    new PlannerPrimitiveDefinition("text_input", "text_input", "text_input"),
-                    new PlannerPrimitiveDefinition("single_select", "single_select", "single_select"),
-                    new PlannerPrimitiveDefinition("tool_search_request", "tool_search_request", "tool_search_request"),
-                    new PlannerPrimitiveDefinition("tool_gap_request", "tool_gap_request", "tool_gap_request")
+                    "/mission/purpose",
+                    "/mission/destination_country",
+                    "/mission/date_window",
+                    "/mission/start_date",
+                    "/mission/end_date",
+                    "/mission/pace",
+                    "/mission/preferences"
                 ],
-                ["/mission/purpose", "/mission/date_window"],
                 ["neutral", "calm_morning", "logistics", "lively_food"],
-                4)
+                8)
             {
                 AllowedMediaTokens = ["neutral", "calm_morning", "logistics", "lively_food"],
                 AllowedToolIds = ["mock_context_provider"]
@@ -428,10 +561,12 @@ public sealed class PlannerPrimitiveTests
     private static string CreateContent(
         string outputKind,
         string primitiveId = "assistant_message",
+        string dynamicPrimitiveId = "choice_card",
         string label = "Osaka ramen planning",
         string promptText = "Shape the Osaka ramen and market plan.",
-        string fieldPath = "/mission/purpose",
-        IReadOnlyList<string>? toolContextRefs = null) =>
+        string fieldPath = "/mission/preferences",
+        IReadOnlyList<string>? toolContextRefs = null,
+        bool includeTaskDecomposition = true) =>
         JsonSerializer.Serialize(new
         {
             manifestId = "manifest-intake",
@@ -461,7 +596,7 @@ public sealed class PlannerPrimitiveTests
                         promptText,
                         helpText = "Use a tool before claiming live facts.",
                         defaultValue = (string?)null,
-                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice" }
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice", ["variant"] = "tool_search" }
                     }
                 },
                 "tool_gap_request" => new object[]
@@ -484,84 +619,130 @@ public sealed class PlannerPrimitiveTests
                         promptText,
                         helpText = "Ask for context rather than inventing it.",
                         defaultValue = (string?)null,
-                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice" }
+                        rendererHints = new Dictionary<string, string> { ["layout"] = "notice", ["variant"] = "tool_gap" }
                     }
                 },
-                _ => new object[]
-                {
-                    new
-                    {
-                        primitiveId,
-                        primitiveKind = primitiveId,
-                        instanceId = "primitive-message",
-                        rendererKey = primitiveId,
-                        fieldPath = string.Empty,
-                        moodToken = "lively_food",
-                        mediaToken = "lively_food",
-                        candidateIds = Array.Empty<string>(),
-                        taskRefs = new[] { "task-osaka-shape" },
-                        evidenceRefs = Array.Empty<string>(),
-                        toolContextRefs = toolContextRefs ?? [],
-                        options = Array.Empty<object>(),
-                        label,
-                        promptText,
-                        helpText = "Keep the planning question specific to Osaka.",
-                        defaultValue = (string?)null,
-                        rendererHints = new Dictionary<string, string> { ["layout"] = "message" }
-                    },
-                    new
-                    {
-                        primitiveId = "text_input",
-                        primitiveKind = "text_input",
-                        instanceId = "primitive-purpose",
-                        rendererKey = "text_input",
-                        fieldPath,
-                        moodToken = "lively_food",
-                        mediaToken = "lively_food",
-                        candidateIds = Array.Empty<string>(),
-                        taskRefs = new[] { "task-osaka-shape" },
-                        evidenceRefs = Array.Empty<string>(),
-                        toolContextRefs = toolContextRefs ?? [],
-                        options = new object[]
-                        {
-                            new
-                            {
-                                optionId = "late_ramen",
-                                moodToken = "lively_food",
-                                mediaToken = "lively_food",
-                                toolContextRefs = Array.Empty<string>(),
-                                label = "Late ramen",
-                                summary = "Prioritize Osaka late-night ramen lanes."
-                            },
-                            new
-                            {
-                                optionId = "markets",
-                                moodToken = "lively_food",
-                                mediaToken = "lively_food",
-                                toolContextRefs = Array.Empty<string>(),
-                                label = "Market snacks",
-                                summary = "Keep Osaka markets in the plan."
-                            }
-                        },
-                        label = "Osaka food purpose",
-                        promptText = "What should the Osaka ramen and market plan optimize for?",
-                        helpText = "Mention constraints such as no temples or early mornings.",
-                        defaultValue = (string?)"late_ramen_markets",
-                        rendererHints = new Dictionary<string, string> { ["layout"] = "form_field" }
-                    }
-                }
+                _ => CompositePrimitives(primitiveId, dynamicPrimitiveId, label, promptText, fieldPath, toolContextRefs, includeTaskDecomposition)
             },
             tasks = new[]
             {
                 new
                 {
                     taskId = outputKind == "tool_gap_request" ? "task-osaka-gap" : outputKind == "tool_search_request" ? "task-osaka-search" : "task-osaka-shape",
-                    primitiveRefs = new[] { outputKind == "composite_form" ? "primitive-purpose" : outputKind == "tool_search_request" ? "primitive-search" : "primitive-gap" },
+                    primitiveRefs = outputKind == "composite_form"
+                        ? includeTaskDecomposition
+                            ? new[] { "primitive-osaka-choice", "primitive-task-decomposition" }
+                            : new[] { "primitive-osaka-choice" }
+                        : outputKind == "tool_search_request"
+                            ? new[] { "primitive-search" }
+                            : new[] { "primitive-gap" },
                     title = "Shape the Osaka food-first plan",
-                    summary = "Collect ramen, market, and constraint details before itinerary choices."
+                    summary = "Collect ramen, market, and constraint details before itinerary choices.",
+                    state = "pending",
+                    order = 0
                 }
             }
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private static object[] CompositePrimitives(
+        string primitiveId,
+        string dynamicPrimitiveId,
+        string label,
+        string promptText,
+        string fieldPath,
+        IReadOnlyList<string>? toolContextRefs,
+        bool includeTaskDecomposition)
+    {
+        var primitives = new List<object>
+        {
+            new
+            {
+                primitiveId,
+                primitiveKind = primitiveId,
+                instanceId = "primitive-message",
+                rendererKey = primitiveId,
+                fieldPath = string.Empty,
+                moodToken = "lively_food",
+                mediaToken = "lively_food",
+                candidateIds = Array.Empty<string>(),
+                taskRefs = new[] { "task-osaka-shape" },
+                evidenceRefs = Array.Empty<string>(),
+                toolContextRefs = toolContextRefs ?? [],
+                options = Array.Empty<object>(),
+                label,
+                promptText,
+                helpText = "Keep the planning question specific to Osaka.",
+                defaultValue = (string?)null,
+                rendererHints = new Dictionary<string, string> { ["layout"] = "message", ["variant"] = "assistant" }
+            },
+            new
+            {
+                primitiveId = dynamicPrimitiveId,
+                primitiveKind = dynamicPrimitiveId,
+                instanceId = "primitive-osaka-choice",
+                rendererKey = dynamicPrimitiveId,
+                fieldPath,
+                moodToken = "lively_food",
+                mediaToken = "lively_food",
+                candidateIds = Array.Empty<string>(),
+                taskRefs = new[] { "task-osaka-shape" },
+                evidenceRefs = Array.Empty<string>(),
+                toolContextRefs = toolContextRefs ?? [],
+                options = new object[]
+                {
+                    new
+                    {
+                        optionId = "late_ramen",
+                        moodToken = "lively_food",
+                        mediaToken = "lively_food",
+                        toolContextRefs = Array.Empty<string>(),
+                        label = "Late ramen",
+                        summary = "Prioritize Osaka late-night ramen lanes."
+                    },
+                    new
+                    {
+                        optionId = "markets",
+                        moodToken = "lively_food",
+                        mediaToken = "lively_food",
+                        toolContextRefs = Array.Empty<string>(),
+                        label = "Market snacks",
+                        summary = "Keep Osaka markets in the plan."
+                    }
+                },
+                label = "Osaka food purpose",
+                promptText = "Choose how the Osaka ramen and market plan should feel.",
+                helpText = "Pick the food-first planning emphasis.",
+                defaultValue = (string?)"late_ramen",
+                rendererHints = new Dictionary<string, string> { ["layout"] = "choice", ["variant"] = "cards" }
+            }
+        };
+
+        if (includeTaskDecomposition)
+        {
+            primitives.Add(new
+            {
+                primitiveId = "task_decomposition",
+                primitiveKind = "task_decomposition",
+                instanceId = "primitive-task-decomposition",
+                rendererKey = "task_decomposition",
+                fieldPath = string.Empty,
+                moodToken = "logistics",
+                mediaToken = "logistics",
+                candidateIds = Array.Empty<string>(),
+                taskRefs = new[] { "task-osaka-shape" },
+                evidenceRefs = Array.Empty<string>(),
+                toolContextRefs = toolContextRefs ?? [],
+                options = Array.Empty<object>(),
+                label = "Osaka planning tasks",
+                promptText = "Break the Osaka food-first turn into concrete next steps.",
+                helpText = "Use these tasks to drive the next planner turn.",
+                defaultValue = (string?)null,
+                rendererHints = new Dictionary<string, string> { ["layout"] = "tasks", ["variant"] = "compact" }
+            });
+        }
+
+        return primitives.ToArray();
+    }
 
     private static string CreateIcelandContent() =>
         JsonSerializer.Serialize(new
@@ -575,10 +756,10 @@ public sealed class PlannerPrimitiveTests
             {
                 new
                 {
-                    primitiveId = "single_select",
-                    primitiveKind = "single_select",
+                    primitiveId = "select",
+                    primitiveKind = "select",
                     instanceId = "primitive-iceland-style",
-                    rendererKey = "single_select",
+                    rendererKey = "select",
                     fieldPath = "/mission/purpose",
                     moodToken = "calm_morning",
                     mediaToken = "calm_morning",
@@ -611,7 +792,27 @@ public sealed class PlannerPrimitiveTests
                     promptText = "Should Iceland lean more toward glaciers or hot springs?",
                     helpText = "Choose the quiet outdoors emphasis.",
                     defaultValue = (string?)"glacier_hikes",
-                    rendererHints = new Dictionary<string, string> { ["layout"] = "choice_cards" }
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "select", ["variant"] = "compact" }
+                },
+                new
+                {
+                    primitiveId = "task_decomposition",
+                    primitiveKind = "task_decomposition",
+                    instanceId = "primitive-iceland-task-decomposition",
+                    rendererKey = "task_decomposition",
+                    fieldPath = string.Empty,
+                    moodToken = "logistics",
+                    mediaToken = "logistics",
+                    candidateIds = Array.Empty<string>(),
+                    taskRefs = new[] { "task-iceland-shape" },
+                    evidenceRefs = Array.Empty<string>(),
+                    toolContextRefs = Array.Empty<string>(),
+                    options = Array.Empty<object>(),
+                    label = "Iceland planning tasks",
+                    promptText = "Break the Iceland hiking turn into concrete planning steps.",
+                    helpText = "Use the tasks to guide glacier and hot spring planning.",
+                    defaultValue = (string?)null,
+                    rendererHints = new Dictionary<string, string> { ["layout"] = "tasks", ["variant"] = "compact" }
                 }
             },
             tasks = new[]
@@ -619,9 +820,11 @@ public sealed class PlannerPrimitiveTests
                 new
                 {
                     taskId = "task-iceland-shape",
-                    primitiveRefs = new[] { "primitive-iceland-style" },
+                    primitiveRefs = new[] { "primitive-iceland-style", "primitive-iceland-task-decomposition" },
                     title = "Shape the Iceland hiking plan",
-                    summary = "Choose glacier, hot spring, and quiet-night priorities."
+                    summary = "Choose glacier, hot spring, and quiet-night priorities.",
+                    state = "pending",
+                    order = 0
                 }
             }
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -664,7 +867,9 @@ public sealed class PlannerPrimitiveTests
                     taskId = "task-generic",
                     primitiveRefs = new[] { "primitive-purpose" },
                     title = "Answer live planner form",
-                    summary = "Generate planning options."
+                    summary = "Generate planning options.",
+                    state = "pending",
+                    order = 0
                 }
             }
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -684,6 +889,8 @@ public sealed class PlannerPrimitiveTests
         Assert.Equal(expectedFailureClass, row.FailureClassCode);
         Assert.Null(row.OutputKind);
         Assert.Empty(row.PrimitiveIds);
+        Assert.Empty(row.PrimitiveKinds);
+        Assert.Empty(row.TaskIds);
         Assert.Equal(0, row.PrimitiveCount);
         Assert.Equal(0, row.TaskCount);
         Assert.Equal(0, row.OptionCount);
@@ -760,6 +967,21 @@ public sealed class PlannerPrimitiveTests
             ModelCompletionRequest request,
             CancellationToken cancellationToken = default) =>
             Task.FromException<ModelCompletionResponse>(exception);
+    }
+
+    private sealed class CancellableCompletionClient : IModelCompletionClient
+    {
+        public async Task<ModelCompletionResponse> CompleteAsync(
+            ModelCompletionRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new ModelCompletionResponse(
+                request.Model ?? "qwen/qwen3-14b",
+                CreateContent("composite_form"),
+                "openrouter",
+                RequestId: "request-safe");
+        }
     }
 
     private sealed class StaticCreditClient(ProviderCreditStatus? status = null) : IProviderCreditClient

@@ -1,0 +1,21 @@
+<section class="primitive-choice-card" data-dom-renderer="choice_card" data-choice-card-primitive="@Primitive.InstanceId">
+    <p class="work-lead">@Primitive.Prompt</p>
+    <h2>@Primitive.Title</h2>
+    <div class="candidate-deck__track">
+        @foreach (var candidate in Primitive.Candidates)
+        {
+            <OptionCard Candidate="candidate"
+                        IsActive="true"
+                        OnSelect="candidateId => SubmitCandidate.InvokeAsync(candidateId)"
+                        OnDefer="candidateId => SubmitCandidate.InvokeAsync(candidateId)" />
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitive Primitive { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> SubmitCandidate { get; set; }
+}

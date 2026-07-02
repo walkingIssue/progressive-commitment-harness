@@ -1,0 +1,26 @@
+<div class="primitive-slider" data-dom-renderer="slider">
+    <input type="range"
+           min="0"
+           max="100"
+           step="1"
+           value="@SliderValue"
+           aria-label="@Field.Label"
+           data-field-input="@Field.FieldId"
+           @oninput="eventArgs => ValueChanged.InvokeAsync(eventArgs.Value?.ToString() ?? string.Empty)" />
+    <output>@SliderValue</output>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    private string SliderValue => int.TryParse(Value, out var parsed)
+        ? Math.Clamp(parsed, 0, 100).ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : "50";
+}

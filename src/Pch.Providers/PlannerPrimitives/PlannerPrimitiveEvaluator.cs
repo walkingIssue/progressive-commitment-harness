@@ -85,6 +85,7 @@ public sealed class PlannerPrimitiveEvaluator
             .Concat(evalCase.Request.Manifest.AllowedToolIds)
             .ToHashSet(StringComparer.Ordinal);
         var primitiveIds = new List<string>(result.Primitives.Count);
+        var primitiveKinds = new List<string>(result.Primitives.Count);
         var primitiveInstanceIds = new List<string>(result.Primitives.Count);
         var optionCount = 0;
         foreach (var primitive in result.Primitives)
@@ -124,6 +125,7 @@ public sealed class PlannerPrimitiveEvaluator
 
             optionCount += primitive.Options.Count;
             primitiveIds.Add(definition.PrimitiveId);
+            primitiveKinds.Add(definition.PrimitiveKind);
             primitiveInstanceIds.Add(primitive.InstanceId);
         }
 
@@ -135,13 +137,26 @@ public sealed class PlannerPrimitiveEvaluator
             return Rejected(PlannerPrimitiveRunner.OutcomeUnsupportedPrimitive, "unsupported_primitive");
         }
 
-        return Accepted(evalCase, result, primitiveIds.Order(StringComparer.Ordinal).ToArray(), optionCount);
+        if (PlannerPrimitiveSemanticValidator.Validate(evalCase.Request, result) is { } semanticFailure)
+        {
+            return Rejected(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
+        }
+
+        return Accepted(
+            evalCase,
+            result,
+            primitiveIds.Order(StringComparer.Ordinal).ToArray(),
+            primitiveKinds.Order(StringComparer.Ordinal).ToArray(),
+            result.Tasks.Select(task => task.TaskId).Order(StringComparer.Ordinal).ToArray(),
+            optionCount);
     }
 
     private static SanitizedPlannerModelLogRow Accepted(
         PlannerModelEvalCase evalCase,
         PlannerModelResult result,
         IReadOnlyList<string> primitiveIds,
+        IReadOnlyList<string> primitiveKinds,
+        IReadOnlyList<string> taskIds,
         int optionCount)
     {
         var outcome = result.OutputKind switch
@@ -163,6 +178,8 @@ public sealed class PlannerPrimitiveEvaluator
             null,
             result.OutputKind,
             primitiveIds,
+            primitiveKinds,
+            taskIds,
             primitiveIds.Count,
             result.Tasks.Count,
             optionCount,
@@ -237,6 +254,8 @@ public sealed class PlannerPrimitiveEvaluator
             outcomeCode,
             failureClassCode,
             null,
+            [],
+            [],
             [],
             0,
             0,

@@ -134,7 +134,11 @@
                           OnFocusTurn="FocusTurn" />
     </main>
 
-    <TaskRail Tasks="Chat.Tasks" />
+    <TaskDecompositionRail Tasks="Chat.Tasks"
+                           ProviderOutcome="@Chat.ProviderOutcome"
+                           BlockedReason="@Chat.BlockedReason"
+                           ErrorCode="@Chat.ErrorCode" />
+    <DevelopmentStatusDock Chat="Chat" Turn="CurrentTurn" LatestTrace="null" />
 </section>
 
 @code {

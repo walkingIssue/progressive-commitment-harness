@@ -30,6 +30,8 @@ public sealed class PlannerPrimitiveRunner
     public const string OutcomeUnsupportedPrimitive = "planner_model_unsupported_primitive";
     public const string OutcomeFieldPathNotAllowed = "planner_model_field_path_not_allowed";
     public const string OutcomeToolNotAllowed = "planner_model_tool_not_allowed";
+    public const string OutcomePrimitiveRendererMismatch = "planner_model_primitive_renderer_mismatch";
+    public const string OutcomeTaskDecompositionMissing = "planner_model_task_decomposition_missing";
     public const string OutcomeProviderUnavailable = "planner_model_provider_unavailable";
     public const string OutcomeFallbackDisabled = "planner_model_fallback_disabled";
 
@@ -87,55 +89,120 @@ public sealed class PlannerPrimitiveRunner
         }
 
         var stopwatch = Stopwatch.StartNew();
-        var first = await CompleteOnceAsync(request, options, isRepair: false, operationToken).ConfigureAwait(false);
+        var first = await CompleteOnceAsync(request, options, isRepair: false, null, operationToken, cancellationToken).ConfigureAwait(false);
         if (TryParse(request, first, stopwatch.Elapsed, wasRepaired: false, out var parsed, out var failure))
         {
-            return parsed;
+            GuardParsedResult(parsed);
+            var semanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, parsed);
+            if (semanticFailure is null)
+            {
+                return parsed;
+            }
+
+            if (options.RepairEnabled)
+            {
+                var semanticRepair = await CompleteOnceAsync(
+                    request,
+                    options,
+                    isRepair: true,
+                    semanticFailure.FailureClassCode,
+                    operationToken,
+                    cancellationToken).ConfigureAwait(false);
+                if (TryParse(request, semanticRepair, stopwatch.Elapsed, wasRepaired: true, out var semanticParsed, out var semanticRepairFailure))
+                {
+                    GuardParsedResult(semanticParsed);
+                    var repairedSemanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, semanticParsed);
+                    if (repairedSemanticFailure is null)
+                    {
+                        return semanticParsed;
+                    }
+
+                    semanticFailure = repairedSemanticFailure;
+                }
+                else
+                {
+                    ThrowParseFailure(options.Provider, semanticRepairFailure);
+                }
+            }
+
+            throw new PlannerModelGuardException(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
         }
 
         if (options.RepairEnabled &&
             failure is PlannerParseFailure.MalformedJson or PlannerParseFailure.SchemaInvalid)
         {
-            var repaired = await CompleteOnceAsync(request, options, isRepair: true, operationToken).ConfigureAwait(false);
+            var repaired = await CompleteOnceAsync(request, options, isRepair: true, "schema_or_json_invalid", operationToken, cancellationToken).ConfigureAwait(false);
             if (TryParse(request, repaired, stopwatch.Elapsed, wasRepaired: true, out var repairedParsed, out var repairedFailure))
             {
-                return repairedParsed;
+                GuardParsedResult(repairedParsed);
+                var semanticFailure = PlannerPrimitiveSemanticValidator.Validate(request, repairedParsed);
+                if (semanticFailure is null)
+                {
+                    return repairedParsed;
+                }
+
+                throw new PlannerModelGuardException(semanticFailure.OutcomeCode, semanticFailure.FailureClassCode);
             }
 
             failure = repairedFailure;
         }
 
+        ThrowParseFailure(options.Provider, failure);
+        throw new UnreachableException();
+    }
+
+    private static void ThrowParseFailure(string provider, PlannerParseFailure failure)
+    {
         throw failure switch
         {
-            PlannerParseFailure.MalformedJson => new ProviderMalformedResponseException(options.Provider, "Planner primitive provider returned malformed JSON."),
-            _ => new ProviderMalformedResponseException(options.Provider, "Planner primitive provider returned malformed schema.")
+            PlannerParseFailure.MalformedJson => new ProviderMalformedResponseException(provider, "Planner primitive provider returned malformed JSON."),
+            _ => new ProviderMalformedResponseException(provider, "Planner primitive provider returned malformed schema.")
         };
+    }
+
+    private static void GuardParsedResult(PlannerModelResult result)
+    {
+        if (result.HasUnsafeValue)
+        {
+            throw new PlannerModelGuardException(OutcomeUnsafeText, "unsafe_text");
+        }
+
+        if (!result.HasPromptSpecificContent)
+        {
+            throw new PlannerModelGuardException(OutcomeSchemaInvalid, "provider_schema_invalid");
+        }
     }
 
     private async Task<ModelCompletionResponse> CompleteOnceAsync(
         PlannerModelRequest request,
         PlannerModelOptions options,
         bool isRepair,
-        CancellationToken cancellationToken)
+        string? failureReason,
+        CancellationToken operationToken,
+        CancellationToken callerCancellationToken)
     {
         try
         {
             return await _completionClient.CompleteAsync(
                 new ModelCompletionRequest(
                     [
-                        new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitives. Use only primitive ids from the manifest. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
-                        new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason: isRepair ? "schema_or_json_invalid" : null))
+                        new ModelMessage(ModelMessageRole.System, "Return strict JSON for provider-local planner primitive invocations. Use the primitive tool menu as callable form tools, not generic prose. Do not include raw provider payloads, secrets, credentials, approval tokens, hold refs, booking refs, payment data, arbitrary URLs, CSS, or HTML."),
+                        new ModelMessage(ModelMessageRole.User, PlannerPrimitivePromptBuilder.Build(request, isRepair, failureReason))
                     ],
                     options.Model,
                     "planner_primitive_output",
                     PlannerPrimitiveJsonSchema.Schema,
                     Temperature: 0,
                     MaxTokens: options.MaxTokens),
-                cancellationToken).ConfigureAwait(false);
+                operationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (callerCancellationToken.IsCancellationRequested)
         {
-            throw new ProviderUnavailableException(options.Provider, "Planner primitive request timed out.");
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new ProviderUnavailableException(options.Provider, "Planner primitive request timed out.", null, ex);
         }
     }
 
@@ -155,11 +222,7 @@ public sealed class PlannerPrimitiveRunner
         }
 
         PlannerModelEnvelope? parsed;
-        try
-        {
-            parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(completion.Content, JsonOptions);
-        }
-        catch (JsonException)
+        if (!TryDeserializeEnvelope(completion.Content, out parsed))
         {
             failure = PlannerParseFailure.MalformedJson;
             return false;
@@ -195,6 +258,90 @@ public sealed class PlannerPrimitiveRunner
             completion.RequestId);
         failure = PlannerParseFailure.None;
         return true;
+    }
+
+    private static bool TryDeserializeEnvelope(string content, out PlannerModelEnvelope? parsed)
+    {
+        try
+        {
+            parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(content, JsonOptions);
+            return true;
+        }
+        catch (JsonException)
+        {
+            if (!TryExtractJsonObject(content, out var jsonObject))
+            {
+                parsed = null;
+                return false;
+            }
+
+            try
+            {
+                parsed = JsonSerializer.Deserialize<PlannerModelEnvelope>(jsonObject, JsonOptions);
+                return true;
+            }
+            catch (JsonException)
+            {
+                parsed = null;
+                return false;
+            }
+        }
+    }
+
+    private static bool TryExtractJsonObject(string content, out string jsonObject)
+    {
+        jsonObject = string.Empty;
+        var start = content.IndexOf('{');
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var index = start; index < content.Length; index++)
+        {
+            var current = content[index];
+            if (escaped)
+            {
+                escaped = false;
+                continue;
+            }
+
+            if (current == '\\' && inString)
+            {
+                escaped = true;
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+            {
+                continue;
+            }
+
+            if (current == '{')
+            {
+                depth++;
+            }
+            else if (current == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    jsonObject = content[start..(index + 1)];
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateRequest(PlannerModelRequest request)
@@ -273,7 +420,11 @@ public sealed class PlannerPrimitiveRunner
             task.TaskId ?? string.Empty,
             task.PrimitiveRefs ?? [],
             task.Title,
-            task.Summary);
+            task.Summary)
+        {
+            State = task.State ?? string.Empty,
+            Order = task.Order ?? -1
+        };
 
     internal static bool IsSafeIdentifier(string? value) =>
         !string.IsNullOrWhiteSpace(value) &&
@@ -472,7 +623,9 @@ public sealed class PlannerPrimitiveRunner
         string? TaskId,
         IReadOnlyList<string>? PrimitiveRefs,
         string? Title,
-        string? Summary);
+        string? Summary,
+        string? State,
+        int? Order);
 
     private enum PlannerParseFailure
     {

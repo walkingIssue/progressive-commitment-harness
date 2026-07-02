@@ -188,7 +188,14 @@ public sealed record PlannerTaskInvocation(
     [property: JsonIgnore]
     string? Title,
     [property: JsonIgnore]
-    string? Summary);
+    string? Summary)
+{
+    [JsonIgnore]
+    public string State { get; init; } = "pending";
+
+    [JsonIgnore]
+    public int Order { get; init; }
+}
 
 public sealed record PlannerModelEvalCase(
     string Name,
@@ -205,6 +212,8 @@ public sealed record SanitizedPlannerModelLogRow(
     string? FailureClassCode,
     PlannerModelOutputKind? OutputKind,
     IReadOnlyList<string> PrimitiveIds,
+    IReadOnlyList<string> PrimitiveKinds,
+    IReadOnlyList<string> TaskIds,
     int PrimitiveCount,
     int TaskCount,
     int OptionCount,

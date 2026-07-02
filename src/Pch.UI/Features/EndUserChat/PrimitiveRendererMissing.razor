@@ -1,0 +1,15 @@
+<div class="primitive-renderer-missing"
+     data-primitive-renderer-blocked="@RendererKey"
+     data-field-id="@Field.FieldId"
+     data-error-code="primitive_renderer_missing">
+    <strong>@Field.Label</strong>
+    <span>Renderer unavailable for this validated primitive.</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string RendererKey { get; set; } = string.Empty;
+}

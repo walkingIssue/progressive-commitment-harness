@@ -1,0 +1,17 @@
+<input type="text"
+       value="@Value"
+       aria-label="@Field.Label"
+       data-field-input="@Field.FieldId"
+       data-dom-renderer="text_input"
+       @oninput="eventArgs => ValueChanged.InvokeAsync(eventArgs.Value?.ToString() ?? string.Empty)" />
+
+@code {
+    [Parameter, EditorRequired]
+    public ValidatedPrimitiveField Field { get; set; } = default!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public EventCallback<string> ValueChanged { get; set; }
+}

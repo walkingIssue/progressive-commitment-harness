@@ -44,12 +44,24 @@ public sealed class FormBuilder
 
             if (field.AllowedValues.Count > 0 &&
                 !string.IsNullOrWhiteSpace(value) &&
-                !field.AllowedValues.Contains(value, StringComparer.Ordinal))
+                !SubmittedValuesAllowed(field, value))
             {
                 errors.Add(new(field.FieldId, "answer_choice_not_allowed", "Answer is outside the validated choices."));
             }
         }
 
         return errors;
+    }
+
+    private static bool SubmittedValuesAllowed(ValidatedPrimitiveField field, string value)
+    {
+        var submitted = value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (submitted.Length == 0)
+        {
+            submitted = [value];
+        }
+
+        return submitted.All(item => field.AllowedValues.Contains(item, StringComparer.Ordinal));
     }
 }
